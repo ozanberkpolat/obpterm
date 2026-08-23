@@ -253,12 +253,14 @@ pub fn prune_captures(sessions: State<Sessions>, dir: String, keep_days: u32, ma
 /// testable without touching a disk.
 fn plan_prune(mut files: Vec<(i64, u64, PathBuf)>, now: i64, keep_days: u32, max_mb: u32) -> Vec<(u64, PathBuf)> {
     files.sort_by_key(|f| f.0);
-    let cutoff = if keep_days == 0 { 0 } else { now - (keep_days as i64) * 86_400 };
+    // `None` is the honest "no age limit": a sentinel of 0 conflates being disabled with a
+    // cutoff that happens to be non-positive, and then the rule quietly stops applying.
+    let cutoff = (keep_days > 0).then(|| now - (keep_days as i64) * 86_400);
     let mut doomed = Vec::new();
     let mut kept: Vec<(u64, PathBuf)> = Vec::new();
 
     for (modified, size, path) in files {
-        if size == 0 || (cutoff > 0 && modified < cutoff) {
+        if size == 0 || cutoff.is_some_and(|c| modified < c) {
             doomed.push((size, path));
         } else {
             kept.push((size, path));
@@ -395,6 +397,20 @@ mod tests {
         assert_eq!(doomed.len(), 2);
         assert_eq!(doomed[0].1, PathBuf::from("f0.log"));
         assert_eq!(doomed[1].1, PathBuf::from("f1.log"));
+    }
+
+    #[test]
+    fn the_age_limit_applies_at_a_real_epoch_too() {
+        // The first version disabled itself whenever the cutoff was not positive, which only
+        // showed up with a small `now`. Pin both.
+        let now = 1_787_500_000;
+        let files = vec![
+            (now - 40 * DAY, 1 * MB, PathBuf::from("ancient.log")),
+            (now - 2 * DAY, 1 * MB, PathBuf::from("fresh.log")),
+        ];
+        let doomed = plan_prune(files, now, 30, 0);
+        assert_eq!(doomed.len(), 1);
+        assert_eq!(doomed[0].1, PathBuf::from("ancient.log"));
     }
 
     #[test]
