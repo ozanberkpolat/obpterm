@@ -466,7 +466,7 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
           text(c.limits_file ?? "", (v) => { c.limits_file = v || null; ctx.save(); }, { width: 280, placeholder: "~/.claude/limits.json" })),
         row("…or from a machine of yours", "Anything serving {fiveHour:{used,resetsAt},weekly:{…}} — the homelab /ssh/ terminal already does.",
           text(c.limits_url ?? "", (v) => { c.limits_url = v || null; ctx.save(); }, { width: 280, placeholder: "http://host:3007/api/status" })),
-        row("Your budget", "The status bar shows a percentage of these instead of raw totals. Left empty it shows totals — Anthropic's real limit is not readable from disk.",
+        row("Your budget", "Fallback when neither source above is set: the status bar shows this machine's own token counts against these budgets. With a statusLine file or URL configured, the real percentages win and this is ignored.",
           pair(number(c.quota_5h_tokens, (v) => { c.quota_5h_tokens = v; ctx.save(); }, { width: 130, placeholder: "5h" }),
             number(c.quota_7d_tokens, (v) => { c.quota_7d_tokens = v; ctx.save(); }, { width: 130, placeholder: "7d" }))),
       ),

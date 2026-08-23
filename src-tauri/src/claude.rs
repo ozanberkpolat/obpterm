@@ -264,6 +264,17 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pct_reads_floats_and_ints() {
+        // The homelab endpoint emits 14.000000000000002; as_u64() returned None and the
+        // weekly meter silently showed 0. This pins the fix.
+        assert_eq!(super::as_pct(&serde_json::json!(14.000000000000002)), 14);
+        assert_eq!(super::as_pct(&serde_json::json!(34)), 34);
+        assert_eq!(super::as_pct(&serde_json::json!(99.6)), 100);
+        assert_eq!(super::as_pct(&serde_json::json!(250)), 100);
+        assert_eq!(super::as_pct(&serde_json::json!("nope")), 0);
+    }
+
     use super::*;
 
     #[test]
@@ -322,13 +333,20 @@ pub async fn claude_limits(file: Option<String>, url: Option<String>) -> Option<
     let body: serde_json::Value = response.json().await.ok()?;
     let host = url.split('/').nth(2).unwrap_or("remote").to_string();
     Some(Limits {
-        five_hour: body.pointer("/fiveHour/used")?.as_u64().unwrap_or(0) as u8,
+        five_hour: as_pct(body.pointer("/fiveHour/used")?),
         five_hour_resets_at: body.pointer("/fiveHour/resetsAt").and_then(|v| v.as_i64()).unwrap_or(0),
-        weekly: body.pointer("/weekly/used").and_then(|v| v.as_u64()).unwrap_or(0) as u8,
+        weekly: body.pointer("/weekly/used").map(as_pct).unwrap_or(0),
         weekly_resets_at: body.pointer("/weekly/resetsAt").and_then(|v| v.as_i64()).unwrap_or(0),
         stale: body.get("stale").and_then(|v| v.as_bool()).unwrap_or(false),
         source: host,
     })
+}
+
+/// A used-percentage as whatever JSON number the source emitted: the homelab endpoint sends
+/// floats (14.000000000000002), and `as_u64()` on a float is None — which silently zeroed the
+/// weekly meter. Round and clamp instead.
+fn as_pct(v: &serde_json::Value) -> u8 {
+    v.as_f64().unwrap_or(0.0).round().clamp(0.0, 100.0) as u8
 }
 
 /// The raw shape Claude Code pipes to a statusLine command, saved to a file by one.
@@ -336,7 +354,7 @@ fn from_statusline_file(path: &str) -> Option<Limits> {
     let text = std::fs::read_to_string(expand(path)).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
     let rl = v.get("rate_limits").unwrap_or(&v);
-    let pct = |k: &str| rl.pointer(&format!("/{k}/used_percentage")).and_then(|x| x.as_u64()).unwrap_or(0) as u8;
+    let pct = |k: &str| rl.pointer(&format!("/{k}/used_percentage")).map(as_pct).unwrap_or(0);
     let at = |k: &str| rl.pointer(&format!("/{k}/resets_at")).and_then(|x| x.as_i64()).unwrap_or(0);
     let written = v.get("ts").and_then(|t| t.as_f64()).unwrap_or(0.0) as i64;
     Some(Limits {
