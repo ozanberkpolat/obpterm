@@ -24,6 +24,10 @@ export function tauriTransport(): Transport {
     write: (id, data) => invoke("pty_write", { id, data }),
     resize: (id, cols, rows) => invoke("pty_resize", { id, cols, rows }),
     kill: (id) => invoke("pty_kill", { id }),
+    async logStart(id, name, stamp) {
+      return invoke<string>("pty_log_start", { id, dir: await invoke<string>("log_dir"), name, stamp });
+    },
+    logStop: (id) => invoke("pty_log_stop", { id }),
     loadConfig: () => invoke<Config>("config_load"),
     saveConfig: (config) => invoke("config_save", { config }),
     configPath: () => invoke<string>("config_path_string"),

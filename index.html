@@ -10,11 +10,25 @@
     <div id="app">
       <nav id="rail" aria-label="Tabs">
         <div id="rail-head"><span class="brand">winterm</span><button id="rail-toggle" title="Toggle rail (Ctrl+Shift+B)">‹</button></div>
-        <ul id="tabs"></ul>
-        <div id="rail-foot"><button id="new-tab" title="New tab (Ctrl+Shift+T). Right-click / long-press: pick profile">+</button></div>
+        <div id="rail-body"></div>
+        <div id="rail-new" hidden></div>
+        <div id="rail-foot">
+          <button id="new-tab" title="New tab (Ctrl+Shift+T). Right-click: pick a profile">+ Tab</button>
+          <button id="new-project" title="Group tabs into a project">+ Project</button>
+        </div>
       </nav>
-      <main id="panes"></main>
-      <div id="profile-menu" hidden></div>
+      <main id="panes">
+        <div id="find" hidden>
+          <input type="text" placeholder="Find in scrollback" aria-label="Find in scrollback" spellcheck="false" />
+          <span class="count"></span>
+          <button class="case" title="Match case">Aa</button>
+          <button class="regex" title="Regular expression">.*</button>
+          <button class="prev" title="Previous (Shift+Enter)">↑</button>
+          <button class="next" title="Next (Enter)">↓</button>
+          <button class="close" title="Close (Esc)">×</button>
+        </div>
+      </main>
+      <div id="menu" hidden></div>
       <div id="toast" hidden></div>
     </div>
     <script type="module" src="/src/main.ts"></script>

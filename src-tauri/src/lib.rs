@@ -14,9 +14,12 @@ pub fn run() {
             pty::pty_write,
             pty::pty_resize,
             pty::pty_kill,
+            pty::pty_log_start,
+            pty::pty_log_stop,
             config::config_load,
             config::config_save,
             config::config_path_string,
+            config::log_dir,
         ])
         .setup(|app| {
             let main = app.get_webview_window("main").expect("main window");

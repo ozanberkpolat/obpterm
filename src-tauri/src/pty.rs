@@ -8,9 +8,11 @@ use crate::config::Profile;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use std::collections::HashMap;
+use std::fs::File;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -18,6 +20,8 @@ struct Session {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
+    /// Shared with the reader thread: `Some` while this session is being captured to a file.
+    log: Arc<Mutex<Option<File>>>,
 }
 
 #[derive(Default)]
@@ -64,11 +68,13 @@ pub fn pty_spawn(
     let writer = pair.master.take_writer().map_err(|e| format!("writer: {e}"))?;
 
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    let log: Arc<Mutex<Option<File>>> = Arc::new(Mutex::new(None));
+    let log_writer = log.clone();
     sessions
         .0
         .lock()
         .unwrap()
-        .insert(id, Session { master: pair.master, writer, child });
+        .insert(id, Session { master: pair.master, writer, child, log });
 
     // ponytail: chunked reads, no backpressure; add pause/resume if huge output lags the UI.
     std::thread::spawn(move || {
@@ -77,6 +83,10 @@ pub fn pty_spawn(
             match reader.read(&mut buf) {
                 Ok(0) | Err(_) => break, // ConPTY reports a closed console as an error, not 0
                 Ok(n) => {
+                    if let Some(f) = log_writer.lock().unwrap().as_mut() {
+                        // Raw stream, escapes and all - that is what a terminal log is.
+                        let _ = f.write_all(&buf[..n]);
+                    }
                     if on_data.send(Response::new(buf[..n].to_vec())).is_err() {
                         break; // webview gone
                     }
@@ -121,6 +131,37 @@ pub fn pty_kill(sessions: State<Sessions>, id: u32) -> Result<(), String> {
         Some(s) => s.child.kill().map_err(|e| format!("kill: {e}")),
         None => Ok(()), // already exited
     }
+}
+
+/// Starts teeing this session's output to `<dir>/<name>-<stamp>.log`, and returns the path.
+#[tauri::command]
+pub fn pty_log_start(
+    sessions: State<Sessions>,
+    id: u32,
+    dir: String,
+    name: String,
+    stamp: String,
+) -> Result<String, String> {
+    let map = sessions.0.lock().unwrap();
+    let s = map.get(&id).ok_or_else(|| format!("no session {id}"))?;
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect();
+    let dir = PathBuf::from(dir);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    let path = dir.join(format!("{safe}-{stamp}.log"));
+    let file = File::create(&path).map_err(|e| format!("create {}: {e}", path.display()))?;
+    *s.log.lock().unwrap() = Some(file);
+    Ok(path.display().to_string())
+}
+
+#[tauri::command]
+pub fn pty_log_stop(sessions: State<Sessions>, id: u32) -> Result<(), String> {
+    if let Some(s) = sessions.0.lock().unwrap().get(&id) {
+        *s.log.lock().unwrap() = None; // dropping the File flushes it
+    }
+    Ok(())
 }
 
 pub fn kill_all(sessions: &Sessions) {

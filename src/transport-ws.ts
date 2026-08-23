@@ -54,6 +54,8 @@ export function wsTransport(): Transport {
     write: async (id, text) => void (await call("write", { id, data: text })),
     resize: async (id, cols, rows) => void (await call("resize", { id, cols, rows })),
     kill: async (id) => void (await call("kill", { id })),
+    logStart: async (id, name, stamp) => (await call("log_start", { id, name, stamp })).path as string,
+    logStop: async (id) => void (await call("log_stop", { id })),
     loadConfig: async () => (await call("config_load")).config as Config,
     saveConfig: async (config) => void (await call("config_save", { config })),
     configPath: async () => "dev-config.json (dev server)",

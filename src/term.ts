@@ -1,12 +1,15 @@
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import type { Config } from "./transport";
 
 export interface Term {
   term: Terminal;
+  search: SearchAddon;
   fit(): void;
   dispose(): void;
 }
@@ -26,8 +29,11 @@ export function createTerm(container: HTMLElement, config: Config): Term {
     windowsPty: isWindows ? { backend: "conpty" } : undefined,
   });
   const fitAddon = new FitAddon();
+  const search = new SearchAddon();
   term.loadAddon(fitAddon);
+  term.loadAddon(search);
   term.loadAddon(new Unicode11Addon());
+  term.loadAddon(new WebLinksAddon());
   term.unicode.activeVersion = "11";
   term.open(container);
   try {
@@ -39,7 +45,9 @@ export function createTerm(container: HTMLElement, config: Config): Term {
   }
   return {
     term,
-    fit: () => fitAddon.fit(),
+    search,
+    // A hidden tab measures 0 wide; fitting then would resize the shell to nothing.
+    fit: () => container.clientWidth > 0 && container.clientHeight > 0 && fitAddon.fit(),
     dispose: () => term.dispose(),
   };
 }

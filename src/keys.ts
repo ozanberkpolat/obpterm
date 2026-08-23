@@ -2,17 +2,24 @@
 // fire inside a terminal. The Rust side also turns WebView2's accelerator keys off; this is
 // the belt to that braces, and the only guard in the browser dev loop.
 import type { App } from "./app";
+import { closeMenu, openMenu } from "./menu";
+import { newProject } from "./rail";
 
 const ctrlShift = (e: KeyboardEvent) => e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey;
 const ctrlOnly = (e: KeyboardEvent) => e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
+const altOnly = (e: KeyboardEvent) => e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey;
+const altShift = (e: KeyboardEvent) => e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey;
+const ARROWS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" } as const;
 
 /** Keys the app handles itself; xterm must not forward them to the pty. */
 export function ownsKey(e: KeyboardEvent): boolean {
   if (e.type !== "keydown") return false;
   if (ctrlOnly(e) && e.code === "Tab") return true;
-  if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV"].includes(e.code)) return true;
+  if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV", "KeyF", "KeyL", "KeyP", "KeyN"].includes(e.code)) return true;
   if ((ctrlShift(e) || ctrlOnly(e)) && /^Digit[1-9]$/.test(e.code)) return true;
   if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract"].includes(e.code)) return true;
+  if ((altOnly(e) || altShift(e)) && e.code in ARROWS) return true;
+  if (altShift(e) && ["Equal", "Minus", "NumpadAdd", "NumpadSubtract", "KeyD"].includes(e.code)) return true;
   return e.code === "F12"; // F5 is a real key for the shell (ESC[15~); only devtools is ours
 }
 
@@ -20,18 +27,31 @@ export function installKeys(app: App) {
   window.addEventListener(
     "keydown",
     (e) => {
-      // Browser-only chords: swallow unconditionally (reload, devtools, find, print, zoom…)
+      // Browser-only chords: swallow unconditionally (reload, devtools, print…)
       if (e.code === "F12" || (ctrlShift(e) && ["KeyI", "KeyJ", "KeyR"].includes(e.code))) return stop(e);
       if (e.code === "F5" && e.ctrlKey) return stop(e);
+      if (e.code === "Escape") closeMenu();
 
       if (ctrlOnly(e) && e.code === "Tab") { app.cycle(1); return stop(e); }
       if (ctrlShift(e) && e.code === "Tab") { app.cycle(-1); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyT") { void app.newTab(); return stop(e); }
-      if (ctrlShift(e) && e.code === "KeyW") { if (app.active) app.closeTab(app.active); return stop(e); }
+      if (ctrlShift(e) && e.code === "KeyP") { profilePicker(app); return stop(e); }
+      if (ctrlShift(e) && e.code === "KeyN") { newProject(app); return stop(e); }
+      if (ctrlShift(e) && e.code === "KeyW") { closeActive(app); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyB") { app.toggleRail(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyC") { void app.copy(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyV") { void app.paste(); return stop(e); }
-      const digit = (e.ctrlKey && !e.altKey && !e.metaKey) ? /^Digit([1-9])$/.exec(e.code) : null;
+      if (ctrlShift(e) && e.code === "KeyF") { app.find.open(); return stop(e); }
+      if (ctrlShift(e) && e.code === "KeyL") { void app.toggleLog(); return stop(e); }
+
+      // Panes: Alt+Shift splits and resizes, Alt alone moves focus (Windows Terminal's map).
+      if (altShift(e) && ["Equal", "NumpadAdd"].includes(e.code)) { void app.splitPane("row"); return stop(e); }
+      if (altShift(e) && ["Minus", "NumpadSubtract"].includes(e.code)) { void app.splitPane("col"); return stop(e); }
+      if (altShift(e) && e.code === "KeyD") { void app.splitPane("row"); return stop(e); }
+      if (altShift(e) && e.code in ARROWS) { app.resizePane(ARROWS[e.code as keyof typeof ARROWS]); return stop(e); }
+      if (altOnly(e) && e.code in ARROWS) { app.moveFocus(ARROWS[e.code as keyof typeof ARROWS]); return stop(e); }
+
+      const digit = e.ctrlKey && !e.altKey && !e.metaKey ? /^Digit([1-9])$/.exec(e.code) : null;
       if (digit) {
         const n = Number(digit[1]) - 1;
         if (e.shiftKey) {
@@ -47,11 +67,42 @@ export function installKeys(app: App) {
     { capture: true },
   );
 
-  // Right-click: copy the selection if there is one, otherwise paste (Windows Terminal behaviour).
+  document.addEventListener("click", () => closeMenu());
+  document.querySelector("#rail-toggle")!.addEventListener("click", () => app.toggleRail());
+  document.querySelector("#new-tab")!.addEventListener("click", () => void app.newTab());
+  document.querySelector("#new-tab")!.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    profilePicker(app, e as MouseEvent);
+  });
+  document.querySelector("#new-project")!.addEventListener("click", () => newProject(app));
+
+  // Right-click in a pane: copy the selection if there is one, otherwise paste (WT behaviour).
   document.querySelector("#panes")!.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    void app.copy().then((copied) => { if (!copied) void app.paste(); });
+    void app.copy().then((copied) => {
+      if (!copied) void app.paste();
+    });
   });
+}
+
+/** Ctrl+Shift+W closes the pane you are in, or the tab when it is the last one. */
+function closeActive(app: App) {
+  const tab = app.tab;
+  if (!tab) return;
+  app.closePane(tab.active, tab);
+}
+
+function profilePicker(app: App, e?: MouseEvent) {
+  const anchor = document.querySelector("#new-tab")!.getBoundingClientRect();
+  openMenu(
+    e?.clientX ?? anchor.left,
+    e?.clientY ?? anchor.top,
+    app.config.profiles.map((p, i) => ({
+      label: p.name,
+      hint: `Ctrl+Shift+${i + 1}`,
+      onPick: () => void app.newTab(p),
+    })),
+  );
 }
 
 function stop(e: KeyboardEvent) {

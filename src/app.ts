@@ -1,130 +1,169 @@
-// Tabs + the vertical rail. One pty per tab, one xterm per tab, all tabs stay mounted
-// (hidden via CSS) so scrollback and selection survive switching.
-import type { Config, Profile, Transport } from "./transport";
-import { createTerm, applyTermConfig, type Term } from "./term";
-import { ownsKey } from "./keys";
+// Tabs, panes and projects. A tab owns a pane tree; a project groups tabs, gives them a colour
+// and can save/restore its own set of tabs.
+import type { Config, Profile, Project, Transport } from "./transport";
+import { Pane, type PaneHost } from "./pane";
+import * as L from "./layout";
+import { applyTermConfig } from "./term";
+import { renderRail } from "./rail";
+import { toast } from "./ui";
+import { COLORS } from "./menu";
+import type { Find } from "./find";
 
-interface Tab {
-  id: number;
-  profile: Profile;
-  title: string;
+export interface Tab {
+  root: L.Node;
+  active: Pane;
   el: HTMLElement;
-  term: Term;
-  li: HTMLLIElement;
-  exited: boolean;
+  projectId: string | null;
+  color: string | null;
+}
+
+export interface SavedTab {
+  project: string | null;
+  color: string | null;
+  root: L.SavedNode;
 }
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+const DEFAULT_ACCENT = "#ff8a1e";
 
-export class App {
+export class App implements PaneHost {
   tabs: Tab[] = [];
-  active: Tab | null = null;
-  private panes = $("#panes");
-  private list = $("#tabs");
-  private rail = $("#rail");
+  tab: Tab | null = null;
+  find!: Find; // set by main.ts once the DOM handlers are installed
+  private panesEl = $("#panes");
+  private saveTimer = 0;
 
   constructor(
-    private tp: Transport,
+    public tp: Transport,
     public config: Config,
   ) {
-    this.rail.classList.toggle("collapsed", config.rail_collapsed);
-    new ResizeObserver(() => this.fitActive()).observe(this.panes);
-    $("#rail-toggle").onclick = () => this.toggleRail();
-    $("#new-tab").onclick = () => void this.newTab();
-    $("#new-tab").oncontextmenu = (e) => {
-      e.preventDefault();
-      this.showProfileMenu(e.clientX, e.clientY);
-    };
-    document.addEventListener("click", () => ($("#profile-menu").hidden = true));
+    $("#rail").classList.toggle("collapsed", config.rail_collapsed);
   }
 
-  // ---- tabs ---------------------------------------------------------------------------------
+  // ---- profiles & projects --------------------------------------------------------------
 
-  profileById(id: string): Profile {
+  profileById(id: string | null | undefined): Profile {
     const p = this.config.profiles.find((p) => p.id === id) ?? this.config.profiles[0];
     if (!p) throw new Error("config has no profiles");
     return p;
   }
 
-  async newTab(profile: Profile = this.profileById(this.config.default_profile)) {
-    const el = document.createElement("div");
-    el.className = "pane";
-    this.panes.appendChild(el);
-    const term = createTerm(el, this.config);
-    const li = document.createElement("li");
-    const tab: Tab = { id: -1, profile, title: profile.name, el, term, li, exited: false };
-    this.tabs.push(tab);
-    this.activate(tab); // fit before spawn so the pty gets the real size
-    term.term.attachCustomKeyEventHandler((e) => !ownsKey(e)); // our shortcuts never reach the shell
-    term.term.onTitleChange((t) => {
-      tab.title = t || profile.name;
-      this.renderRail();
-    });
-    term.term.onData((d) => {
-      if (tab.exited) return void this.closeTab(tab);
-      void this.tp.write(tab.id, d).catch((e) => toast(String(e)));
-    });
-    term.term.onResize(({ cols, rows }) => {
-      if (tab.id > 0 && !tab.exited) void this.tp.resize(tab.id, cols, rows).catch(() => {});
-    });
-    try {
-      tab.id = await this.tp.spawn(
-        profile,
-        term.term.cols,
-        term.term.rows,
-        (bytes) => term.term.write(bytes),
-        (code) => this.onExit(tab, code),
-      );
-    } catch (e) {
-      this.removeTab(tab);
-      toast(`Could not start ${profile.name}: ${e}`);
-      return;
-    }
-    this.renderRail();
-    term.term.focus();
+  project(id: string | null): Project | null {
+    return this.config.projects.find((p) => p.id === id) ?? null;
   }
 
-  private onExit(tab: Tab, code: number | null) {
-    tab.exited = true;
-    if (code === 0 || code === null) return this.closeTab(tab);
-    tab.term.term.write(`\r\n\x1b[38;2;255;107;115m[${tab.profile.exe} exited with code ${code}]\x1b[0m press any key to close\r\n`);
-    this.renderRail();
+  /** The colour a tab paints with: its own override, else its project's, else the house orange. */
+  accent(tab: Tab | null = this.tab): string {
+    return tab?.color ?? this.project(tab?.projectId ?? null)?.color ?? DEFAULT_ACCENT;
+  }
+
+  addProject(name: string): Project {
+    const used = new Set(this.config.projects.map((p) => p.color));
+    const color = COLORS.find((c) => !used.has(c.value))?.value ?? COLORS[0]!.value;
+    const project: Project = {
+      id: `p${Date.now().toString(36)}`,
+      name,
+      color,
+      cwd: null,
+      default_profile: null,
+      layout: null,
+    };
+    this.config.projects.push(project);
+    this.persist();
+    return project;
+  }
+
+  deleteProject(project: Project) {
+    const index = this.config.projects.indexOf(project);
+    if (index < 0) return;
+    const orphans = this.tabs.filter((t) => t.projectId === project.id);
+    this.config.projects.splice(index, 1);
+    for (const t of orphans) t.projectId = null;
+    this.persist();
+    toast(`Deleted “${project.name}”`, {
+      label: "Undo",
+      run: () => {
+        this.config.projects.splice(index, 0, project);
+        for (const t of orphans) t.projectId = project.id;
+        this.persist();
+      },
+    });
+  }
+
+  /** Stores the project's current tabs so it can be reopened as a workspace. */
+  saveProjectLayout(project: Project) {
+    const tabs = this.tabs.filter((t) => t.projectId === project.id).map((t) => this.snapshot(t));
+    if (!tabs.length) return toast(`“${project.name}” has no open tabs to save`);
+    project.layout = tabs;
+    this.persist();
+    toast(`Saved ${tabs.length} tab${tabs.length > 1 ? "s" : ""} as “${project.name}”`);
+  }
+
+  async openProjectLayout(project: Project) {
+    const tabs = (project.layout ?? []) as SavedTab[];
+    if (!tabs.length) return toast(`“${project.name}” has no saved layout`);
+    for (const saved of tabs) await this.restoreTab({ ...saved, project: project.id });
+  }
+
+  // ---- tabs -----------------------------------------------------------------------------
+
+  async newTab(profile?: Profile, projectId: string | null = this.tab?.projectId ?? null, cwd: string | null = null) {
+    const project = this.project(projectId);
+    const p = profile ?? this.profileById(project?.default_profile ?? this.config.default_profile);
+    const pane = new Pane(this, p, cwd ?? project?.cwd ?? null);
+    const el = document.createElement("div");
+    el.className = "tab-panes";
+    this.panesEl.appendChild(el);
+    const tab: Tab = { root: L.leaf(pane), active: pane, el, projectId, color: null };
+    this.tabs.push(tab);
+    this.activate(tab);
+    await this.startPane(tab, pane);
+    return tab;
+  }
+
+  private async startPane(tab: Tab, pane: Pane) {
+    try {
+      await pane.start();
+    } catch (e) {
+      toast(`Could not start ${pane.profile.name}: ${e}`);
+      this.closePane(pane, tab);
+      return;
+    }
+    this.paint();
   }
 
   closeTab(tab: Tab) {
-    if (!tab.exited && tab.id > 0) void this.tp.kill(tab.id).catch(() => {});
-    this.removeTab(tab);
-    if (this.tabs.length === 0) {
+    for (const p of L.panes(tab.root)) {
+      p.kill();
+      p.dispose();
+    }
+    const i = this.tabs.indexOf(tab);
+    if (i < 0) return;
+    this.tabs.splice(i, 1);
+    tab.el.remove();
+    if (this.tab === tab) {
+      this.tab = null;
+      const next = this.tabs[Math.min(i, this.tabs.length - 1)];
+      if (next) this.activate(next);
+    }
+    this.paint();
+    if (!this.tabs.length) {
       if (this.tp.native) void import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().close());
       else void this.newTab();
     }
   }
 
-  private removeTab(tab: Tab) {
-    const i = this.tabs.indexOf(tab);
-    if (i < 0) return;
-    this.tabs.splice(i, 1);
-    tab.term.dispose();
-    tab.el.remove();
-    if (this.active === tab) {
-      this.active = null;
-      const next = this.tabs[Math.min(i, this.tabs.length - 1)];
-      if (next) this.activate(next);
-    }
-    this.renderRail();
-  }
-
   activate(tab: Tab) {
-    this.active = tab;
+    this.tab = tab;
     for (const t of this.tabs) t.el.classList.toggle("active", t === tab);
-    this.renderRail();
-    this.fitActive();
-    tab.term.term.focus();
+    this.layout(tab);
+    tab.active.focus();
+    this.paint();
   }
 
   cycle(delta: number) {
-    if (!this.active || this.tabs.length < 2) return;
-    const i = this.tabs.indexOf(this.active);
+    if (!this.tab || this.tabs.length < 2) return;
+    const i = this.tabs.indexOf(this.tab);
     this.activate(this.tabs[(i + delta + this.tabs.length) % this.tabs.length]!);
   }
 
@@ -133,79 +172,218 @@ export class App {
     if (t) this.activate(t);
   }
 
-  private fitActive() {
-    if (!this.active) return;
-    this.active.term.fit();
+  moveTabToProject(tab: Tab, projectId: string | null) {
+    tab.projectId = projectId;
+    this.paint();
+    this.persist();
   }
 
-  // ---- rail ---------------------------------------------------------------------------------
-
-  renderRail() {
-    this.list.replaceChildren();
-    this.tabs.forEach((tab, i) => {
-      const li = tab.li;
-      li.className = "tab" + (tab === this.active ? " active" : "") + (tab.exited ? " exited" : "");
-      li.title = `${tab.title}\n${tab.profile.name}`;
-      li.innerHTML =
-        `<span class="num">${i + 1}</span>` +
-        `<span class="label"><span class="title"></span><span class="sub"></span></span>` +
-        `<button class="close" title="Close (Ctrl+Shift+W)">×</button>`;
-      li.querySelector(".title")!.textContent = tab.title;
-      li.querySelector(".sub")!.textContent = tab.title === tab.profile.name ? "" : tab.profile.name;
-      li.onclick = () => this.activate(tab);
-      li.onauxclick = (e) => e.button === 1 && this.closeTab(tab);
-      (li.querySelector(".close") as HTMLButtonElement).onclick = (e) => {
-        e.stopPropagation();
-        this.closeTab(tab);
-      };
-      this.list.appendChild(li);
-    });
+  setTabColor(tab: Tab, color: string | null) {
+    tab.color = color;
+    this.paint();
+    this.persist();
   }
 
-  toggleRail() {
-    this.config.rail_collapsed = this.rail.classList.toggle("collapsed");
-    void this.saveConfig();
+  title(tab: Tab): string {
+    return tab.active.title || tab.active.profile.name;
   }
 
-  showProfileMenu(x: number, y: number) {
-    const menu = $("#profile-menu");
-    menu.replaceChildren(
-      ...this.config.profiles.map((p, i) => {
-        const b = document.createElement("button");
-        b.innerHTML = `<span class="k">Ctrl+Shift+${i + 1}</span>`;
-        b.prepend(document.createTextNode(p.name));
-        b.onclick = () => void this.newTab(p);
-        return b;
-      }),
+  // ---- panes ----------------------------------------------------------------------------
+
+  async splitPane(dir: "row" | "col", profile?: Profile) {
+    const tab = this.tab;
+    if (!tab) return;
+    const from = tab.active;
+    // A split inherits where you already are, so `cd` carries over when the shell reports it.
+    const pane = new Pane(this, profile ?? from.profile, from.cwd);
+    tab.root = L.split(tab.root, from, pane, dir);
+    tab.active = pane;
+    this.layout(tab);
+    await this.startPane(tab, pane);
+    pane.focus();
+  }
+
+  closePane(pane: Pane, tab = this.tabOf(pane)) {
+    if (!tab) return;
+    const next = L.remove(tab.root, pane);
+    pane.kill();
+    pane.dispose();
+    if (!next) return this.closeTab(tab);
+    tab.root = next;
+    if (tab.active === pane) tab.active = L.panes(next)[0]!;
+    this.layout(tab);
+    tab.active.focus();
+    this.paint();
+    this.persist();
+  }
+
+  focusPane(pane: Pane) {
+    const tab = this.tabOf(pane);
+    if (!tab) return;
+    tab.active = pane;
+    this.paintFocus(tab);
+    this.paint();
+  }
+
+  moveFocus(dir: "left" | "right" | "up" | "down") {
+    const tab = this.tab;
+    if (!tab) return;
+    const next = L.neighbour(tab.root, tab.active, dir);
+    if (!next) return;
+    tab.active = next;
+    next.focus();
+    this.paintFocus(tab);
+    this.paint();
+  }
+
+  resizePane(dir: "left" | "right" | "up" | "down") {
+    const tab = this.tab;
+    if (!tab) return;
+    const axis = dir === "left" || dir === "right" ? "row" : "col";
+    const delta = dir === "left" || dir === "up" ? -0.03 : 0.03;
+    if (L.nudge(tab.root, tab.active, axis, delta)) {
+      this.layout(tab);
+      this.persist();
+    }
+  }
+
+  async toggleLog() {
+    const pane = this.tab?.active;
+    if (!pane) return;
+    try {
+      const path = await pane.toggleLog();
+      toast(path ? `Capturing to ${path}` : "Capture stopped");
+      this.paint();
+    } catch (e) {
+      toast(`Capture failed: ${e}`);
+    }
+  }
+
+  private tabOf(pane: Pane): Tab | null {
+    return this.tabs.find((t) => L.findLeaf(t.root, pane)) ?? null;
+  }
+
+  private layout(tab: Tab) {
+    L.render(tab.root, tab.el, () => this.persist());
+    this.paintFocus(tab);
+    for (const p of L.panes(tab.root)) p.term.fit();
+  }
+
+  private paintFocus(tab: Tab) {
+    const many = L.panes(tab.root).length > 1;
+    for (const p of L.panes(tab.root)) {
+      p.el.classList.toggle("focused", many && p === tab.active);
+      p.el.style.setProperty("--pane-accent", this.accent(tab));
+    }
+  }
+
+  // ---- PaneHost -------------------------------------------------------------------------
+
+  onPaneTitle() {
+    this.paint();
+    this.persist();
+  }
+
+  onPaneExit(pane: Pane, code: number | null) {
+    const tab = this.tabOf(pane);
+    if (!tab) return;
+    if (code === 0 || code === null || pane.exitAcknowledged) return this.closePane(pane, tab);
+    // Non-zero: leave the output on screen, close on the next keypress.
+    pane.exitAcknowledged = true;
+    pane.term.term.write(
+      `\r\n\x1b[38;2;255;107;115m[${pane.profile.exe} exited with code ${code}]\x1b[0m press any key to close\r\n`,
     );
-    menu.style.left = `${x}px`;
-    menu.style.top = `${y}px`;
-    menu.hidden = false;
+    this.paint();
   }
 
-  // ---- config -------------------------------------------------------------------------------
+  onPaneFocus(pane: Pane) {
+    this.focusPane(pane);
+  }
+
+  // ---- config & session -------------------------------------------------------------------
 
   applyConfig() {
     document.documentElement.style.setProperty("--term-bg", this.config.theme.background ?? "#0a0e14");
     document.documentElement.style.setProperty("--mono", this.config.font_family);
-    for (const t of this.tabs) applyTermConfig(t.term.term, this.config);
-    this.fitActive();
-  }
-
-  async saveConfig() {
-    await this.tp.saveConfig(this.config).catch((e) => toast(`Config not saved: ${e}`));
+    for (const t of this.tabs) {
+      for (const p of L.panes(t.root)) applyTermConfig(p.term.term, this.config);
+      this.layout(t);
+    }
   }
 
   zoom(delta: number) {
     this.config.font_size = delta === 0 ? 14 : Math.min(40, Math.max(8, this.config.font_size + delta));
     this.applyConfig();
-    void this.saveConfig();
+    this.persist();
   }
 
-  // ---- clipboard ----------------------------------------------------------------------------
+  toggleRail() {
+    this.config.rail_collapsed = $("#rail").classList.toggle("collapsed");
+    this.persist();
+    for (const t of this.tabs) for (const p of L.panes(t.root)) p.term.fit();
+  }
+
+  /** Repaint the rail. Cheap: the rail is the only derived view. */
+  paint() {
+    renderRail(this);
+    document.documentElement.style.setProperty("--accent", this.accent());
+  }
+
+  snapshot(tab: Tab): SavedTab {
+    return { project: tab.projectId, color: tab.color, root: L.serialize(tab.root) };
+  }
+
+  /** Debounced: a crash should still leave a usable session behind. */
+  persist() {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => {
+      this.config.session = this.tabs.map((t) => this.snapshot(t));
+      void this.tp.saveConfig(this.config).catch((e) => toast(`Config not saved: ${e}`));
+    }, 400);
+  }
+
+  async restoreSession(): Promise<boolean> {
+    const saved = (this.config.restore_session ? (this.config.session as SavedTab[] | null) : null) ?? [];
+    let restored = 0;
+    for (const tab of saved) {
+      if (await this.restoreTab(tab)) restored++;
+    }
+    return restored > 0;
+  }
+
+  private async restoreTab(saved: SavedTab): Promise<boolean> {
+    const build = (n: L.SavedNode): L.Node | null => {
+      if (n.kind === "leaf") {
+        return L.leaf(new Pane(this, this.profileById(n.profile), n.cwd ?? null));
+      }
+      const a = n.a && build(n.a);
+      const b = n.b && build(n.b);
+      if (!a || !b) return a ?? b ?? null;
+      return { kind: "split", dir: n.dir ?? "row", ratio: n.ratio ?? 0.5, a, b };
+    };
+    const root = build(saved.root);
+    if (!root) return false;
+    const el = document.createElement("div");
+    el.className = "tab-panes";
+    this.panesEl.appendChild(el);
+    const list = L.panes(root);
+    const tab: Tab = {
+      root,
+      active: list[0]!,
+      el,
+      projectId: this.project(saved.project) ? saved.project : null,
+      color: saved.color,
+    };
+    this.tabs.push(tab);
+    this.activate(tab);
+    for (const p of list) await this.startPane(tab, p);
+    return true;
+  }
+
+  // ---- clipboard --------------------------------------------------------------------------
 
   async copy(): Promise<boolean> {
-    const t = this.active?.term.term;
+    const t = this.tab?.active.term.term;
     if (!t?.hasSelection()) return false;
     await this.tp.writeClipboard(t.getSelection());
     t.clearSelection();
@@ -213,18 +391,9 @@ export class App {
   }
 
   async paste() {
-    const t = this.active?.term.term;
+    const t = this.tab?.active.term.term;
     if (!t) return;
     const text = await this.tp.readClipboard().catch(() => "");
     if (text) t.paste(text);
   }
-}
-
-let toastTimer = 0;
-export function toast(msg: string) {
-  const el = $("#toast");
-  el.textContent = msg;
-  el.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => (el.hidden = true), 6000);
 }

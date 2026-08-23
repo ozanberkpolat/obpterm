@@ -15,9 +15,17 @@ Download `winterm_<version>_x64-setup.exe` (per-user, no admin) or `winterm_<ver
 
 | Keys | Action |
 | --- | --- |
-| `Ctrl+Shift+T` | New tab (default profile). Right-click `+` to pick a profile |
+| `Ctrl+Shift+T` | New tab (in the current project). Right-click `+ Tab` to pick a profile |
+| `Ctrl+Shift+P` | Profile picker |
+| `Ctrl+Shift+N` | New project |
 | `Ctrl+Shift+1..9` | New tab with profile N |
-| `Ctrl+Shift+W` / middle-click | Close tab |
+| `Ctrl+Shift+W` | Close the focused pane (the tab when it is the last one) |
+| middle-click a tab | Close tab |
+| `Alt+Shift+=` / `Alt+Shift+-` | Split right / split down (`Alt+Shift+D` also splits right) |
+| `Alt+←↑→↓` | Move focus between panes |
+| `Alt+Shift+←↑→↓` | Resize the pane |
+| `Ctrl+Shift+F` | Find in scrollback (Enter / Shift+Enter, Esc closes) |
+| `Ctrl+Shift+L` | Start / stop capturing this pane to a log file |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
 | `Ctrl+1..9` | Jump to tab N |
 | `Ctrl+Shift+B` | Collapse / expand the rail |
@@ -26,6 +34,37 @@ Download `winterm_<version>_x64-setup.exe` (per-user, no admin) or `winterm_<ver
 
 Everything else, including `F5`, `Ctrl+R`, `Ctrl+F`, `Ctrl+W`, goes to the shell: WebView2's
 browser accelerator keys are switched off at startup (`src-tauri/src/lib.rs`).
+
+## Projects
+
+A project groups tabs, gives them a colour and remembers a layout. `+ Project` in the rail
+creates one; right-click a tab to move it in ("Move to project…") or to override just that tab's
+colour. Right-click a project header for **Save layout** (stores its open tabs, panes and
+directories) and **Open saved layout** (reopens them). A project can also carry a working
+directory and a default profile — set those in `config.json`.
+
+Colour precedence: a tab's own colour, else its project's, else the house orange.
+
+## Panes, layouts and capture
+
+Panes split with `Alt+Shift+=` / `Alt+Shift+-`, resize by dragging the divider (or
+`Alt+Shift+arrow`) and close with `Ctrl+Shift+W`. Every tab and its pane tree is written back to
+`config.json` as you work and reopened on the next launch (`restore_session: false` turns that
+off).
+
+A restored pane starts in the directory the shell last reported. PowerShell only reports it if
+you ask it to, so add this to your `$PROFILE`:
+
+```powershell
+function prompt {
+  $p = (Get-Location).Path
+  "$([char]27)]9;9;`"$p`"$([char]7)PS $p> "
+}
+```
+
+`Ctrl+Shift+L` tees the focused pane's raw output (escape codes and all) to
+`%APPDATA%\tr.com.obp.winterm\logs\<title>-<timestamp>.log`; the tab shows a red dot while it
+is capturing.
 
 ## Config
 
@@ -41,6 +80,17 @@ The UI is plain TypeScript + Vite and iterates in any browser:
 npm install
 npm run devserver   # real shells (node-pty) on ws://:1421, config in dev-config.json
 npm run dev         # Vite on :1420 (listens on all interfaces)
+```
+
+`npm test` runs the pane-tree tests. `test/smoke.mjs` is the real check: it drives the built app
+in headless Chromium over CDP (splits panes, makes a project, searches, starts a capture) and
+fails on any console error —
+
+```sh
+docker run -d --rm --name winterm-chrome --network host -u 0 --entrypoint chromium \
+  gotenberg/gotenberg:8 --headless --no-sandbox --remote-debugging-port=9222 --remote-allow-origins=* about:blank
+npm run devserver & npx vite preview --port 1420 --host &
+node test/smoke.mjs
 ```
 
 `src/transport.ts` is the only seam: the browser talks to `dev-server.mjs` over a WebSocket,
@@ -60,5 +110,6 @@ pushing a `v*` tag also publishes the MSI and exe as a GitHub release.
 - `src-tauri/src/pty.rs` — one ConPTY per tab, output streamed as raw bytes over a Tauri channel
 - `src-tauri/src/config.rs` — config file, defaults, the Sentinel palette
 - `src-tauri/src/lib.rs` — plugins, commands, the WebView2 accelerator-key switch
-- `src/app.ts` — tabs + rail, `src/keys.ts` — shortcuts, `src/term.ts` — xterm setup
+- `src/app.ts` — tabs, panes and projects; `src/layout.ts` — the pane tree; `src/rail.ts` — the rail
+- `src/keys.ts` — shortcuts, `src/find.ts` — find bar, `src/menu.ts` — popups, `src/term.ts` — xterm setup
 - `dev-server.mjs` — browser dev loop

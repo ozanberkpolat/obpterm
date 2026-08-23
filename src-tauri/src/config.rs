@@ -19,6 +19,23 @@ pub struct Profile {
     pub cwd: Option<String>,
 }
 
+/// A named group of tabs with a colour, a home directory and its own saved layout.
+/// Only the frontend gives these meaning; they live here so config.json is hand-editable.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    /// Any CSS colour; replaces the orange accent for this project's tabs.
+    pub color: String,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub default_profile: Option<String>,
+    /// Tabs saved with "Save project layout" - shape owned by the frontend.
+    #[serde(default)]
+    pub layout: Option<serde_json::Value>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
 pub struct Config {
@@ -28,6 +45,11 @@ pub struct Config {
     pub font_size: u16,
     pub scrollback: u32,
     pub rail_collapsed: bool,
+    pub projects: Vec<Project>,
+    /// Reopen the tabs that were open at quit.
+    pub restore_session: bool,
+    /// The tabs open at last quit; shape owned by the frontend (see src/layout.ts).
+    pub session: Option<serde_json::Value>,
     /// Passed straight through as xterm.js `ITheme` (background, foreground, cursor, black … brightWhite).
     pub theme: BTreeMap<String, String>,
 }
@@ -41,6 +63,9 @@ impl Default for Config {
             font_size: 14,
             scrollback: 10_000,
             rail_collapsed: false,
+            projects: Vec::new(),
+            restore_session: true,
+            session: None,
             theme: sentinel_theme(),
         }
     }
@@ -127,6 +152,14 @@ pub fn config_save(app: AppHandle, config: Config) -> Result<(), String> {
     write(&config_path(&app)?, &config)
 }
 
+/// Where `pty_log_start` puts capture files, unless the caller passes its own directory.
+#[tauri::command]
+pub fn log_dir(app: AppHandle) -> Result<String, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?.join("logs");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    Ok(dir.display().to_string())
+}
+
 #[tauri::command]
 pub fn config_path_string(app: AppHandle) -> Result<String, String> {
     Ok(config_path(&app)?.display().to_string())
@@ -151,5 +184,22 @@ mod tests {
         assert_eq!(partial.font_size, 11);
         assert_eq!(partial.profiles, cfg.profiles);
         assert!(cfg.profiles.iter().any(|p| p.id == cfg.default_profile));
+    }
+
+    #[test]
+    fn projects_and_opaque_session_survive_a_round_trip() {
+        let mut cfg = Config::default();
+        cfg.projects.push(Project {
+            id: "d724".into(),
+            name: "D724".into(),
+            color: "#4c8dff".into(),
+            cwd: Some("C:\\work".into()),
+            default_profile: Some("pwsh".into()),
+            layout: Some(serde_json::json!([{"kind": "leaf", "profile": "pwsh"}])),
+        });
+        // The frontend owns the session shape: whatever it wrote must come back byte-identical.
+        cfg.session = Some(serde_json::json!([{"root": {"kind": "split", "dir": "row", "ratio": 0.5}}]));
+        let back: Config = serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(back, cfg);
     }
 }

@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "devserver": "node dev-server.mjs",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "npx esbuild src/layout.ts --format=esm --outdir=dist-test --log-level=warning && node --test test/*.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
