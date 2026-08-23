@@ -1,0 +1,142 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.45 "Plus Jakarta Sans", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .card { border: 1px solid rgba(140,160,190,.12); border-radius: 14px;
+      background: linear-gradient(180deg, #141a24, #171e29); overflow: hidden;
+      display: flex; flex-direction: column; }
+    .chead { display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+      border-bottom: 1px solid rgba(140,160,190,.12); }
+    .cname { font-weight: 700; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cst { font: 600 9.5px "Plus Jakarta Sans"; text-transform: uppercase; letter-spacing: .06em;
+      padding: 2px 8px; border-radius: 999px; flex: none; }
+    .tail { flex: 1; padding: 10px 12px; font: 10.5px/1.6 "JetBrains Mono", monospace;
+      color: #8b97a8; white-space: pre; overflow: hidden; background: #0a0e14; }
+    .cfoot { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+      border-top: 1px solid rgba(140,160,190,.12); font-size: 11px; color: #76879c; }
+    .ctx { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+    .ctx i { display: block; width: 34px; height: 4px; border-radius: 999px; background: rgba(140,160,190,.22); position: relative; overflow: hidden; }
+    .ctx i::after { content: ""; position: absolute; inset: 0; border-radius: 999px; background: #4c8dff; }
+    .btn { padding: 5px 13px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 860px; background: #0a0e14; display: flex; flex-direction: column">
+
+  <div style="flex: none; display: flex; align-items: baseline; gap: 14px; padding: 20px 26px 12px">
+    <span style="font-size: 17px; font-weight: 800">Agents</span>
+    <span style="font: 600 11px 'JetBrains Mono', monospace; color: #ff8a1e">2 need you</span>
+    <span style="font: 600 11px 'JetBrains Mono', monospace; color: #76879c">4 working · 2 done · 1 sleeping</span>
+    <span style="flex: 1"></span>
+    <span style="font-size: 11.5px; color: #76879c">Ctrl+G · a live card per Claude session · click = jump to its tab</span>
+  </div>
+
+  <div style="flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding: 4px 26px 22px; min-height: 0">
+
+    <!-- needs you: permission -->
+    <div class="card" style="border-color: rgba(255,138,30,.55); box-shadow: 0 0 0 1px rgba(255,138,30,.25), 0 12px 32px rgba(0,0,0,.35)">
+      <div class="chead">
+        <span style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 9px solid #ff8a1e"></span>
+        <span class="cname">obpterm · session host</span>
+        <span class="cst" style="background: rgba(255,138,30,.16); color: #ff8a1e">needs you</span>
+      </div>
+      <div class="tail">
+<span style="color: #b48cff">⏺</span> I need to run the release script,
+  which pushes the tag to origin.
+
+<span style="color: #eaf0f7">Permission:</span> <span style="color: #ffb454">Running git push
+  --tags origin master</span></div>
+      <div class="cfoot" style="gap: 8px">
+        <span class="btn" style="background: linear-gradient(135deg, #ffa23e, #ff8410); color: #1a1205">Allow</span>
+        <span class="btn" style="border: 1px solid rgba(255,107,115,.4); color: #ff6b73">Deny</span>
+        <span style="margin-left: auto; font: 500 10px 'JetBrains Mono', monospace">waiting 12s</span>
+      </div>
+    </div>
+
+    <!-- needs you: question -->
+    <div class="card" style="border-color: rgba(255,138,30,.55)">
+      <div class="chead">
+        <span style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 9px solid #ff8a1e"></span>
+        <span class="cname">invest · fund pricing fix</span>
+        <span class="cst" style="background: rgba(255,138,30,.16); color: #ff8a1e">question</span>
+      </div>
+      <div class="tail">
+<span style="color: #b48cff">⏺</span> Two ways to handle the stale TEFAS
+  price. Which do you prefer?</div>
+      <div class="cfoot" style="flex-wrap: wrap; gap: 6px">
+        <span class="btn" style="border: 1px solid rgba(140,160,190,.3); color: #eaf0f7">Carry last price</span>
+        <span class="btn" style="border: 1px solid rgba(140,160,190,.3); color: #eaf0f7">Mark it stale</span>
+      </div>
+    </div>
+
+    <!-- working -->
+    <div class="card">
+      <div class="chead">
+        <span style="width: 7px; height: 7px; border-radius: 999px; background: #2fd6a3"></span>
+        <span class="cname">iot-stack · monitoring revamp</span>
+        <span class="cst" style="background: rgba(47,214,163,.14); color: #2fd6a3">working</span>
+      </div>
+      <div class="tail">
+<span style="color: #22d3ee">→</span> Editing Main.dc.html
+<span style="color: #22d3ee">→</span> Running npx tsc --noEmit
+<span style="color: #5b6878">turn 14 · 3m 40s</span></div>
+      <div class="cfoot">Editing Main.dc.html<span class="ctx"><span>ctx</span><i style="--w: 46%"></i><span>46%</span></span></div>
+    </div>
+
+    <!-- done unread -->
+    <div class="card">
+      <div class="chead">
+        <span style="width: 8px; height: 8px; border-radius: 999px; background: #eaf0f7"></span>
+        <span class="cname">brain · backlink dedupe</span>
+        <span class="cst" style="background: rgba(140,160,190,.16); color: #c9d3e0">done · unread</span>
+      </div>
+      <div class="tail">
+<span style="color: #b48cff">⏺</span> Finished: 148 notes relinked, 3
+  duplicates merged. Tests pass. The
+  one thing to eyeball is the Inbox
+  footer ordering.</div>
+      <div class="cfoot">finished 8m ago<span class="ctx"><span>ctx</span><i></i><span>71%</span></span></div>
+    </div>
+
+    <!-- working -->
+    <div class="card">
+      <div class="chead">
+        <span style="width: 7px; height: 7px; border-radius: 999px; background: #2fd6a3"></span>
+        <span class="cname">devboard · recipe editor</span>
+        <span class="cst" style="background: rgba(47,214,163,.14); color: #2fd6a3">working</span>
+      </div>
+      <div class="tail">
+<span style="color: #22d3ee">→</span> Running cargo test -p obpterm-host
+<span style="color: #5b6878">turn 6 · 55s</span></div>
+      <div class="cfoot">Running cargo test…<span class="ctx"><span>ctx</span><i></i><span>22%</span></span></div>
+    </div>
+
+    <!-- eco sleeping -->
+    <div class="card" style="opacity: .68">
+      <div class="chead">
+        <span style="width: 7px; height: 7px; border-radius: 999px; border: 1.5px solid #76879c"></span>
+        <span class="cname">keep · takeout importer</span>
+        <span class="cst" style="background: rgba(140,160,190,.1); color: #76879c">sleeping · 320 MB freed</span>
+      </div>
+      <div class="tail" style="color: #5b6878">
+[agent sleeping to save memory]
+click to resume the conversation</div>
+      <div class="cfoot">idle 1h 12m</div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

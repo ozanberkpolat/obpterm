@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.5 "Plus Jakarta Sans", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .key { font: 600 10.5px "JetBrains Mono", monospace; color: #8b97a8;
+      border: 1px solid rgba(140,160,190,.22); border-radius: 6px; padding: 2px 7px; background: #0a0e14; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 780px; background: rgba(4,7,12,.9); display: flex; align-items: center; justify-content: center; position: relative">
+
+  <div style="position: absolute; top: 18px; left: 0; right: 0; display: flex; justify-content: center; gap: 8px; align-items: center">
+    <span style="font: 700 10.5px 'Plus Jakarta Sans'; letter-spacing: .07em; text-transform: uppercase; color: #76879c">Triage</span>
+    <span style="font: 600 11px 'JetBrains Mono', monospace; color: #ff8a1e">1 of 3</span>
+    <span style="display: flex; gap: 4px; margin-left: 8px">
+      <span style="width: 18px; height: 4px; border-radius: 999px; background: #ff8a1e"></span>
+      <span style="width: 18px; height: 4px; border-radius: 999px; background: rgba(140,160,190,.25)"></span>
+      <span style="width: 18px; height: 4px; border-radius: 999px; background: rgba(140,160,190,.25)"></span>
+    </span>
+  </div>
+
+  <div style="width: 720px; border-radius: 20px; border: 1px solid rgba(255,138,30,.4); background: linear-gradient(180deg, #141a24, #171e29); box-shadow: 0 30px 80px rgba(0,0,0,.6); overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid rgba(140,160,190,.12)">
+      <span style="width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 11px solid #ff8a1e"></span>
+      <span style="font-weight: 800; font-size: 14px">obpterm · session host</span>
+      <span style="font: 500 11px 'JetBrains Mono', monospace; color: #76879c">waiting 12s · tab 3</span>
+    </div>
+
+    <div style="padding: 18px 20px; font: 12px/1.7 'JetBrains Mono', monospace; color: #c9d3e0; background: #0a0e14; white-space: pre-wrap">
+<span style="color: #b48cff">⏺</span> The release build is green. To publish I need to push
+  the tag, which triggers the release workflow.
+
+<span style="color: #eaf0f7; font-weight: 600">Wants to run:</span> <span style="color: #ffb454">git push --tags origin master</span></div>
+
+    <div style="display: flex; gap: 10px; padding: 16px 20px; align-items: center">
+      <span style="padding: 9px 22px; border-radius: 999px; background: linear-gradient(135deg, #ffa23e, #ff8410); color: #1a1205; font-weight: 800; font-size: 13px">Allow</span>
+      <span style="padding: 9px 22px; border-radius: 999px; border: 1px solid rgba(255,107,115,.4); color: #ff6b73; font-weight: 700; font-size: 13px">Deny</span>
+      <span style="padding: 9px 18px; border-radius: 999px; border: 1px solid rgba(140,160,190,.25); color: #8b97a8; font-weight: 600; font-size: 12.5px">Open the tab</span>
+      <span style="flex: 1"></span>
+      <span style="display: flex; gap: 10px; align-items: center; color: #5b6878; font-size: 11px">
+        <span><span class="key">A</span> allow</span>
+        <span><span class="key">D</span> deny</span>
+        <span><span class="key">↵</span> open</span>
+        <span><span class="key">Space</span> skip</span>
+      </span>
+    </div>
+  </div>
+
+  <div style="position: absolute; bottom: 22px; left: 0; right: 0; text-align: center; font-size: 11.5px; color: #5b6878">
+    Ctrl+J walks everything that needs you, loudest first — a permission, a question, then the unread finishes. Esc leaves at any point.
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

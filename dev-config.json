@@ -80,7 +80,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt680n99",
+      "id": "hmt690uax",
       "name": "New host",
       "host": "",
       "user": null,
@@ -798,6 +798,51 @@
     },
     {
       "id": "pmt680fyn",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt68uubg",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt68votj",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt68xrf1",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt68zv77",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt690pf8",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,

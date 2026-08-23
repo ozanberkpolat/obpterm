@@ -27,3 +27,21 @@ pub fn window_action(app: AppHandle, label: String, action: String) -> Result<()
     };
     result.map_err(|e| e.to_string())
 }
+
+/// The taskbar overlay badge: the webview draws the numbered dot (it has the canvas and the
+/// font); this only hands the pixels over. An empty `rgba` clears it. Windows-only — the
+/// overlay-icon concept does not exist elsewhere, and the dev loop runs in a browser anyway.
+#[tauri::command]
+pub fn taskbar_badge(app: AppHandle, rgba: Vec<u8>, size: u32) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let window = app.get_webview_window("main").ok_or("no main window")?;
+        let icon = (!rgba.is_empty()).then(|| tauri::image::Image::new_owned(rgba, size, size));
+        return window.set_overlay_icon(icon).map_err(|e| e.to_string());
+    }
+    #[allow(unreachable_code)]
+    {
+        let _ = (app, rgba, size);
+        Ok(())
+    }
+}

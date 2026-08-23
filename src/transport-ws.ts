@@ -107,6 +107,7 @@ export function wsTransport(): Transport {
       return true;
     },
     attention: async () => {},
+    badge: async () => {},
     configReset: async () => (await call("config_reset")).config as Config,
     reveal: async (what) => what,
     sessionLoad: async () => (await call("session_load")).session as Session,

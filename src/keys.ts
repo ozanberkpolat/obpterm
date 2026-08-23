@@ -17,7 +17,7 @@ export function ownsKey(e: KeyboardEvent): boolean {
   if (ctrlOnly(e) && e.code === "Tab") return true;
   if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV", "KeyF", "KeyL", "KeyP", "KeyN", "KeyH", "KeyQ", "Comma", "ArrowUp", "ArrowDown"].includes(e.code)) return true;
   if ((ctrlShift(e) || ctrlOnly(e)) && /^Digit[1-9]$/.test(e.code)) return true;
-  if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract", "KeyK"].includes(e.code)) return true;
+  if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract", "KeyK", "KeyG"].includes(e.code)) return true;
   if ((altOnly(e) || altShift(e)) && e.code in ARROWS) return true;
   if (altShift(e) && ["Equal", "Minus", "NumpadAdd", "NumpadSubtract", "KeyD"].includes(e.code)) return true;
   if (e.code === "F2") return true; // rename, not a key any shell here uses
@@ -44,6 +44,10 @@ export function installKeys(app: App) {
       if (e.code === "F5" && e.ctrlKey) return stop(e);
       if (e.code === "Escape") {
         closeMenu();
+        if (app.deck.isOpen) {
+          app.deck.close();
+          return stop(e);
+        }
         if (app.palette.isOpen) {
           app.palette.close();
           return stop(e);
@@ -74,6 +78,7 @@ export function installKeys(app: App) {
       }
       if (ctrlShift(e) && e.code === "Comma") { app.settings.open(); return stop(e); }
       if (ctrlOnly(e) && e.code === "KeyK") { app.palette.open(); return stop(e); }
+      if (ctrlOnly(e) && e.code === "KeyG") { app.deck.toggle(); return stop(e); }
 
       // Panes: Alt+Shift splits and resizes, Alt alone moves focus (Windows Terminal's map).
       if (altShift(e) && ["Equal", "NumpadAdd"].includes(e.code)) { void app.splitPane("row"); return stop(e); }

@@ -42,6 +42,7 @@ pub fn run() {
             config::reveal,
             chrome::window_action,
             chrome::attention,
+            chrome::taskbar_badge,
             config::session_load,
             config::session_save,
             claude::claude_account,
