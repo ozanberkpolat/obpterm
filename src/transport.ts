@@ -255,6 +255,8 @@ export interface Transport {
   notify(title: string, body: string): Promise<boolean>;
   /** Flash the window and its taskbar button until the app is focused. */
   attention(on: boolean): Promise<void>;
+  /** Taskbar overlay badge: how many agents wait on the user. 0 clears it. */
+  badge(count: number): Promise<void>;
   configReset(): Promise<Config>;
   reveal(what: "config" | "logs"): Promise<string>;
   sessionLoad(): Promise<Session>;

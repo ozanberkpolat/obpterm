@@ -33,6 +33,12 @@
           <span id="rail-waiting" hidden></span>
           <button id="rail-toggle" title="Toggle rail (Ctrl+Shift+B)">‹</button>
         </div>
+        <button id="rail-agents" hidden title="Agents (Ctrl+G)">
+          <span class="spark"></span>
+          <span class="alabel"><span class="atitle">Agents</span><span class="asub"></span></span>
+          <span class="awork"></span>
+          <span class="abadge" hidden></span>
+        </button>
         <div id="rail-body"></div>
         <div id="rail-new" hidden></div>
         <div id="rail-resize" title="Drag to resize the rail"></div>
@@ -86,6 +92,19 @@
             <nav class="sw-nav"></nav>
             <main class="sw-main"></main>
           </div>
+        </div>
+      </div>
+      <div id="deck" hidden>
+        <div class="dbox">
+          <header class="dhead">
+            <span class="dtitle">Agents</span>
+            <span class="dsummary"></span>
+            <span class="grow"></span>
+            <span class="dhint">Ctrl+G · click a card to jump</span>
+            <button class="dclose" title="Close (Esc)" aria-label="Close">×</button>
+          </header>
+          <div class="dgrid"></div>
+          <div class="dempty" hidden>No Claude sessions running. Open a tab with a claude profile and its state shows up here.</div>
         </div>
       </div>
       <div id="palette" hidden>
