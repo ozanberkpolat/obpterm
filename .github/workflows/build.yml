@@ -24,7 +24,7 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: .
 
       - run: npm ci
 
@@ -101,6 +101,6 @@ jobs:
         with:
           name: obpterm-windows-x64
           path: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*.exe
           if-no-files-found: error
