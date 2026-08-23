@@ -32,6 +32,9 @@ async function main() {
   installKeys(app);
   (window as unknown as { obpterm: App }).obpterm = app; // devtools handle
   installCrashGuard(app);
+  // Running decays to idle on its own, so the rail re-derives once a second. The rail patches
+  // rows in place, so this is a handful of attribute writes, not a rebuild.
+  window.setInterval(() => app.onPaneActivity(), 1000);
   const { restored, crashed, updatedTo } = await app.restoreSession();
   const tabs = `${restored} tab${restored > 1 ? "s" : ""}`;
   if (!restored) await app.newTab();

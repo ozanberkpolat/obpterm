@@ -1,23 +1,161 @@
 {
   "pages": [
-    { "id": "page-1", "name": "App & menus" },
-    { "id": "page-2", "name": "Settings" }
+    {
+      "id": "page-1",
+      "name": "App & menus"
+    },
+    {
+      "id": "page-2",
+      "name": "Settings"
+    },
+    {
+      "id": "page-3",
+      "name": "Tier 1 \u00b7 activity"
+    }
   ],
   "artboards": [
-    { "file": "Main.dc.html", "page": "page-1", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "App shell" },
-    { "file": "Menus.dc.html", "page": "page-1", "x": 1560, "y": 0, "w": 1280, "h": 860, "title": "Menu set" },
-    { "file": "Settings.dc.html", "page": "page-2", "x": 0, "y": 0, "w": 1180, "h": 880, "title": "Settings · Terminal" },
-    { "file": "SettingsAppearance.dc.html", "page": "page-2", "x": 1300, "y": 0, "w": 1180, "h": 880, "title": "Settings · Appearance" },
-    { "file": "SettingsLists.dc.html", "page": "page-2", "x": 2600, "y": 0, "w": 1180, "h": 880, "title": "Settings · Accounts" },
-    { "file": "SettingsSystem.dc.html", "page": "page-2", "x": 0, "y": 1020, "w": 1180, "h": 880, "title": "Settings · Startup & updates" },
-    { "file": "AltSettingsInTab.dc.html", "page": "page-2", "x": 1300, "y": 1020, "w": 720, "h": 470, "title": "Alternative · settings as a tab" }
+    {
+      "file": "Main.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "App shell"
+    },
+    {
+      "file": "Menus.dc.html",
+      "page": "page-1",
+      "x": 1560,
+      "y": 0,
+      "w": 1280,
+      "h": 860,
+      "title": "Menu set"
+    },
+    {
+      "file": "Settings.dc.html",
+      "page": "page-2",
+      "x": 0,
+      "y": 0,
+      "w": 1180,
+      "h": 880,
+      "title": "Settings \u00b7 Terminal"
+    },
+    {
+      "file": "SettingsAppearance.dc.html",
+      "page": "page-2",
+      "x": 1300,
+      "y": 0,
+      "w": 1180,
+      "h": 880,
+      "title": "Settings \u00b7 Appearance"
+    },
+    {
+      "file": "SettingsLists.dc.html",
+      "page": "page-2",
+      "x": 2600,
+      "y": 0,
+      "w": 1180,
+      "h": 880,
+      "title": "Settings \u00b7 Accounts"
+    },
+    {
+      "file": "SettingsSystem.dc.html",
+      "page": "page-2",
+      "x": 0,
+      "y": 1020,
+      "w": 1180,
+      "h": 880,
+      "title": "Settings \u00b7 Startup & updates"
+    },
+    {
+      "file": "AltSettingsInTab.dc.html",
+      "page": "page-2",
+      "x": 1300,
+      "y": 1020,
+      "w": 720,
+      "h": 470,
+      "title": "Alternative \u00b7 settings as a tab"
+    },
+    {
+      "file": "Activity.dc.html",
+      "page": "page-3",
+      "x": 0,
+      "y": 0,
+      "w": 1320,
+      "h": 900,
+      "title": "Rail activity states"
+    },
+    {
+      "file": "ActivityAlt.dc.html",
+      "page": "page-3",
+      "x": 1440,
+      "y": 0,
+      "w": 1320,
+      "h": 560,
+      "title": "Placement \u00b7 three options"
+    }
   ],
   "annotations": [
-    { "id": "note-shell", "page": "page-1", "x": 0, "y": -150, "w": 520, "text": "Overall look — every value lifted from src/style.css, so this is the app as it is, plus one new thing: a 38px header bar.\n\nToday every menu hangs off a right-click or a status chip. The header gives Shell / Panes / Project / View a fixed home, puts ⌘K search in reach, and gives Settings a permanent gear." },
-    { "id": "note-menus", "page": "page-1", "x": 1560, "y": -150, "w": 520, "text": "One popup shape for all of them: 14px radius, pill rows, shortcut right-aligned in mono, destructive row last and red.\n\nRule: a row is a verb, a shortcut or a colour. Anything needing a form ends in “…” and opens Settings on that section." },
-    { "id": "note-settings", "page": "page-2", "x": 0, "y": -190, "w": 620, "text": "The separated settings window you asked for: its own window, sidebar of sections, no more one-wide-row-per-field.\n\nEvery field config.json holds today is here — font, size, scrollback, default folder and profile, accent and the full 16-colour palette, rail width and collapse, reopen-tabs, update source and token, quota budgets, plus Profiles / Accounts / Hosts / Projects as list editors.\n\nRows marked NEW SETTING are ones the app does not store yet (cursor style, right-click, transparency, dim panes, check-on-launch) — they are the proposal, not a description.\n\nChanges write straight to config.json; no Apply button, and the file stays hand-editable." },
-    { "id": "note-lists", "page": "page-2", "x": 2600, "y": -150, "w": 520, "text": "The pattern for everything you can create: list on the left, one form on the right, Duplicate and Delete on every row, deletes undoable.\n\nProfiles, Accounts, SSH hosts and Projects all use this same screen — Accounts is shown because it has the most in it." },
-    { "id": "note-alt", "page": "page-2", "x": 1300, "y": 1550, "w": 720, "text": "Kept as a sketch, not built out: settings living in the rail as a pinned row instead of a separate window. Say if you would rather have this and I will take it to the same fidelity." }
+    {
+      "id": "note-shell",
+      "page": "page-1",
+      "x": 0,
+      "y": -150,
+      "w": 520,
+      "text": "Overall look \u2014 every value lifted from src/style.css, so this is the app as it is, plus one new thing: a 38px header bar.\n\nToday every menu hangs off a right-click or a status chip. The header gives Shell / Panes / Project / View a fixed home, puts \u2318K search in reach, and gives Settings a permanent gear."
+    },
+    {
+      "id": "note-menus",
+      "page": "page-1",
+      "x": 1560,
+      "y": -150,
+      "w": 520,
+      "text": "One popup shape for all of them: 14px radius, pill rows, shortcut right-aligned in mono, destructive row last and red.\n\nRule: a row is a verb, a shortcut or a colour. Anything needing a form ends in \u201c\u2026\u201d and opens Settings on that section."
+    },
+    {
+      "id": "note-settings",
+      "page": "page-2",
+      "x": 0,
+      "y": -190,
+      "w": 620,
+      "text": "The separated settings window you asked for: its own window, sidebar of sections, no more one-wide-row-per-field.\n\nEvery field config.json holds today is here \u2014 font, size, scrollback, default folder and profile, accent and the full 16-colour palette, rail width and collapse, reopen-tabs, update source and token, quota budgets, plus Profiles / Accounts / Hosts / Projects as list editors.\n\nRows marked NEW SETTING are ones the app does not store yet (cursor style, right-click, transparency, dim panes, check-on-launch) \u2014 they are the proposal, not a description.\n\nChanges write straight to config.json; no Apply button, and the file stays hand-editable."
+    },
+    {
+      "id": "note-lists",
+      "page": "page-2",
+      "x": 2600,
+      "y": -150,
+      "w": 520,
+      "text": "The pattern for everything you can create: list on the left, one form on the right, Duplicate and Delete on every row, deletes undoable.\n\nProfiles, Accounts, SSH hosts and Projects all use this same screen \u2014 Accounts is shown because it has the most in it."
+    },
+    {
+      "id": "note-alt",
+      "page": "page-2",
+      "x": 1300,
+      "y": 1550,
+      "w": 720,
+      "text": "Kept as a sketch, not built out: settings living in the rail as a pinned row instead of a separate window. Say if you would rather have this and I will take it to the same fidelity."
+    },
+    {
+      "id": "note-tier1",
+      "page": "page-3",
+      "x": 0,
+      "y": -210,
+      "w": 620,
+      "text": "Tier 1 from the audit: the rail lists names, it should list states.\n\nWith a dozen Claude Code sessions the binding question every half minute is \"which one is waiting for me?\" \u2014 and the only way to answer it today is to visit each tab. A collapsed project can hide a session that has been waiting for ten minutes.\n\nAll the plumbing exists: every byte already passes through one callback in pane.ts, and paint() already repaints the rail. What this needs is a 14px slot, four glyphs, and a rail that patches rows instead of rebuilding them."
+    },
+    {
+      "id": "note-tier1-alt",
+      "page": "page-3",
+      "x": 1440,
+      "y": -150,
+      "w": 620,
+      "text": "The placement decision, with the two rejected options kept so the reasoning survives.\n\nA wins because the left edge of a rail row already carries two other meanings (the project rule, the focus bar) and the row background already carries two more (active, project colour). The right end is the only unclaimed real estate, and it is where the pane badge and capture dot already sit."
+    }
   ],
-  "launch": { "view": "canvas", "page": "page-2" }
+  "launch": {
+    "view": "canvas",
+    "page": "page-3"
+  }
 }

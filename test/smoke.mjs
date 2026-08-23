@@ -230,6 +230,32 @@ await until("document.querySelectorAll('.pane').length === 1", "one pane");
 const wide = await evaluate("document.querySelector('.pane').getBoundingClientRect().width");
 assert.ok(wide > full * 0.9, `the surviving pane fills the tab (${wide} of ${full})`);
 
+// Activity states: output makes a tab run, silence decays it to idle, a bell marks it waiting
+// and is answered by focusing the tab.
+await evaluate("window.obpterm.tab.active.term.term.write('activity-probe\\r\\n')");
+await evaluate("(() => { window.obpterm.tab.active.lastOutput = Date.now(); window.obpterm.onPaneActivity(); })()");
+assert.equal(await evaluate("window.obpterm.activity(window.obpterm.tab)"), "running");
+await until("document.querySelector('.tab.active .st').dataset.state === 'running'", "the running dot");
+await evaluate("(() => { for (const t of window.obpterm.tabs) for (const p of window.obpterm.panesOf(t)) p.lastOutput = 0; window.obpterm.onPaneActivity(); })()");
+assert.equal(await evaluate("window.obpterm.activity(window.obpterm.tab)"), "idle", "it decays without output");
+
+const other = await evaluate("window.obpterm.tabs.length");
+assert.ok(other >= 1);
+await evaluate("(() => { const t = window.obpterm.tabs[0]; window.obpterm.panesOf(t)[0].bell = true; window.obpterm.onPaneActivity(); })()");
+assert.equal(await evaluate("window.obpterm.activity(window.obpterm.tabs[0])"), "bell", "a bell outranks idle");
+await until("document.querySelector('#rail-waiting').textContent === '1 waiting'", "the waiting count");
+await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+assert.equal(await evaluate("window.obpterm.activity(window.obpterm.tabs[0])"), "idle", "focusing answers the bell");
+await until("document.querySelector('#rail-waiting').hidden === true", "the count disappearing at zero");
+
+// The rail patches rows instead of rebuilding them: the same element must survive a repaint.
+await evaluate("(() => { window.__row = document.querySelector('.tab.active'); window.obpterm.onPaneActivity(); })()");
+assert.equal(
+  await evaluate("window.__row === document.querySelector('.tab.active')"),
+  true,
+  "a state repaint keeps the row element",
+);
+
 // A rail row lays out as a two-line pill: the parts had no CSS at all until v0.5.3.
 assert.equal(await evaluate("getComputedStyle(document.querySelector('.tab .label')).flexDirection"), "column");
 assert.equal(await evaluate("getComputedStyle(document.querySelector('.tab .title')).textOverflow"), "ellipsis");

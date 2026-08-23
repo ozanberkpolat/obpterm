@@ -1,7 +1,7 @@
 // Tabs, panes and projects. A tab owns a pane tree; a project groups tabs, gives them a colour
 // and can save/restore its own set of tabs.
 import { withDefaults, type Account, type Config, type Host, type Profile, type Project, type Transport } from "./transport";
-import { Pane, type PaneHost } from "./pane";
+import { ACTIVE_MS, Pane, type PaneHost } from "./pane";
 import * as L from "./layout";
 import { applyTermConfig } from "./term";
 import { renderRail } from "./rail";
@@ -11,7 +11,13 @@ import type { Find } from "./find";
 import type { Status } from "./status";
 import type { Preset } from "./toolbar";
 
+/** Loudest first: this order is what a tab with several panes reports. */
+export type Activity = "bell" | "exited" | "running" | "idle";
+const LOUDNESS: Activity[] = ["bell", "exited", "running", "idle"];
+
 export interface Tab {
+  /** Stable across repaints, so the rail can patch a row instead of rebuilding it. */
+  readonly id: number;
   root: L.Node;
   active: Pane;
   el: HTMLElement;
@@ -42,6 +48,8 @@ function presetTree(preset: Preset, p: Pane[]): L.Node {
   if (preset === "2r") return split("col", L.leaf(p[0]!), L.leaf(p[1]!));
   return split("row", split("col", L.leaf(p[0]!), L.leaf(p[1]!)), split("col", L.leaf(p[2]!), L.leaf(p[3]!)));
 }
+
+let nextTabId = 1;
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const DEFAULT_ACCENT = "#ff8a1e";
@@ -218,7 +226,7 @@ export class App implements PaneHost {
     const el = document.createElement("div");
     el.className = "tab-panes";
     this.panesEl.appendChild(el);
-    const tab: Tab = { root: L.leaf(pane), active: pane, el, projectId, color: null, name: null, accountId, hostId: null };
+    const tab: Tab = { id: nextTabId++, root: L.leaf(pane), active: pane, el, projectId, color: null, name: null, accountId, hostId: null };
     this.tabs.push(tab);
     this.activate(tab);
     await this.startPane(tab, pane);
@@ -262,6 +270,7 @@ export class App implements PaneHost {
   activate(tab: Tab) {
     const accountChanged = this.tab?.accountId !== tab.accountId;
     this.tab = tab;
+    this.clearBells(tab);
     if (accountChanged) void this.status?.refresh();
     for (const t of this.tabs) t.el.classList.toggle("active", t === tab);
     this.layout(tab);
@@ -336,6 +345,7 @@ export class App implements PaneHost {
     const tab = this.tabOf(pane);
     if (!tab) return;
     tab.active = pane;
+    pane.bell = false;
     this.paintFocus(tab);
     this.paint();
   }
@@ -480,6 +490,7 @@ export class App implements PaneHost {
     if (code === 0 || code === null || pane.exitAcknowledged) return this.closePane(pane, tab);
     // Non-zero: leave the output on screen, close on the next keypress.
     pane.exitAcknowledged = true;
+    pane.exitCode = code;
     pane.term.term.write(
       `\r\n\x1b[38;2;255;107;115m[${pane.profile.exe} exited with code ${code}]\x1b[0m press any key to close\r\n`,
     );
@@ -488,6 +499,38 @@ export class App implements PaneHost {
 
   onPaneFocus(pane: Pane) {
     this.focusPane(pane);
+  }
+
+  isFocused(pane: Pane): boolean {
+    return this.tab?.active === pane && document.hasFocus();
+  }
+
+  /** A pane started or stopped printing, or rang: the rail's dots are stale. */
+  onPaneActivity() {
+    renderRail(this);
+  }
+
+  /** What one pane is doing right now. */
+  paneActivity(pane: Pane): Activity {
+    if (pane.exited) return pane.exitCode ? "exited" : "idle";
+    if (pane.bell) return "bell";
+    return Date.now() - pane.lastOutput < ACTIVE_MS ? "running" : "idle";
+  }
+
+  /** What a tab reports: the loudest of its panes. */
+  activity(tab: Tab): Activity {
+    const states = L.panes(tab.root).map((p) => this.paneActivity(p));
+    return LOUDNESS.find((s) => states.includes(s)) ?? "idle";
+  }
+
+  /** Tabs whose bell has not been answered. */
+  waiting(): number {
+    return this.tabs.filter((t) => this.activity(t) === "bell").length;
+  }
+
+  /** Focusing a tab answers its bell. */
+  private clearBells(tab: Tab) {
+    for (const pane of L.panes(tab.root)) pane.bell = false;
   }
 
   onPaneSelection(text: string) {
@@ -578,6 +621,10 @@ export class App implements PaneHost {
     return L.panes(tab.root).length;
   }
 
+  panesOf(tab: Tab): Pane[] {
+    return L.panes(tab.root);
+  }
+
   /** Both stores, for the call sites that change something in each. */
   persist() {
     this.persistSession();
@@ -663,6 +710,7 @@ export class App implements PaneHost {
     this.panesEl.appendChild(el);
     const list = L.panes(root);
     const tab: Tab = {
+      id: nextTabId++,
       root,
       active: list[0]!,
       el,

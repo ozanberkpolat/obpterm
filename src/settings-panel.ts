@@ -333,6 +333,11 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
           withButton(text(c.capture_dir ?? "", (v) => { c.capture_dir = v || null; ctx.save(); }, { width: 240, placeholder: "the app's logs folder" }),
             button("Open", () => void ctx.tp.reveal("logs")))),
       ),
+      note(
+        "The rail marks a tab that rang while you were elsewhere. Claude Code only rings when its " +
+          "preferredNotifChannel is set to terminal_bell — with the default, auto, it stays silent in a " +
+          "terminal it does not recognise.",
+      ),
       note("Every change here is written straight to config.json — no Apply button, and the file stays hand-editable."),
     );
     return wrap;

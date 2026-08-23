@@ -4,9 +4,16 @@ import { createTerm, type Term } from "./term";
 import { ownsKey } from "./keys";
 import type { Config, Profile, Transport } from "./transport";
 
+/** How recently a pane must have printed to count as running. */
+export const ACTIVE_MS = 2000;
+
 export interface PaneHost {
   tp: Transport;
   config: Config;
+  /** True when this pane is the one the user is looking at. */
+  isFocused(pane: Pane): boolean;
+  /** A pane started or stopped producing output, or rang. */
+  onPaneActivity(): void;
   onPaneTitle(pane: Pane): void;
   onPaneExit(pane: Pane, code: number | null): void;
   onPaneFocus(pane: Pane): void;
@@ -23,6 +30,12 @@ export class Pane {
   cwd: string | null;
   title: string;
   exited = false;
+  /** Epoch ms of the last byte out of the shell — "running" is simply this being recent. */
+  lastOutput = 0;
+  /** A bell rang while this pane was not the one you were looking at. */
+  bell = false;
+  /** Non-zero exit code, kept so the rail can say so. */
+  exitCode: number | null = null;
   /** Set once the "[exited with code N]" line is on screen: the next keypress closes the pane. */
   exitAcknowledged = false;
   /** Non-null when this pane must not spawn anything — a restored tab whose target is gone. */
@@ -30,7 +43,7 @@ export class Pane {
   logPath: string | null = null;
 
   constructor(
-    private host: PaneHost,
+    public host: PaneHost,
     public profile: Profile,
     cwd: string | null = null,
   ) {
@@ -41,6 +54,14 @@ export class Pane {
     const t = this.term.term;
 
     t.attachCustomKeyEventHandler((e) => !ownsKey(e)); // app shortcuts never reach the shell
+    // Claude Code rings the bell when it wants you — but only with preferredNotifChannel set
+    // to terminal_bell. A bell you are already looking at is not news.
+    t.onBell(() => {
+      if (!host.isFocused(this)) {
+        this.bell = true;
+        host.onPaneActivity();
+      }
+    });
     t.onTitleChange((title) => {
       this.title = title || this.profile.name;
       host.onPaneTitle(this);
@@ -82,6 +103,7 @@ export class Pane {
 
   async start() {
     const t = this.term.term;
+    this.lastOutput = Date.now();
     if (this.deadReason) {
       // Never substitute a different shell for a missing one: a tab that was the VPS must not
       // come back as a local PowerShell that still calls itself the VPS.
@@ -94,7 +116,12 @@ export class Pane {
       { ...this.profile, cwd: this.cwd },
       t.cols,
       t.rows,
-      (bytes) => t.write(bytes),
+      (bytes) => {
+        const wasIdle = Date.now() - this.lastOutput > ACTIVE_MS;
+        this.lastOutput = Date.now();
+        if (wasIdle) this.host.onPaneActivity();
+        t.write(bytes);
+      },
       (code) => {
         this.exited = true;
         this.host.onPaneExit(this, code);

@@ -113,6 +113,24 @@ It is a sheet rather than a second window on purpose: the app's capability scope
 `main` window only, so a second Tauri window's webview gets no IPC and renders as a black
 rectangle.
 
+## What each tab is doing
+
+Every rail row carries one glyph for the state of its shell, in a fixed slot at the right:
+
+| | State | Means |
+| --- | --- | --- |
+| ● | running | it printed something in the last two seconds |
+| ○ | idle | quiet, presumably at a prompt |
+| ▲ | waiting | a bell rang while you were looking at something else |
+| ✕ | exited | the shell ended with a non-zero code; the subtitle says which |
+
+A tab with several panes shows the loudest of them (waiting, then exited, then running), a
+collapsed project rolls its states up into its header so nothing hides inside it, and the rail's
+header counts what is waiting. Focusing a tab answers its bell. Nothing blinks.
+
+Claude Code rings the bell only when `preferredNotifChannel` is set to `terminal_bell` — its
+default, `auto`, stays silent in a terminal it does not recognise.
+
 ## Selecting and copying
 
 Finishing a left drag copies the selection straight to the clipboard — no keypress, the way the

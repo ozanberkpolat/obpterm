@@ -1,0 +1,202 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.45 "Plus Jakarta Sans", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .rail { width: 264px; background: linear-gradient(180deg, #141a24, #0e131c);
+      border-right: 1px solid rgba(140,160,190,.12); padding: 8px; }
+    .ghead { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 10px;
+      color: #76879c; font: 700 11px "Plus Jakarta Sans"; text-transform: uppercase; letter-spacing: .06em; }
+    .gdot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+    .glist { display: flex; flex-direction: column; gap: 3px; margin-left: 13px; padding-left: 6px; }
+    .tab { display: flex; align-items: center; gap: 8px; min-height: 40px;
+      padding: 6px 8px 6px 10px; border-radius: 999px; color: #8b97a8; }
+    .num { font: 600 10px "JetBrains Mono", monospace; width: 14px; text-align: right; flex: none; color: #76879c; }
+    .label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.25; }
+    .title { font: 600 12.5px "Plus Jakarta Sans"; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sub { font: 500 10.5px "JetBrains Mono", monospace; color: #76879c;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .state { width: 14px; flex: none; display: flex; align-items: center; justify-content: center; }
+    .badge { font: 600 10px "JetBrains Mono", monospace; padding: 1px 6px; border-radius: 999px;
+      background: rgba(140,160,190,.22); flex: none; }
+    .cap { font: 700 10.5px "Plus Jakarta Sans"; text-transform: uppercase; letter-spacing: .07em; color: #76879c; }
+    .spec { border: 1px solid rgba(140,160,190,.12); border-radius: 16px;
+      background: linear-gradient(180deg, #141a24, #171e29); }
+    .srow { display: flex; align-items: flex-start; gap: 16px; padding: 13px 18px;
+      border-bottom: 1px solid rgba(140,160,190,.12); }
+    .srow:last-child { border-bottom: 0; }
+    .srow .k { width: 96px; flex: none; display: flex; align-items: center; gap: 9px;
+      font: 600 12px "Plus Jakarta Sans"; }
+    .srow .d { flex: 1; font-size: 11.5px; color: #8b97a8; line-height: 1.5; }
+    .srow .d b { color: #eaf0f7; font-weight: 600; }
+    .mono { font-family: "JetBrains Mono", monospace; color: #c9d3e0; }
+
+    /* the four states — one shape each, so colour is never the only signal */
+    .s-run  { width: 7px; height: 7px; border-radius: 999px; background: #2fd6a3; }
+    .s-idle { width: 7px; height: 7px; border-radius: 999px; border: 1.5px solid #5b6878; }
+    .s-bell { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent;
+      border-bottom: 9px solid #ff8a1e; }
+    .s-exit { width: 9px; height: 9px; position: relative; }
+    .s-exit::before, .s-exit::after { content: ""; position: absolute; left: 0; top: 4px;
+      width: 9px; height: 1.6px; background: #ff6b73; border-radius: 2px; }
+    .s-exit::before { transform: rotate(45deg); }
+    .s-exit::after { transform: rotate(-45deg); }
+  </style>
+</helmet>
+
+<div style="width: 1320px; height: 900px; display: flex; background: #0a0e14">
+
+  <!-- the rail, showing every state at once -->
+  <div class="rail">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 8px 14px">
+      <span style="font: 700 11px 'Plus Jakarta Sans'; letter-spacing: .06em; text-transform: uppercase; color: #76879c">Sessions</span>
+      <span style="font: 600 10px 'JetBrains Mono', monospace; color: #ff8a1e">2 waiting</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+
+      <div>
+        <div class="ghead">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="transform: rotate(90deg)"><polyline points="6 3 11 8 6 13"/></svg>
+          <span class="gdot" style="background: #4c8dff; box-shadow: 0 0 0 3px rgba(76,141,255,.22)"></span>
+          <span style="flex: 1">iot-stack</span>
+          <span style="display: flex; gap: 3px; align-items: center">
+            <span class="s-run" style="width: 5px; height: 5px"></span>
+            <span class="s-bell" style="border-left-width: 3.5px; border-right-width: 3.5px; border-bottom-width: 6px"></span>
+          </span>
+        </div>
+        <div class="glist" style="border-left: 2px solid rgba(76,141,255,.4)">
+          <div class="tab" style="background: linear-gradient(135deg, #6ba0ff, #4c8dff); color: #04101f">
+            <span class="num" style="color: #04101f; opacity: .65">1</span>
+            <span class="label"><span class="title">claude · api</span><span class="sub" style="color: #04101f; opacity: .72">~/backend</span></span>
+            <span class="state"><span class="s-run"></span></span>
+          </div>
+          <div class="tab">
+            <span class="num">2</span>
+            <span class="label"><span class="title" style="color: #eaf0f7">claude · ui</span><span class="sub">~/frontend</span></span>
+            <span class="state"><span class="s-bell"></span></span>
+          </div>
+          <div class="tab">
+            <span class="num">3</span>
+            <span class="label"><span class="title" style="color: #eaf0f7">mgmt-backend</span><span class="sub">~/management</span></span>
+            <span class="badge">2</span>
+            <span class="state"><span class="s-idle"></span></span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="ghead">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="transform: rotate(90deg)"><polyline points="6 3 11 8 6 13"/></svg>
+          <span class="gdot" style="background: #2fd6a3; box-shadow: 0 0 0 3px rgba(47,214,163,.22)"></span>
+          <span style="flex: 1">homelab</span>
+        </div>
+        <div class="glist" style="border-left: 2px solid rgba(47,214,163,.4)">
+          <div class="tab">
+            <span class="num">4</span>
+            <span class="label"><span class="title" style="color: #eaf0f7">vps · ssh</span><span class="sub">obp@vps</span></span>
+            <span style="color: #ff6b73; font-size: 9px">●</span>
+            <span class="state"><span class="s-run"></span></span>
+          </div>
+          <div class="tab" style="opacity: .72">
+            <span class="num">5</span>
+            <span class="label"><span class="title" style="color: #c9d3e0">pi · ssh</span><span class="sub">exited · code 255</span></span>
+            <span class="state"><span class="s-exit"></span></span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="ghead">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 3 11 8 6 13"/></svg>
+          <span class="gdot" style="background: #b48cff; box-shadow: 0 0 0 3px rgba(180,140,255,.22)"></span>
+          <span style="flex: 1">azure</span>
+          <span style="font: 600 10px 'JetBrains Mono', monospace; color: #76879c">4</span>
+          <span style="display: flex; gap: 3px; align-items: center">
+            <span class="s-bell" style="border-left-width: 3.5px; border-right-width: 3.5px; border-bottom-width: 6px"></span>
+          </span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- the specification -->
+  <div style="flex: 1; min-width: 0; padding: 22px 26px; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+
+    <div>
+      <div style="font-size: 17px; font-weight: 700">Tab activity — the four states</div>
+      <div style="margin-top: 3px; font-size: 12px; color: #8b97a8; max-width: 78ch">One glyph per tab, in a fixed 14px slot at the right of the row. Shape carries the state as well as colour, so it survives a recoloured accent and a colour-blind glance. The slot is always present, so nothing reflows when a state changes.</div>
+    </div>
+
+    <div class="spec">
+      <div class="srow">
+        <span class="k"><span class="s-run"></span>Running</span>
+        <span class="d"><b>Bytes arrived in the last 2 seconds.</b> Green <span class="mono">#2fd6a3</span>, filled. Derived in <span class="mono">pane.ts</span>'s single output callback — stamp <span class="mono">lastOutput = Date.now()</span> there and nothing else changes. A 1 s timer re-derives the rail, so a tab decays to idle on its own.</span>
+      </div>
+      <div class="srow">
+        <span class="k"><span class="s-idle"></span>Idle</span>
+        <span class="d"><b>Quiet, alive, presumably at a prompt.</b> A hollow ring in <span class="mono">--faint</span>. This is the resting state of most tabs, so it must be the quietest mark on the row — an outline, not a fill.</span>
+      </div>
+      <div class="srow">
+        <span class="k"><span class="s-bell"></span>Waiting</span>
+        <span class="d"><b>A bell rang while you were somewhere else.</b> Accent triangle, pointing up. Cleared the moment you focus the tab. This is the one state that should draw the eye: it is Claude Code asking for permission, or a long build finishing. Claude Code only rings when <span class="mono">preferredNotifChannel</span> is <span class="mono">terminal_bell</span> — Settings says so next to the toggle.</span>
+      </div>
+      <div class="srow">
+        <span class="k"><span class="s-exit"></span>Exited</span>
+        <span class="d"><b>The shell ended with a non-zero code.</b> A red cross, and the row's subtitle becomes <span class="mono">exited · code N</span> at 72% opacity. Clean exits close the tab as they do today; only failures leave a mark.</span>
+      </div>
+    </div>
+
+    <div class="cap">Rules</div>
+    <div class="spec">
+      <div class="srow">
+        <span class="k" style="width: 128px">One per tab</span>
+        <span class="d">A tab with four panes shows the <b>loudest</b> state among them: waiting &gt; exited &gt; running &gt; idle. The pane-count badge already says there is more than one; the dot says whether any of them wants you.</span>
+      </div>
+      <div class="srow">
+        <span class="k" style="width: 128px">Collapsed groups</span>
+        <span class="d">A folded project rolls its tabs up into the header: the states present, deduplicated, at 5px. A collapsed project can hide a waiting tab today — this is the fix.</span>
+      </div>
+      <div class="srow">
+        <span class="k" style="width: 128px">The rail header</span>
+        <span class="d">Counts what is waiting across everything, in the accent: <span class="mono">2 waiting</span>. Absent when the count is zero — no "0 waiting" chrome.</span>
+      </div>
+      <div class="srow">
+        <span class="k" style="width: 128px">No animation</span>
+        <span class="d">Nothing pulses, nothing blinks. A dozen sessions means a dozen potential blinkers in peripheral vision for hours. State changes cross-fade over 120 ms and stop. (The capture dot's existing pulse is the one exception, and it slows to a 3 s breath.)</span>
+      </div>
+      <div class="srow">
+        <span class="k" style="width: 128px">Reconcile, don't rebuild</span>
+        <span class="d">The rail currently does <span class="mono">replaceChildren()</span> on every title and cwd report. Adding a per-second state pass on top of that would rebuild ~30 rows a second. The dot lands together with keying rows by tab id and patching in place.</span>
+      </div>
+    </div>
+
+    <div class="cap">Not in this feature</div>
+    <div style="display: flex; gap: 12px">
+      <div class="spec" style="flex: 1; padding: 12px 16px; font-size: 11.5px; color: #8b97a8; line-height: 1.55">
+        <b style="color: #eaf0f7">No OS notifications.</b> A toast from the taskbar for a terminal you are already looking at is noise. If it is wanted later it belongs behind a per-project toggle, not here.
+      </div>
+      <div class="spec" style="flex: 1; padding: 12px 16px; font-size: 11.5px; color: #8b97a8; line-height: 1.55">
+        <b style="color: #eaf0f7">No output preview.</b> The last line of a pane in the rail row is tempting and wrong: it makes every row a moving target and doubles the repaint cost.
+      </div>
+      <div class="spec" style="flex: 1; padding: 12px 16px; font-size: 11.5px; color: #8b97a8; line-height: 1.55">
+        <b style="color: #eaf0f7">No "busy" spinner.</b> Output activity is not progress. A spinner would claim to know something the terminal cannot know.
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
