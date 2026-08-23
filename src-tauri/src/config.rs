@@ -112,6 +112,10 @@ pub struct Config {
     pub dim_inactive_panes: bool,
     /// Where Ctrl+Shift+L writes; `None` = the app's own logs folder.
     pub capture_dir: Option<String>,
+    /// Delete captures older than this many days. 0 keeps them forever.
+    pub capture_keep_days: u32,
+    /// Keep the capture folder under this many megabytes, oldest first. 0 is no cap.
+    pub capture_max_mb: u32,
     /// Ask GitHub for a newer release once, a few seconds after launch.
     pub update_check_on_launch: bool,
     /// Desktop notification when an unfocused pane rings or asks for something.
@@ -165,6 +169,8 @@ impl Default for Config {
             accent: "#ff8a1e".into(),
             dim_inactive_panes: true,
             capture_dir: None,
+            capture_keep_days: 30,
+            capture_max_mb: 512,
             update_check_on_launch: true,
             notify_bell: true,
             notify_silence: false,

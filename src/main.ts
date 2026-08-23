@@ -41,6 +41,18 @@ async function main() {
   if (!restored) await app.newTab();
   if (updatedTo) toast(`Updated to ${updatedTo} — reopened ${tabs}`);
   else if (crashed) toast(`Reopened ${tabs} — OBPTerm did not shut down cleanly`);
+  // Retention runs once, a moment after launch, so a folder that grew overnight is dealt with
+  // before it matters. Silent unless it actually removed something.
+  if (config.capture_keep_days || config.capture_max_mb) {
+    window.setTimeout(async () => {
+      const dir = config.capture_dir || (await tp.logDir().catch(() => ""));
+      if (!dir) return;
+      const [gone, freed] = await tp
+        .pruneCaptures(dir, config.capture_keep_days, config.capture_max_mb)
+        .catch(() => [0, 0] as [number, number]);
+      if (gone) console.info(`obpterm: pruned ${gone} capture files, ${freed} bytes`);
+    }, 6000);
+  }
   if (config.update_check_on_launch && !updatedTo) {
     // Quietly, and never installing on its own.
     window.setTimeout(() => void app.status.checkUpdates(), 4000);

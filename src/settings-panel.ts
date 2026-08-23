@@ -555,6 +555,10 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
         row("Config and session", "config.json holds these settings; session.json holds the open tabs.",
           button("Show folder", () => void ctx.tp.reveal("config"))),
         captureRow(ctx),
+        row("Keep captures for", "Older ones are deleted when the app starts. Zero keeps them forever.",
+          slider(ctx.config.capture_keep_days, 0, 180, 5, " days", (v) => { ctx.config.capture_keep_days = v; ctx.save(); })),
+        row("And under", "When the folder is bigger than this, the oldest go first. Zero is no cap.",
+          slider(ctx.config.capture_max_mb, 0, 4096, 64, " MB", (v) => { ctx.config.capture_max_mb = v; ctx.save(); })),
       ),
       card(
         row("Reset every setting", "Profiles, accounts, hosts, projects and colours go back to defaults. Open tabs are left alone.",
@@ -580,7 +584,7 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
 
 /** Says how much the capture folder is holding, and offers to drop the empty ones. */
 function captureRow(ctx: Ctx): HTMLElement {
-  const prune = button("Delete empty", () => void run(true));
+  const prune = button("Clean up now", () => void run(true));
   const show = button("Show folder", () => void ctx.tp.reveal("logs"));
   const el = row("Capture logs", "Counting…", pair(prune, show));
   const hint = el.querySelector("span")!;
@@ -589,14 +593,23 @@ function captureRow(ctx: Ctx): HTMLElement {
     const dir = ctx.config.capture_dir || (await ctx.tp.logDir().catch(() => ""));
     if (!dir) return;
     if (deleting) {
-      const gone = await ctx.tp.pruneCaptures(dir).catch(() => 0);
-      toast(gone ? `Deleted ${gone} empty capture${gone > 1 ? "s" : ""}` : "No empty captures to delete");
+      const [gone, freed] = await ctx.tp
+        .pruneCaptures(dir, ctx.config.capture_keep_days, ctx.config.capture_max_mb)
+        .catch(() => [0, 0] as [number, number]);
+      toast(gone ? `Deleted ${gone} capture${gone > 1 ? "s" : ""}, freed ${fmtBytes(freed)}` : "Nothing to clean up");
     }
     const [count, bytes, empty] = await ctx.tp.captureStats(dir).catch(() => [0, 0, 0] as [number, number, number]);
     hint.textContent = count
       ? `${count} file${count > 1 ? "s" : ""}, ${fmtBytes(bytes)}${empty ? ` · ${empty} empty` : ""}`
       : "Nothing captured yet.";
-    prune.disabled = empty === 0;
+    const days = ctx.config.capture_keep_days;
+    const cap = ctx.config.capture_max_mb;
+    prune.disabled = count === 0;
+    prune.title = [
+      days ? `deletes captures older than ${days} days` : "no age limit",
+      cap ? `keeps the folder under ${cap} MB` : "no size cap",
+      "never touches a pane that is still recording",
+    ].join(" · ");
   };
   void run();
   return el;

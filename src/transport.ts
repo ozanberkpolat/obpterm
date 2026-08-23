@@ -133,6 +133,8 @@ export interface Config {
   accent: string;
   dim_inactive_panes: boolean;
   capture_dir: string | null;
+  capture_keep_days: number;
+  capture_max_mb: number;
   update_check_on_launch: boolean;
   notify_bell: boolean;
   notify_silence: boolean;
@@ -171,8 +173,8 @@ export interface Transport {
   logStop(id: number): Promise<void>;
   /** [count, bytes, empty] for the capture folder. */
   captureStats(dir: string): Promise<[number, number, number]>;
-  /** Deletes the zero-byte captures; returns how many went. */
-  pruneCaptures(dir: string): Promise<number>;
+  /** Applies the retention rule; returns [files deleted, bytes freed]. */
+  pruneCaptures(dir: string, keepDays: number, maxMb: number): Promise<[number, number]>;
   /** The app's own logs folder, when no capture_dir is set. */
   logDir(): Promise<string>;
   hostMetrics(cwd: string | null): Promise<HostMetrics>;
@@ -223,6 +225,8 @@ export function withDefaults(config: Partial<Config>): Config {
     accent: config.accent ?? "#ff8a1e",
     dim_inactive_panes: config.dim_inactive_panes ?? true,
     capture_dir: config.capture_dir ?? null,
+    capture_keep_days: config.capture_keep_days ?? 30,
+    capture_max_mb: config.capture_max_mb ?? 512,
     update_check_on_launch: config.update_check_on_launch ?? true,
     notify_bell: config.notify_bell ?? true,
     notify_silence: config.notify_silence ?? false,

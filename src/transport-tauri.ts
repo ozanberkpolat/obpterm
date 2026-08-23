@@ -48,7 +48,7 @@ export function tauriTransport(): Transport {
     sessionLoad: () => invoke<Session>("session_load"),
     sessionSave: (tabs, active) => invoke("session_save", { tabs, active }),
     captureStats: (dir) => invoke<[number, number, number]>("capture_stats", { dir }),
-    pruneCaptures: (dir) => invoke<number>("prune_captures", { dir }),
+    pruneCaptures: (dir, keepDays, maxMb) => invoke<[number, number]>("prune_captures", { dir, keepDays, maxMb }),
     logDir: () => invoke<string>("log_dir"),
     claudeAccount: (dir) => invoke<ClaudeAccount>("claude_account", { dir }),
     claudeUsage: (dir) => invoke<ClaudeUsage>("claude_usage", { dir }),

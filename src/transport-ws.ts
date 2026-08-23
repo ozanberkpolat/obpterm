@@ -90,7 +90,7 @@ export function wsTransport(): Transport {
     sessionLoad: async () => (await call("session_load")).session as Session,
     sessionSave: async (tabs, active) => void (await call("session_save", { tabs, active })),
     captureStats: async () => [0, 0, 0],
-    pruneCaptures: async () => 0,
+    pruneCaptures: async () => [0, 0] as [number, number],
     logDir: async () => "logs",
     claudeAccount: async (dir) => (await call("claude_account", { dir })).account as ClaudeAccount,
     claudeUsage: async (dir) => (await call("claude_usage", { dir })).usage as ClaudeUsage,

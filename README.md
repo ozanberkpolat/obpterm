@@ -186,6 +186,10 @@ function prompt {
 }
 ```
 
+Captures are kept for **30 days** and the folder is held under **512 MB**, oldest first — both
+adjustable (or turned off with zero) in Settings → Files & reset, applied a few seconds after
+launch and by the Clean up now button. A pane that is still recording is never touched.
+
 `Ctrl+Shift+L` tees the focused pane's raw output (escape codes and all) to
 `%APPDATA%\tr.com.obp.obpterm\logs\<title>-<timestamp>.log`; the tab shows a red dot while it
 is capturing.

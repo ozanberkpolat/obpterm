@@ -205,20 +205,85 @@ pub fn capture_stats(dir: String) -> (usize, u64, usize) {
     (count, bytes, empty)
 }
 
-/// Deletes the zero-byte captures a shell that printed nothing used to leave behind.
+/// Applies the capture retention rule: always drops empty files, then anything older than
+/// `keep_days`, then the oldest files until the folder fits in `max_mb`. Either limit at 0
+/// means "no limit". A file a live pane is still writing to is never touched.
+///
+/// Returns (files deleted, bytes freed).
 #[tauri::command]
-pub fn prune_captures(dir: String) -> usize {
-    let mut gone = 0;
+pub fn prune_captures(sessions: State<Sessions>, dir: String, keep_days: u32, max_mb: u32) -> (usize, u64) {
+    let live: Vec<PathBuf> = sessions
+        .0
+        .lock()
+        .unwrap()
+        .values()
+        .filter_map(|s| s.log.lock().unwrap().as_ref().map(|c| c.path.clone()))
+        .collect();
+
+    // (modified epoch secs, size, path), oldest first.
+    let mut files: Vec<(i64, u64, PathBuf)> = Vec::new();
     for entry in std::fs::read_dir(PathBuf::from(dir)).into_iter().flatten().flatten() {
         let path = entry.path();
-        if path.extension().is_none_or(|e| e != "log") {
+        if path.extension().is_none_or(|e| e != "log") || live.contains(&path) {
             continue;
         }
-        if entry.metadata().map(|m| m.len()).unwrap_or(1) == 0 && std::fs::remove_file(&path).is_ok() {
-            gone += 1;
+        let Ok(meta) = entry.metadata() else { continue };
+        let modified = meta
+            .modified()
+            .ok()
+            .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        files.push((modified, meta.len(), path));
+    }
+    let doomed = plan_prune(files, now_secs(), keep_days, max_mb);
+    let mut deleted = 0;
+    let mut freed = 0;
+    for (size, path) in doomed {
+        if std::fs::remove_file(&path).is_ok() {
+            deleted += 1;
+            freed += size;
         }
     }
-    gone
+    (deleted, freed)
+}
+
+/// Which captures the rule says to drop, oldest first: empties, then anything past its age,
+/// then as many of the oldest survivors as it takes to fit the size cap. Pure, so it is
+/// testable without touching a disk.
+fn plan_prune(mut files: Vec<(i64, u64, PathBuf)>, now: i64, keep_days: u32, max_mb: u32) -> Vec<(u64, PathBuf)> {
+    files.sort_by_key(|f| f.0);
+    let cutoff = if keep_days == 0 { 0 } else { now - (keep_days as i64) * 86_400 };
+    let mut doomed = Vec::new();
+    let mut kept: Vec<(u64, PathBuf)> = Vec::new();
+
+    for (modified, size, path) in files {
+        if size == 0 || (cutoff > 0 && modified < cutoff) {
+            doomed.push((size, path));
+        } else {
+            kept.push((size, path));
+        }
+    }
+
+    let cap = (max_mb as u64) * 1024 * 1024;
+    if cap > 0 {
+        let mut total: u64 = kept.iter().map(|(size, _)| size).sum();
+        for (size, path) in kept {
+            if total <= cap {
+                break;
+            }
+            total -= size;
+            doomed.push((size, path));
+        }
+    }
+    doomed
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 pub fn kill_all(sessions: &Sessions) {
@@ -288,7 +353,8 @@ fn usable_cwd(cwd: Option<String>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::expand_vars;
+    use super::{expand_vars, plan_prune};
+    use std::path::PathBuf;
 
     #[test]
     fn config_values_expand_the_way_people_type_them() {
@@ -297,5 +363,43 @@ mod tests {
         assert_eq!(expand_vars("plain\\path"), "plain\\path");
         assert_eq!(expand_vars("%NOT_SET_ANYWHERE%\\x"), "%NOT_SET_ANYWHERE%\\x", "unset stays literal");
         assert_eq!(expand_vars("50% done"), "50% done", "a lone percent is not a variable");
+    }
+
+
+    const DAY: i64 = 86_400;
+    const MB: u64 = 1024 * 1024;
+
+    fn file(age_days: i64, mb: u64, name: &str) -> (i64, u64, PathBuf) {
+        (1_000_000 - age_days * DAY, mb * MB, PathBuf::from(name))
+    }
+
+    #[test]
+    fn empties_and_old_files_go_first() {
+        let files = vec![
+            (1_000_000, 0, PathBuf::from("empty.log")),
+            file(40, 1, "ancient.log"),
+            file(2, 1, "fresh.log"),
+        ];
+        let doomed: Vec<String> = plan_prune(files, 1_000_000, 30, 0)
+            .into_iter()
+            .map(|(_, p)| p.display().to_string())
+            .collect();
+        assert_eq!(doomed, vec!["ancient.log", "empty.log"], "oldest first, and the empty one always");
+    }
+
+    #[test]
+    fn the_size_cap_takes_the_oldest_survivors_and_stops() {
+        // 4 x 100 MB, all recent, cap 250 MB: the two oldest go, the rest stay.
+        let files = (0..4).map(|i| file(4 - i, 100, &format!("f{i}.log"))).collect();
+        let doomed = plan_prune(files, 1_000_000, 0, 250);
+        assert_eq!(doomed.len(), 2);
+        assert_eq!(doomed[0].1, PathBuf::from("f0.log"));
+        assert_eq!(doomed[1].1, PathBuf::from("f1.log"));
+    }
+
+    #[test]
+    fn zero_means_no_limit() {
+        let files = vec![file(9999, 5000, "huge-and-ancient.log")];
+        assert!(plan_prune(files, 1_000_000, 0, 0).is_empty(), "both limits off keeps everything");
     }
 }

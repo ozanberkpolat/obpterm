@@ -20,7 +20,7 @@
     }
   ],
   "font_family": "JetBrains Mono, Cascadia Mono, Consolas, monospace",
-  "font_size": 37,
+  "font_size": 38,
   "scrollback": 10000,
   "rail_collapsed": false,
   "rail_width": 300,
@@ -31,6 +31,8 @@
   "accent": "#ff8a1e",
   "dim_inactive_panes": true,
   "capture_dir": null,
+  "capture_keep_days": 30,
+  "capture_max_mb": 512,
   "update_check_on_launch": false,
   "notify_bell": true,
   "notify_silence": false,
@@ -76,7 +78,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt5utfoz",
+      "id": "hmt5vphjw",
       "name": "New host",
       "host": "",
       "user": null,
@@ -614,6 +616,15 @@
     },
     {
       "id": "pmt5utcq6",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5vpei6",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,
