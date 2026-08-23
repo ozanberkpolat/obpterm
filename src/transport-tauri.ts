@@ -2,7 +2,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
-import type { ClaudeAccount, ClaudeLimits, ClaudeUsage, Config, HostMetrics, Profile, ReleaseInfo, Session, Transport } from "./transport";
+import type { ClaudeAccount, ClaudeLimits, ClaudeUsage, Logins, Config, HostInfo, HostMetrics, HostSession, Profile, ReleaseInfo, Session, Transport } from "./transport";
 
 export function tauriTransport(): Transport {
   const exits = new Map<number, (code: number | null) => void>();
@@ -14,6 +14,16 @@ export function tauriTransport(): Transport {
 
   return {
     native: true,
+    hostInfo: () => invoke<HostInfo>("host_info"),
+    listSessions: () => invoke<HostSession[]>("pty_list"),
+    async attach(id, cols, rows, onData, onExit) {
+      const onDataCh = new Channel<ArrayBuffer>();
+      onDataCh.onmessage = (buf) => onData(new Uint8Array(buf));
+      await invoke("pty_attach", { id, cols, rows, onData: onDataCh });
+      exits.set(id, onExit);
+    },
+    detach: (id) => invoke("pty_detach", { id }),
+    hostShutdown: () => invoke("host_shutdown"),
     async spawn(profile: Profile, cols, rows, onData, onExit) {
       // Rust sends `Response::new(bytes)` → arrives as an ArrayBuffer, no JSON in between.
       const onDataCh = new Channel<ArrayBuffer>();
@@ -46,13 +56,14 @@ export function tauriTransport(): Transport {
     configReset: () => invoke<Config>("config_reset"),
     reveal: (what) => invoke<string>("reveal", { what }),
     sessionLoad: () => invoke<Session>("session_load"),
-    sessionSave: (tabs, active) => invoke("session_save", { tabs, active }),
+    sessionSave: (tabs, active, host) => invoke("session_save", { tabs, active, host }),
     captureStats: (dir) => invoke<[number, number, number]>("capture_stats", { dir }),
     pruneCaptures: (dir, keepDays, maxMb) => invoke<[number, number]>("prune_captures", { dir, keepDays, maxMb }),
     logDir: () => invoke<string>("log_dir"),
     claudeAccount: (dir) => invoke<ClaudeAccount>("claude_account", { dir }),
     claudeUsage: (dir) => invoke<ClaudeUsage>("claude_usage", { dir }),
     claudeLimits: (file, url) => invoke<ClaudeLimits | null>("claude_limits", { file, url }),
+    logins: (action, name) => invoke<Logins>(`logins_${action}`, name ? { name } : {}),
     loadConfig: () => invoke<Config>("config_load"),
     saveConfig: (config) => invoke("config_save", { config }),
     configPath: () => invoke<string>("config_path_string"),

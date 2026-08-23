@@ -32,15 +32,21 @@ async function main() {
   installKeys(app);
   (window as unknown as { obpterm: App }).obpterm = app; // devtools handle
   installCrashGuard(app);
+  await app.connectHost();
   // Running decays to idle on its own, so the rail re-derives once a second. The rail patches
   // rows in place, so this is a handful of attribute writes, not a rebuild.
   window.setInterval(() => app.onPaneActivity(), 1000);
+  window.setInterval(() => void app.sleepIdleTabs(), 30_000);
+  window.setInterval(() => void app.refreshHeld(), 3_000);
   window.addEventListener("focus", () => app.clearAttention());
   const { restored, crashed, updatedTo } = await app.restoreSession();
   const tabs = `${restored} tab${restored > 1 ? "s" : ""}`;
   if (!restored) await app.newTab();
-  if (updatedTo) toast(`Updated to ${updatedTo} — reopened ${tabs}`);
+  const kept = app.reattached ? ` — ${app.reattached} shell${app.reattached > 1 ? "s" : ""} never stopped` : "";
+  if (updatedTo) toast(`Updated to ${updatedTo}${kept || ` — reopened ${tabs}`}`);
   else if (crashed) toast(`Reopened ${tabs} — OBPTerm did not shut down cleanly`);
+  else if (app.reattached) toast(`Back${kept}`);
+  if (!app.hostInstance) toast("No session host: shells will end when the window closes");
   // Retention runs once, a moment after launch, so a folder that grew overnight is dealt with
   // before it matters. Silent unless it actually removed something.
   if (config.capture_keep_days || config.capture_max_mb) {

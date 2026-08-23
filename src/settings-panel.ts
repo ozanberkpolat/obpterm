@@ -4,7 +4,7 @@
 import type { App } from "./app";
 import type { Config, Transport } from "./transport";
 import { KEYMAP } from "./keymap";
-import { renderList } from "./settings-lists";
+import { renderList, renderLogins } from "./settings-lists";
 import { toast } from "./ui";
 
 export interface Ctx {
@@ -30,6 +30,7 @@ const ICONS: Record<string, string> = {
   keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>',
   updates: '<path d="M12 3v11"/><polyline points="8 10 12 14 16 10"/><path d="M4 18h16"/>',
   files: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  logins: '<circle cx="9" cy="8" r="3.2"/><path d="M3 19a6 6 0 0 1 12 0"/><path d="M17 8l2 2 4-4"/>',
   snippets: '<polyline points="8 7 4 12 8 17"/><polyline points="16 7 20 12 16 17"/><line x1="13" y1="5" x2="11" y2="19"/>',
 };
 
@@ -40,6 +41,7 @@ const SECTIONS: { id: string; title: string; group: string; icon: string; count?
   { id: "startup", title: "Startup & session", group: "The app", icon: "startup" },
   { id: "profiles", title: "Profiles", group: "Things you make", icon: "profiles", count: (c) => c.profiles.length },
   { id: "accounts", title: "Accounts", group: "Things you make", icon: "accounts", count: (c) => c.accounts.length },
+  { id: "logins", title: "Claude logins", group: "Things you make", icon: "logins" },
   { id: "hosts", title: "SSH hosts", group: "Things you make", icon: "hosts", count: (c) => c.hosts.length },
   { id: "projects", title: "Projects", group: "Things you make", icon: "projects", count: (c) => c.projects.length },
   { id: "snippets", title: "Snippets", group: "Things you make", icon: "snippets", count: (c) => c.snippets.length },
@@ -346,6 +348,11 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
           withButton(text(c.capture_dir ?? "", (v) => { c.capture_dir = v || null; ctx.save(); }, { width: 240, placeholder: "the app's logs folder" }),
             button("Open", () => void ctx.tp.reveal("logs")))),
       ),
+      cap("Memory"),
+      card(
+        row("Put idle tabs to sleep after", "A tab nobody has looked at loses its terminal; the shell keeps running in the session host and the tab wakes on click. The rail still shows what a sleeping shell is doing. Zero keeps every terminal alive.",
+          slider(c.sleep_after_minutes, 0, 120, 5, " min", (v) => { c.sleep_after_minutes = v; ctx.save(); })),
+      ),
       cap("Being told"),
       card(
         row("Notify when a pane asks for you", "A desktop notification carrying what the program said, and the taskbar flashes until you come back.",
@@ -580,6 +587,15 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
   hosts: (ctx) => renderList(ctx, "hosts"),
   projects: (ctx) => renderList(ctx, "projects"),
   snippets: (ctx) => renderList(ctx, "snippets"),
+  logins: (ctx) => {
+    const wrap = document.createElement("div");
+    wrap.append(
+      head("Claude Code logins", "Two logins, one folder: switch which one is live. Same layout and same guards as the VPS's cc_account.py, so a profile saved here reads the same way there."),
+      renderLogins(ctx),
+      note("Switching applies to shells started afterwards. A running claude keeps the login it started with — and blocks the switch, because it would rotate the token underneath the swap."),
+    );
+    return wrap;
+  },
 };
 
 /** Says how much the capture folder is holding, and offers to drop the empty ones. */

@@ -118,6 +118,9 @@ pub struct Config {
     pub capture_max_mb: u32,
     /// Ask GitHub for a newer release once, a few seconds after launch.
     pub update_check_on_launch: bool,
+    /// Minutes a tab can go unvisited before its terminal is torn down to save memory; the
+    /// shell keeps running in the host and the tab wakes on click. 0 = never.
+    pub sleep_after_minutes: u32,
     /// Desktop notification when an unfocused pane rings or asks for something.
     pub notify_bell: bool,
     /// Desktop notification when a busy pane goes quiet — a build or an agent finishing.
@@ -172,6 +175,7 @@ impl Default for Config {
             capture_keep_days: 30,
             capture_max_mb: 512,
             update_check_on_launch: true,
+            sleep_after_minutes: 10,
             notify_bell: true,
             notify_silence: false,
             silence_seconds: 20,
@@ -411,6 +415,10 @@ pub struct Session {
     /// where you were when the app died.
     #[serde(default)]
     pub active: usize,
+    /// The session host the pty ids in `tabs` belong to. Ids only mean something against the
+    /// host that minted them; after a reboot they are numbers from a dead process.
+    #[serde(default)]
+    pub host: Option<String>,
     /// Set when the exit was an installer restart, so the next launch says "updated", not "crashed".
     pub updated_to: Option<String>,
 }
@@ -424,12 +432,12 @@ pub fn session_load(app: AppHandle) -> Result<Session, String> {
     }
     // Before 0.3.0 the tabs lived in config.json.
     let legacy = config_load(app)?.session.unwrap_or(serde_json::Value::Null);
-    Ok(Session { clean_exit: true, saved_at: 0, tabs: legacy, active: 0, updated_to: None })
+    Ok(Session { clean_exit: true, saved_at: 0, tabs: legacy, active: 0, host: None, updated_to: None })
 }
 
 #[tauri::command]
-pub fn session_save(app: AppHandle, tabs: serde_json::Value, active: usize) -> Result<(), String> {
-    let session = Session { clean_exit: false, saved_at: now_ms(), tabs, active, updated_to: None };
+pub fn session_save(app: AppHandle, tabs: serde_json::Value, active: usize, host: Option<String>) -> Result<(), String> {
+    let session = Session { clean_exit: false, saved_at: now_ms(), tabs, active, host, updated_to: None };
     write_atomic(&session_path(&app)?, &serde_json::to_string(&session).map_err(|e| e.to_string())?)
 }
 
@@ -487,6 +495,7 @@ mod tests {
             saved_at: 1_787_463_711_904,
             tabs: serde_json::json!([{ "root": { "kind": "leaf", "profile": "pwsh" } }]),
             active: 2,
+            host: Some("abc123".into()),
             updated_to: Some("0.4.1".into()),
         };
         let text = serde_json::to_string(&session).unwrap();

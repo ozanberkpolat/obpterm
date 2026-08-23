@@ -18,6 +18,8 @@ export interface PaneHost {
   onPaneRespawn(pane: Pane): void;
   /** The program in this pane asked for the user's attention by name. */
   onPaneNotify(pane: Pane, title: string, body: string): void;
+  /** This pane picked up a shell that survived the previous window. */
+  onPaneReattached(pane: Pane): void;
   onPaneTitle(pane: Pane): void;
   onPaneExit(pane: Pane, code: number | null): void;
   onPaneFocus(pane: Pane): void;
@@ -27,7 +29,11 @@ export interface PaneHost {
 
 export class Pane {
   readonly el = document.createElement("div");
-  readonly term: Term;
+  term: Term;
+  /** Asleep: the terminal is gone and the host is holding the shell unwatched. */
+  asleep = false;
+  /** What the host last said about this shell while it was asleep. */
+  heldState: { last_output: number; bell: boolean; exited: number | null } | null = null;
   /** pty id, -1 until `start()` resolves */
   id = -1;
   /** Reported by the shell via OSC 9;9; what a saved layout reopens in. */
@@ -48,6 +54,8 @@ export class Pane {
   exitAcknowledged = false;
   /** Non-null when this pane must not spawn anything — a restored tab whose target is gone. */
   deadReason: string | null = null;
+  /** A shell the host is already holding: `start()` attaches to it instead of spawning. */
+  attachTo: number | null = null;
   logPath: string | null = null;
 
   constructor(
@@ -58,8 +66,15 @@ export class Pane {
     this.cwd = cwd ?? profile.cwd ?? null;
     this.title = profile.name;
     this.el.className = "pane";
-    this.term = createTerm(this.el, host.config);
-    const t = this.term.term;
+    this.term = this.buildTerm();
+    new ResizeObserver(() => !this.asleep && this.term.fit()).observe(this.el);
+  }
+
+  /** The xterm and everything wired to it. Done once at construction, and again on wake. */
+  private buildTerm(): Term {
+    const host = this.host;
+    const term = createTerm(this.el, host.config);
+    const t = term.term;
 
     t.attachCustomKeyEventHandler((e) => !ownsKey(e)); // app shortcuts never reach the shell
     // Claude Code rings the bell when it wants you — but only with preferredNotifChannel set
@@ -111,6 +126,7 @@ export class Pane {
     });
     this.el.addEventListener("mousedown", () => host.onPaneFocus(this), true);
 
+
     // A left drag always selects, even while the program has mouse reporting on — without
     // this, dragging inside Claude Code or vim never leaves a selection to copy.
     const selection = (t as unknown as { _core?: { _selectionService?: { shouldForceSelection?(e: MouseEvent): boolean } } })._core
@@ -126,8 +142,45 @@ export class Pane {
       const text = t.getSelection();
       if (text.trim()) void host.onPaneSelection(text);
     });
-    new ResizeObserver(() => this.term.fit()).observe(this.el);
+      return term;
   }
+
+  /** Tears the terminal down and stops watching the shell. The shell keeps running in the
+   *  host; a click on the tab brings the terminal back with the shell's recent output. */
+  async sleep() {
+    if (this.asleep || this.exited || this.id < 0) return;
+    this.asleep = true;
+    await this.host.tp.detach(this.id).catch(() => {});
+    this.term.dispose();
+    this.el.replaceChildren();
+    const note = document.createElement("div");
+    note.className = "asleep";
+    note.textContent = "asleep — click to wake";
+    this.el.appendChild(note);
+  }
+
+  async wake() {
+    if (!this.asleep) return;
+    this.asleep = false;
+    this.heldState = null;
+    this.el.replaceChildren();
+    this.term = this.buildTerm();
+    const t = this.term.term;
+    this.term.fit();
+    const onData = (bytes: Uint8Array) => {
+      this.lastOutput = Date.now();
+      t.write(bytes);
+    };
+    const onExit = (code: number | null) => {
+      this.exited = true;
+      this.host.onPaneExit(this, code);
+    };
+    await this.host.tp.attach(this.id, t.cols, t.rows, onData, onExit);
+    t.focus();
+  }
+
+  /** Epoch ms of the last time this pane was the one on screen. */
+  lastVisited = Date.now();
 
   async start() {
     const t = this.term.term;
@@ -140,24 +193,29 @@ export class Pane {
       t.write(`\r\n\x1b[38;2;255;180;84m${this.deadReason}\x1b[0m\r\n\r\n  Close this pane, or fix it in Settings and open a new tab.\r\n`);
       return;
     }
-    this.id = await this.host.tp.spawn(
-      { ...this.profile, cwd: this.cwd },
-      t.cols,
-      t.rows,
-      (bytes) => {
-        const wasIdle = Date.now() - this.lastOutput > ACTIVE_MS;
-        this.lastOutput = Date.now();
-        if (wasIdle) {
-          this.busySince = Date.now();
-          this.host.onPaneActivity();
-        }
-        t.write(bytes);
-      },
-      (code) => {
-        this.exited = true;
-        this.host.onPaneExit(this, code);
-      },
-    );
+    const onData = (bytes: Uint8Array) => {
+      const wasIdle = Date.now() - this.lastOutput > ACTIVE_MS;
+      this.lastOutput = Date.now();
+      if (wasIdle) {
+        this.busySince = Date.now();
+        this.host.onPaneActivity();
+      }
+      t.write(bytes);
+    };
+    const onExit = (code: number | null) => {
+      this.exited = true;
+      this.host.onPaneExit(this, code);
+    };
+    if (this.attachTo !== null) {
+      // The shell never stopped; the window did. Replay its history, then go live.
+      const id = this.attachTo;
+      this.attachTo = null;
+      await this.host.tp.attach(id, t.cols, t.rows, onData, onExit);
+      this.id = id;
+      this.host.onPaneReattached(this);
+    } else {
+      this.id = await this.host.tp.spawn({ ...this.profile, cwd: this.cwd }, t.cols, t.rows, onData, onExit);
+    }
     if (this.profile.capture && !this.logPath) {
       await this.toggleLog().catch((e) => console.warn("auto-capture failed", e));
     }

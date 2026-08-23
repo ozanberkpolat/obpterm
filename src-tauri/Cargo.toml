@@ -1,6 +1,6 @@
 [package]
 name = "obpterm"
-version = "0.8.2"
+version = "0.9.0"
 description = "Vertical-tab terminal for Windows: pwsh / PowerShell / cmd over ConPTY"
 edition = "2021"
 rust-version = "1.77"
@@ -21,6 +21,8 @@ portable-pty = "0.9"
 sysinfo = { version = "0.39", default-features = false, features = ["system", "disk"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+obpterm-host = { path = "../host" }
+tokio = { version = "1", features = ["sync", "time"] }
 # The webview cannot download a release asset: GitHub redirects to objects.githubusercontent.com,
 # which sends no CORS headers. So the update check and download live here instead.
 # native-tls = schannel on Windows: no C toolchain, and the OS certificate store.
@@ -31,9 +33,3 @@ reqwest = { version = "0.12", default-features = false, features = ["native-tls"
 webview2-com = "0.38"
 windows = { version = "0.61", features = ["Win32_Foundation"] }
 
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = "s"
-panic = "abort"
-strip = true

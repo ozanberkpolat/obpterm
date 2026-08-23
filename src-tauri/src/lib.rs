@@ -1,4 +1,5 @@
 mod claude;
+mod logins;
 mod chrome;
 mod config;
 mod metrics;
@@ -13,11 +14,16 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
-        .manage(pty::Sessions::default())
+        .manage(pty::HostLink::default())
         .manage(claude::UsageCache::default())
         .manage(metrics::Metrics::default())
         .invoke_handler(tauri::generate_handler![
+            pty::host_info,
+            pty::host_shutdown,
+            pty::pty_list,
             pty::pty_spawn,
+            pty::pty_attach,
+            pty::pty_detach,
             pty::pty_write,
             pty::pty_resize,
             pty::pty_kill,
@@ -39,6 +45,10 @@ pub fn run() {
             claude::claude_account_names,
             claude::claude_usage,
             claude::claude_limits,
+            logins::logins_list,
+            logins::logins_save,
+            logins::logins_switch,
+            logins::logins_forget,
             metrics::host_metrics,
             update::app_version,
             update::update_check,
@@ -52,7 +62,9 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 config::mark_clean_exit(window.app_handle());
-                pty::kill_all(&window.state::<pty::Sessions>());
+                // Deliberately no kill here: closing the window is a detach. The shells belong
+                // to the session host and are still there when the window comes back.
+                *window.state::<pty::HostLink>().0.lock().unwrap() = None;
             }
         })
         .run(tauri::generate_context!())

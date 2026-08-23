@@ -32,8 +32,19 @@ jobs:
 
       - run: npm test
 
-      - name: cargo test
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: cargo test (app + session host)
+        run: cargo test --workspace
+
+      # The session host ships as a Tauri sidecar, which must carry the target triple in its
+      # filename. tauri-action builds only the app crate, so the host is built first.
+      - name: Build the session host sidecar
+        shell: pwsh
+        run: |
+          cargo build --release -p obpterm-host
+          New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
+          $triple = (rustc -vV | Select-String 'host: (.+)').Matches[0].Groups[1].Value
+          Copy-Item target/release/obpterm-host.exe "src-tauri/binaries/obpterm-host-$triple.exe"
+          Get-ChildItem src-tauri/binaries
 
       # Smart App Control blocks anything unsigned, and there is no per-app bypass. Add either
       # WINDOWS_SIGN_COMMAND (any signing CLI, `%1` = the file) or WINDOWS_PFX_BASE64 +

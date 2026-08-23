@@ -66,6 +66,13 @@ export class App implements PaneHost {
   private sessionTimer = 0;
   /** Most recently used first. Only ever read through `recent()`. */
   private mru: Tab[] = [];
+  /** The session host's instance id, or null when shells die with the window. */
+  hostInstance: string | null = null;
+  /** Shells the host was holding when this window connected, by id. */
+  private held = new Map<number, import("./transport").HostSession>();
+  private reattachable = false;
+  /** Panes that came back attached to a shell that never stopped. */
+  reattached = 0;
   /** A shrink preset waiting for its second click. */
   armedPreset: Preset | null = null;
   private armedTimer = 0;
@@ -295,6 +302,10 @@ export class App implements PaneHost {
   activate(tab: Tab) {
     const accountChanged = this.tab?.accountId !== tab.accountId;
     this.tab = tab;
+    for (const p of L.panes(tab.root)) {
+      p.lastVisited = Date.now();
+      if (p.asleep) void p.wake().then(() => this.paint());
+    }
     this.mru = [tab, ...this.mru.filter((t) => t !== tab && this.tabs.includes(t))];
     this.clearBells(tab);
     if (accountChanged) void this.status?.refresh();
@@ -566,6 +577,10 @@ export class App implements PaneHost {
     void this.respawnPane(pane);
   }
 
+  onPaneReattached(_pane: Pane) {
+    this.reattached += 1;
+  }
+
   /** A program asked for attention by name — the payload OSC 9 was carrying all along. */
   onPaneNotify(pane: Pane, title: string, body: string) {
     if (this.isFocused(pane)) return;
@@ -618,8 +633,73 @@ export class App implements PaneHost {
     renderRail(this);
   }
 
+  /**
+   * Tabs nobody has looked at for a while lose their terminals — an xterm with a 10k-line
+   * buffer and a WebGL context each is the window's real memory cost, and a dozen of them is
+   * most of it. The shells keep running in the host; clicking the tab brings the terminal
+   * back with the shell's recent output.
+   */
+  async sleepIdleTabs() {
+    const minutes = this.config.sleep_after_minutes;
+    if (!minutes || !this.hostInstance) return;
+    const cutoff = Date.now() - minutes * 60_000;
+    let slept = 0;
+    for (const tab of this.tabs) {
+      if (tab === this.tab) continue;
+      for (const p of L.panes(tab.root)) {
+        if (!p.asleep && !p.exited && p.id > 0 && p.lastVisited < cutoff && !p.logPath) {
+          await p.sleep();
+          slept++;
+        }
+      }
+    }
+    if (slept) this.paint();
+  }
+
+  /** Sleeping panes cannot see their own output; the host says what happened meanwhile. */
+  async refreshHeld() {
+    if (!this.hostInstance) return;
+    const sleeping = this.tabs.flatMap((t) => L.panes(t.root)).filter((p) => p.asleep);
+    if (!sleeping.length) return;
+    const sessions = await this.tp.listSessions().catch(() => []);
+    const byId = new Map(sessions.map((s) => [s.id, s]));
+    let changed = false;
+    for (const p of sleeping) {
+      const held = byId.get(p.id);
+      if (!held) continue;
+      const next = { last_output: held.last_output, bell: held.bell, exited: held.exited };
+      if (JSON.stringify(next) !== JSON.stringify(p.heldState)) changed = true;
+      p.heldState = next;
+    }
+    if (changed) this.paint();
+  }
+
+  async wakeAll() {
+    for (const p of this.tabs.flatMap((t) => L.panes(t.root))) if (p.asleep) await p.wake();
+    this.paint();
+  }
+
+  /** Ends every shell and the host with them, then closes. Closing the window never does this. */
+  async quitAll() {
+    await this.flushSession();
+    await this.tp.hostShutdown().catch(() => {});
+    if (this.tp.native) void import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().close());
+  }
+
+  sleepingCount(): number {
+    return this.tabs.flatMap((t) => L.panes(t.root)).filter((p) => p.asleep).length;
+  }
+
   /** What one pane is doing right now. */
   paneActivity(pane: Pane): Activity {
+    if (pane.asleep) {
+      // The host's word, refreshed every few seconds.
+      const h = pane.heldState;
+      if (!h) return "idle";
+      if (h.exited !== null && h.exited !== 0) return "exited";
+      if (h.bell) return "bell";
+      return Date.now() - h.last_output < ACTIVE_MS ? "running" : "idle";
+    }
     if (pane.exited) return pane.exitCode ? "exited" : "idle";
     if (pane.bell) return "bell";
     return Date.now() - pane.lastOutput < ACTIVE_MS ? "running" : "idle";
@@ -753,7 +833,7 @@ export class App implements PaneHost {
     clearTimeout(this.sessionTimer);
     const active = Math.max(0, this.tab ? this.tabs.indexOf(this.tab) : 0);
     await this.tp
-      .sessionSave(this.tabs.map((t) => this.snapshot(t)), active)
+      .sessionSave(this.tabs.map((t) => this.snapshot(t)), active, this.hostInstance)
       .catch((e) => console.warn("session not saved", e));
   }
 
@@ -766,9 +846,30 @@ export class App implements PaneHost {
   }
 
   /** Returns how the last run ended, so main.ts can say so when it was not a clean exit. */
+  /**
+   * Learns what the host is holding. A saved pty id is only honoured against the instance
+   * that minted it: a host that restarted reuses numbers, and the wrong shell behind a tab
+   * that still calls itself the VPS is the one bug this must never have.
+   */
+  async connectHost(): Promise<void> {
+    const info = await this.tp.hostInfo().catch(() => null);
+    this.hostInstance = info?.connected ? info.instance : null;
+    if (!this.hostInstance) return;
+    const sessions = await this.tp.listSessions().catch(() => []);
+    this.held = new Map(sessions.map((s) => [s.id, s]));
+  }
+
+  /** How many of the host's shells no tab in this window is showing. */
+  orphanedSessions(): number {
+    const shown = new Set(this.tabs.flatMap((t) => L.panes(t.root).map((p) => p.id)));
+    return [...this.held.keys()].filter((id) => !shown.has(id)).length;
+  }
+
   async restoreSession(): Promise<{ restored: number; crashed: boolean; updatedTo: string | null }> {
     if (!this.config.restore_session) return { restored: 0, crashed: false, updatedTo: null };
     const session = await this.tp.sessionLoad().catch(() => null);
+    // Ids from another host instance are just numbers; those panes respawn instead.
+    this.reattachable = !!this.hostInstance && session?.host === this.hostInstance;
     const saved = (session?.tabs as SavedTab[] | null) ?? [];
     let restored = 0;
     for (const tab of Array.isArray(saved) ? saved : []) {
@@ -780,7 +881,7 @@ export class App implements PaneHost {
     if (target) this.activate(target);
     return {
       restored,
-      crashed: restored > 0 && session?.clean_exit === false,
+      crashed: restored > 0 && session?.clean_exit === false && !this.reattached,
       updatedTo: session?.updated_to ?? null,
     };
   }
@@ -796,7 +897,10 @@ export class App implements PaneHost {
     const host = hostId ? this.host(hostId) : null;
     const profile = host ? this.hostProfile(host) : this.config.profiles.find((p) => p.id === wanted);
     if (profile) {
-      return new Pane(this, this.withAccount(profile, saved.account ?? null), node.cwd ?? null);
+      const pane = new Pane(this, this.withAccount(profile, saved.account ?? null), node.cwd ?? null);
+      const held = this.reattachable && node.pty ? this.held.get(node.pty) : undefined;
+      if (held && held.exited === null) pane.attachTo = held.id;
+      return pane;
     }
     const missing = hostId
       ? `[the SSH host "${hostId}" this pane used no longer exists]`

@@ -129,6 +129,19 @@ assert.equal(session.tabs.length, await evaluate("window.obpterm.tabs.length"), 
 assert.match(JSON.stringify(session.tabs), /"kind":"split"/, "the pane tree is on disk too");
 assert.ok(session.saved_at > Date.now() - 60_000, "the snapshot is fresh");
 
+// The session host: a shell started by this window must still be there, with its output,
+// for the next window. Print a marker, drop the page, come back, and expect to read it.
+await evaluate("window.obpterm.tab.active.term.term.write('')");
+await evaluate("void window.obpterm.tp.write(window.obpterm.tab.active.id, 'echo survived-the-window\\n')");
+// Joined, not per line: a narrow pane wraps the marker across several rows.
+const bufferText = (expr) =>
+  `(() => { const b = ${expr}.term.term.buffer.active; let t = ''; for (let i = 0; i < b.length; i++) t += b.getLine(i)?.translateToString(true) ?? ''; return t; })()`;
+await until(`${bufferText("window.obpterm.tab.active")}.includes('survived-the-window')`, "the marker on screen");
+const heldId = await evaluate("window.obpterm.tab.active.id");
+await evaluate("(() => { window.__f = false; window.obpterm.flushSession().then(() => (window.__f = true)); })()");
+await until("window.__f === true", "the session flushed with the pty id");
+assert.match(readFileSync(sessionFile, "utf8"), new RegExp(`"pty":${heldId}`), "the pty id is in the session");
+
 // Crash and reopen: reload without a clean exit, exactly what the app sees after a kill.
 const before = await evaluate("JSON.stringify(window.obpterm.tabs.map(t => window.obpterm.title(t)))");
 await send("Page.navigate", { url });
@@ -141,11 +154,17 @@ assert.ok(
   (await evaluate("document.querySelectorAll('.pane').length")) > JSON.parse(before).length,
   "the split pane came back too",
 );
-// The notice lands after the last pane has spawned, so wait for it rather than racing it.
-await until(
-  "document.querySelector('#toast').textContent.includes('did not shut down cleanly')",
-  "the unclean-exit notice",
+// With a host, coming back is not a crash recovery: the shells never stopped.
+await until("window.obpterm.reattached > 0", "a pane reattached to its surviving shell");
+assert.ok(
+  await evaluate(`window.obpterm.tabs.some(t => window.obpterm.panesOf(t).some(p => p.id === ${heldId}))`),
+  "the same host session id is behind a pane again",
 );
+await until(
+  `${bufferText(`window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${heldId})`)}.includes('survived-the-window')`,
+  "the replayed history in the new terminal",
+);
+await until("document.querySelector('#toast').textContent.includes('never stopped')", "the reattach notice");
 
 // Toolbar presets: the 4-pane button must produce exactly four panes and light up.
 await evaluate("void window.obpterm.applyPreset('4')");
@@ -215,7 +234,8 @@ assert.match(
 await evaluate("window.obpterm.config.accounts.pop(), window.obpterm.persistConfig()");
 assert.equal(await evaluate("window.obpterm.config.accounts.length"), accountsBefore, "and it can be dropped again");
 
-// Ctrl+wheel zooms.
+// Ctrl+wheel zooms. Reset first: every run leaves the size one larger in dev-config.json.
+await evaluate("window.obpterm.zoom(0)");
 const size = await evaluate("window.obpterm.config.font_size");
 await evaluate("document.querySelector('#panes').dispatchEvent(new WheelEvent('wheel', {deltaY: -120, ctrlKey: true, bubbles: true, cancelable: true}))");
 assert.equal(await evaluate("window.obpterm.config.font_size"), size + 1, "ctrl+wheel up grows the font");
@@ -347,7 +367,7 @@ assert.equal(await evaluate("window.obpterm.tabs[1].id"), movedId, "the tab move
 
 // Snippets reach the focused pane through the palette.
 await evaluate(
-  "(() => { window.__sent = ''; window.obpterm.tp.write = (id, d) => { window.__sent += d; return Promise.resolve(); };" +
+  "(() => { window.__sent = ''; window.__realWrite = window.obpterm.tp.write; window.obpterm.tp.write = (id, d) => { window.__sent += d; return Promise.resolve(); };" +
   " window.obpterm.config.snippets = [{id: 's1', name: 'List containers', text: 'docker compose ps', send: true}]; })()",
 );
 await evaluate("window.obpterm.palette.open('list containers')");
@@ -356,6 +376,7 @@ assert.match(await evaluate("document.querySelector('#palette .presult .pgroup')
 await evaluate("document.querySelector('#palette .presult').click()");
 await until("window.__sent.includes('docker compose ps')", "the snippet typed into the pane");
 assert.match(await evaluate("window.__sent"), /\r$/, "send:true presses Enter");
+await evaluate("window.obpterm.tp.write = window.__realWrite"); // everything after this writes to real shells again
 
 await evaluate(`window.obpterm.closeTab(window.obpterm.tabs[${second}])`);
 
@@ -387,6 +408,31 @@ await evaluate("window.obpterm.palette.open('zzzznothing')");
 await until("!!document.querySelector('#palette .pempty')", "the no-matches row");
 await evaluate("window.obpterm.palette.close()");
 
+// Sleep and wake: an unvisited pane loses its terminal, the host keeps the shell, and a click
+// brings the terminal back with the shell's output. The rail keeps reporting on it meanwhile.
+await evaluate("void window.obpterm.newTab()");
+await until("window.obpterm.tabs.length >= 2", "a tab to put to sleep");
+const sleeper = await evaluate("window.obpterm.tabs.length - 1");
+await evaluate(`window.obpterm.activate(window.obpterm.tabs[${sleeper}])`);
+await until(`window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].id > 0`, "its shell");
+await evaluate(`void window.obpterm.tp.write(window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].id, 'echo before-sleep\\n')`);
+await until(`${bufferText(`window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0]`)}.includes('before-sleep')`, "output before sleeping");
+await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+await evaluate(`(() => { window.obpterm.config.sleep_after_minutes = 1; window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].lastVisited = 0; })()`);
+await evaluate("void window.obpterm.sleepIdleTabs()");
+await until(`window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].asleep === true`, "the pane asleep");
+assert.equal(await evaluate(`window.obpterm.tabs[${sleeper}].el.querySelector('.xterm') === null`), true, "its terminal is gone");
+assert.match(await evaluate("document.querySelector('#host-chip').textContent"), /1 asleep/, "the status bar says so");
+// Output while asleep is the host's to report.
+await evaluate(`void window.obpterm.tp.write(window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].id, 'printf "\\a"\\n')`);
+await evaluate("void window.obpterm.refreshHeld()");
+await until(`window.obpterm.activity(window.obpterm.tabs[${sleeper}]) === 'bell'`, "a bell seen by the host while asleep");
+await evaluate(`window.obpterm.activate(window.obpterm.tabs[${sleeper}])`);
+await until(`window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].asleep === false`, "the pane awake");
+await until(`${bufferText(`window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0]`)}.includes('before-sleep')`, "the replay after waking");
+await evaluate(`window.obpterm.closeTab(window.obpterm.tabs[${sleeper}])`);
+await evaluate("window.obpterm.config.sleep_after_minutes = 10");
+
 // ---- settings, as a sheet in this same window ------------------------------------------------
 await evaluate("window.obpterm.settings.open('hosts')");
 await until("!document.querySelector('#settings').hidden", "the settings sheet");
@@ -403,8 +449,18 @@ await until("document.querySelector('#settings .sw-item.on b').textContent === '
 await evaluate("[...document.querySelectorAll('#settings .sw-btn')].find(b => b.textContent === 'Delete').click()");
 await until(`document.querySelectorAll('#settings .sw-item').length === ${hostRows}`, "the host deleted again");
 
+// The login switcher: lists the saved profiles, marks the live one, and a switch moves it.
+await evaluate("[...document.querySelectorAll('#settings .sw-nav button')].find(b => b.textContent.startsWith('Claude logins')).click()");
+await until("document.querySelectorAll('#settings .sw-item').length === 2", "two saved logins");
+assert.equal(await evaluate("document.querySelector('#settings .sw-item.on b').textContent"), "personal");
+await evaluate("[...document.querySelectorAll('#settings .sw-btn')].find(b => b.textContent === 'Switch to').click()");
+await until("document.querySelector('#settings .sw-item.on b')?.textContent === 'is'", "the switch landing");
+assert.match(await evaluate("document.querySelector('#toast').textContent"), /Switched to is/);
+await evaluate("[...document.querySelectorAll('#settings .sw-btn')].find(b => b.textContent === 'Switch to').click()");
+await until("document.querySelector('#settings .sw-item.on b')?.textContent === 'personal'", "and back");
+
 // Every section renders; a section that throws would leave the body empty.
-for (const title of ["Terminal", "Appearance", "Rail", "Startup", "Profiles", "Accounts", "Projects", "Keyboard", "Updates", "Files"]) {
+for (const title of ["Terminal", "Appearance", "Rail", "Startup", "Profiles", "Accounts", "Claude logins", "Projects", "Keyboard", "Updates", "Files"]) {
   await evaluate(`[...document.querySelectorAll('#settings .sw-nav button')].find(b => b.textContent.startsWith(${JSON.stringify(title)}))?.click()`);
   await until("!!document.querySelector('#settings .sw-main').firstElementChild", `the ${title} section`);
 }

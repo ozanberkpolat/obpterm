@@ -7,3 +7,5 @@ src-tauri/gen/
 dist-test/
 signing.conf.json
 dev-session.json
+src-tauri/binaries/
+target/
