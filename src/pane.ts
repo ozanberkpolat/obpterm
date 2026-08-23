@@ -63,6 +63,8 @@ export class Pane {
   claudeSessionId: string | null = null;
   /** The shell was `/exit`ed on purpose to free the agent's memory; wake resumes it. */
   eco = false;
+  /** Cold restore of claude typed into a plain shell: type `claude --resume <this>` once up. */
+  typeResume: string | null = null;
   logPath: string | null = null;
 
   constructor(

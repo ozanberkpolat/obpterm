@@ -1035,17 +1035,26 @@ export class App implements PaneHost {
     if (profile) {
       let effective = this.withAccount(profile, saved.account ?? null);
       const held = this.reattachable && node.pty ? this.held.get(node.pty) : undefined;
+      let typeResume: string | null = null;
       if (!held && node.claude) {
-        // The host (and the shell) are gone — a reboot. The conversation is not: strip the
-        // minted --session-id and resume the saved one instead.
-        const args: string[] = [];
-        for (let i = 0; i < effective.args.length; i++) {
-          if (effective.args[i] === "--session-id") { i++; continue; }
-          args.push(effective.args[i]!);
+        // The host (and the shell) are gone — a reboot. The conversation is not. A claude
+        // profile takes --resume in its own args; but claude typed into a plain shell must be
+        // resumed by TYPING again — appending --resume to pwsh.exe made every restored pane
+        // error out (found the morning after v0.10.0).
+        const runsClaude = `${effective.exe} ${effective.args.join(" ")}`.toLowerCase().includes("claude");
+        if (runsClaude) {
+          const args: string[] = [];
+          for (let i = 0; i < effective.args.length; i++) {
+            if (effective.args[i] === "--session-id") { i++; continue; }
+            args.push(effective.args[i]!);
+          }
+          effective = { ...effective, args: [...args, "--resume", node.claude] };
+        } else {
+          typeResume = node.claude;
         }
-        effective = { ...effective, args: [...args, "--resume", node.claude] };
       }
       const pane = new Pane(this, effective, node.cwd ?? null);
+      pane.typeResume = typeResume;
       pane.claudeSessionId = node.claude ?? null;
       if (held && held.exited === null) {
         pane.attachTo = held.id;
@@ -1092,6 +1101,13 @@ export class App implements PaneHost {
     this.layout(tab);
     // ConPTY spawns are independent: 24 panes should not be 24 round trips in series.
     await Promise.all(list.map((p) => this.startPane(tab, p)));
+    for (const p of list) {
+      if (!p.typeResume || p.exited || p.id < 0) continue;
+      const id = p.typeResume;
+      p.typeResume = null;
+      // Give the shell a moment to draw its prompt before typing into it (same as signIn).
+      window.setTimeout(() => !p.exited && void this.tp.write(p.id, `claude --resume ${id}\r`).catch(() => {}), 900);
+    }
     return true;
   }
 
