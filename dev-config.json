@@ -1,0 +1,19 @@
+{
+  "default_profile": "bash",
+  "profiles": [
+    { "id": "bash", "name": "bash", "exe": "/bin/bash", "args": ["-l"], "cwd": null },
+    { "id": "sh", "name": "sh", "exe": "/bin/sh", "args": [], "cwd": null }
+  ],
+  "font_family": "JetBrains Mono, Cascadia Mono, Consolas, monospace",
+  "font_size": 14,
+  "scrollback": 10000,
+  "rail_collapsed": false,
+  "theme": {
+    "background": "#0a0e14", "foreground": "#eaf0f7", "cursor": "#ff8a1e", "cursorAccent": "#0a0e14",
+    "selectionBackground": "rgba(255,138,30,0.28)",
+    "black": "#141a24", "red": "#ff6b73", "green": "#2fd6a3", "yellow": "#ffb454",
+    "blue": "#4c8dff", "magenta": "#b48cff", "cyan": "#22d3ee", "white": "#c9d3e0",
+    "brightBlack": "#5b6878", "brightRed": "#ff7a85", "brightGreen": "#5ee8bd", "brightYellow": "#ffc97a",
+    "brightBlue": "#7aaaff", "brightMagenta": "#cbb0ff", "brightCyan": "#67e3f5", "brightWhite": "#eaf0f7"
+  }
+}

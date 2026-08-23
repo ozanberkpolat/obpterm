@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>winterm</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <nav id="rail" aria-label="Tabs">
+        <div id="rail-head"><span class="brand">winterm</span><button id="rail-toggle" title="Toggle rail (Ctrl+Shift+B)">‹</button></div>
+        <ul id="tabs"></ul>
+        <div id="rail-foot"><button id="new-tab" title="New tab (Ctrl+Shift+T). Right-click / long-press: pick profile">+</button></div>
+      </nav>
+      <main id="panes"></main>
+      <div id="profile-menu" hidden></div>
+      <div id="toast" hidden></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

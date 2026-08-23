@@ -1,0 +1,33 @@
+[package]
+name = "winterm"
+version = "0.1.0"
+description = "Vertical-tab terminal for Windows: pwsh / PowerShell / cmd over ConPTY"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "winterm_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-window-state = "2"
+tauri-plugin-clipboard-manager = "2"
+portable-pty = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+# Pinned to what tauri 2.11 itself uses; mismatched versions = two incompatible ICoreWebView2 types.
+webview2-com = "0.38"
+windows = { version = "0.61", features = ["Win32_Foundation"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
