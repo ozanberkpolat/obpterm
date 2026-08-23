@@ -50,14 +50,14 @@ pub fn pty_spawn(
 
     let mut cmd = CommandBuilder::new(&profile.exe);
     cmd.args(&profile.args);
-    if let Some(cwd) = usable_cwd(profile.cwd.clone()) {
+    if let Some(cwd) = usable_cwd(profile.cwd.as_deref().map(expand_vars)) {
         cmd.cwd(cwd);
     }
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     cmd.env("WINTERM", env!("CARGO_PKG_VERSION"));
     for (k, v) in &profile.env {
-        cmd.env(k, v);
+        cmd.env(k, expand_vars(v));
     }
 
     let child = pair
@@ -172,6 +172,44 @@ pub fn kill_all(sessions: &Sessions) {
     }
 }
 
+/// Expands `%NAME%` (and a leading `~`) in a config value — CreateProcess does not, so an
+/// account whose CLAUDE_CONFIG_DIR reads `%USERPROFILE%\.claude-work` would otherwise create a
+/// folder with a literal percent sign in its name.
+fn expand_vars(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut rest = if let Some(tail) = value.strip_prefix('~') {
+        out.push_str(&home_dir().unwrap_or_default());
+        tail
+    } else {
+        value
+    };
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        match after.find('%') {
+            Some(end) => {
+                let name = &after[..end];
+                match std::env::var(name) {
+                    Ok(v) => out.push_str(&v),
+                    // An unset variable stays literal rather than silently becoming "".
+                    Err(_) => {
+                        out.push('%');
+                        out.push_str(name);
+                        out.push('%');
+                    }
+                }
+                rest = &after[end + 1..];
+            }
+            None => {
+                out.push_str(&rest[start..]);
+                return out;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 fn home_dir() -> Option<String> {
     std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()
 }
@@ -190,5 +228,19 @@ fn usable_cwd(cwd: Option<String>) -> Option<String> {
             eprintln!("OBPTerm: cannot use {cwd} ({e}), starting in the home directory instead");
             home_dir()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expand_vars;
+
+    #[test]
+    fn config_values_expand_the_way_people_type_them() {
+        std::env::set_var("OBPTERM_TEST_HOME", "X:\\users\\me");
+        assert_eq!(expand_vars("%OBPTERM_TEST_HOME%\\.claude"), "X:\\users\\me\\.claude");
+        assert_eq!(expand_vars("plain\\path"), "plain\\path");
+        assert_eq!(expand_vars("%NOT_SET_ANYWHERE%\\x"), "%NOT_SET_ANYWHERE%\\x", "unset stays literal");
+        assert_eq!(expand_vars("50% done"), "50% done", "a lone percent is not a variable");
     }
 }

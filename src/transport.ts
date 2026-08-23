@@ -77,6 +77,14 @@ export interface Project {
   collapsed: boolean;
 }
 
+export interface ReleaseInfo {
+  version: string;
+  name: string;
+  url: string;
+  notes: string;
+  newer: boolean;
+}
+
 export interface HostMetrics {
   cpu: number;
   mem_used: number;
@@ -128,7 +136,10 @@ export interface Transport {
   hostMetrics(cwd: string | null): Promise<HostMetrics>;
   appVersion(): Promise<string>;
   /** Writes the installer to a temp file, launches it and quits. */
-  runInstaller(name: string, version: string, bytes: Uint8Array): Promise<string>;
+  /** Asks GitHub for the newest release (done in Rust: the webview cannot follow GitHub's asset redirect). */
+  updateCheck(repo: string, token: string | null): Promise<ReleaseInfo>;
+  /** Downloads that release's installer and runs it; the app exits on success. */
+  updateInstall(release: ReleaseInfo, token: string | null): Promise<string>;
   /** Logins Claude Code has stored in a config dir. */
   claudeAccountNames(dir: string): Promise<string[]>;
   sessionLoad(): Promise<Session>;

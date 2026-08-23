@@ -1,6 +1,6 @@
 // Browser dev loop: `npm run devserver` (node-pty behind a WebSocket on :1421) + `npm run dev`.
 // Wire format: JSON text frames for control, binary frames = 4-byte big-endian session id + bytes.
-import type { ClaudeAccount, ClaudeUsage, Config, HostMetrics, Profile, Session, Transport } from "./transport";
+import type { ClaudeAccount, ClaudeUsage, Config, HostMetrics, Profile, ReleaseInfo, Session, Transport } from "./transport";
 
 type Msg = { t: string; id?: number; reqId?: number; [k: string]: unknown };
 
@@ -58,8 +58,20 @@ export function wsTransport(): Transport {
     logStop: async (id) => void (await call("log_stop", { id })),
     hostMetrics: async (cwd) => (await call("host_metrics", { cwd })).metrics as HostMetrics,
     appVersion: async () => (await call("app_version")).version as string,
-    runInstaller: async (name) => {
-      throw new Error(`installers only run in the app, not the browser (${name})`);
+    updateCheck: async (repo) => {
+      const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`);
+      const release = (await res.json()) as { tag_name?: string; body?: string; assets?: { name: string; browser_download_url: string }[] };
+      const asset = release.assets?.find((a) => a.name.endsWith("-setup.exe"));
+      return {
+        version: (release.tag_name ?? "0").replace(/^v/, ""),
+        name: asset?.name ?? "",
+        url: asset?.browser_download_url ?? "",
+        notes: release.body ?? "",
+        newer: false, // the browser build is never the thing being updated
+      } satisfies ReleaseInfo;
+    },
+    updateInstall: async (release) => {
+      throw new Error(`installers only run in the app, not the browser (${release.name})`);
     },
     claudeAccountNames: async (dir) => (await call("claude_account_names", { dir })).names as string[],
     sessionLoad: async () => (await call("session_load")).session as Session,

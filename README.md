@@ -185,7 +185,9 @@ repository, add a token with read access to its releases:
 ```
 
 Nothing is downloaded until you press the button a second time, and the installer is run from
-`%TEMP%`.
+`%TEMP%`. The check and the download both happen in the Rust process, not the webview: GitHub
+redirects release assets to a host that sends no CORS headers, so a browser `fetch` of one fails
+with a bare "Failed to fetch".
 
 ## Host book
 
@@ -198,6 +200,10 @@ Nothing is downloaded until you press the button a second time, and the installe
 `Ctrl+Shift+H`, the target chip, or right-clicking `+ Tab` opens one in a new tab (`ssh.exe`
 with the right arguments); the host book also offers to split the current tab with one. A host
 tab remembers its target across restarts, and `project` drops it straight into that project.
+
+`%USERPROFILE%`-style variables (and a leading `~`) are expanded in `cwd` and in an account's
+environment values, since Windows does not expand them for a spawned process. An unset variable
+is left as written rather than turning into an empty path.
 
 ## Sessions and crashes
 

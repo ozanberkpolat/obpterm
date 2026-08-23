@@ -19,7 +19,7 @@
     }
   ],
   "font_family": "JetBrains Mono, Cascadia Mono, Consolas, monospace",
-  "font_size": 20,
+  "font_size": 22,
   "scrollback": 10000,
   "rail_collapsed": false,
   "rail_width": 300,
@@ -313,6 +313,33 @@
     },
     {
       "id": "pmt5kz3o0",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5lit20",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5lj350",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5ljbbj",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,

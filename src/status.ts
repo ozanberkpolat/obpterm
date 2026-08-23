@@ -3,7 +3,7 @@
 // obpterm can see locally, not Anthropic's own accounting of the plan window.
 import type { App } from "./app";
 import { openMenu } from "./menu";
-import type { Account, ClaudeAccount, ClaudeUsage, HostMetrics } from "./transport";
+import type { Account, ClaudeAccount, ClaudeUsage, HostMetrics, ReleaseInfo } from "./transport";
 import { toast } from "./ui";
 
 const REFRESH_MS = 60_000;
@@ -23,7 +23,7 @@ export class Status {
   /** Logins Claude Code itself keeps in the current account's config dir. */
   private logins: string[] = [];
   private metrics: HostMetrics | null = null;
-  private pendingUpdate: { version: string; name: string; url: string } | null = null;
+  private pendingUpdate: ReleaseInfo | null = null;
   private usage: ClaudeUsage | null = null;
   private lastDir: string | null = null;
 
@@ -101,8 +101,9 @@ export class Status {
   }
 
   /**
-   * Asks GitHub for the newest release. The repo is private, so `github_token` from config.json
-   * is sent when it is there; a public repo needs nothing.
+   * Asks GitHub for the newest release. Both the query and the download happen in Rust: the
+   * webview cannot fetch a release asset, because GitHub redirects it to a host that sends no
+   * CORS headers, and the fetch fails with a bare "Failed to fetch".
    */
   async checkUpdates() {
     if (this.pendingUpdate) return void this.install();
@@ -111,20 +112,16 @@ export class Status {
     this.updateEl.textContent = "Checking…";
     this.updateEl.disabled = true;
     try {
-      const current = await this.app.tp.appVersion();
-      const release = await this.fetchJson(`https://api.github.com/repos/${repo}/releases/latest`);
-      const latest = String(release.tag_name ?? "").replace(/^v/, "");
-      const asset = (release.assets ?? []).find((a: { name: string }) => a.name.endsWith("-setup.exe"));
-      if (!latest || !asset) throw new Error("that release has no installer attached");
-      if (compareVersions(latest, current) <= 0) {
+      const release = await this.app.tp.updateCheck(repo, this.app.config.github_token);
+      if (!release.newer) {
         this.updateEl.textContent = "App is up to date";
-        this.updateEl.title = `${current} is the newest release`;
+        this.updateEl.title = `${await this.app.tp.appVersion()} is the newest release`;
         return;
       }
-      this.pendingUpdate = { version: latest, name: asset.name, url: asset.url };
+      this.pendingUpdate = release;
       this.updateEl.classList.add("has-update");
-      this.updateEl.textContent = `Update to ${latest}`;
-      this.updateEl.title = `Downloads and runs ${asset.name}, then closes OBPTerm`;
+      this.updateEl.textContent = `Update to ${release.version}`;
+      this.updateEl.title = `Installs ${release.name} and restarts OBPTerm with your tabs`;
     } catch (e) {
       this.updateEl.textContent = "Check for updates";
       toast(`Update check failed: ${e}`);
@@ -138,35 +135,14 @@ export class Status {
     this.updateEl.disabled = true;
     this.updateEl.textContent = `Downloading ${update.version}…`;
     try {
-      // The asset API URL needs the octet-stream Accept header to return the file itself.
-      const res = await fetch(update.url, { headers: { ...this.ghHeaders(), Accept: "application/octet-stream" } });
-      if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
-      const bytes = new Uint8Array(await res.arrayBuffer());
       await this.app.flushSession();
+      await this.app.tp.updateInstall(update, this.app.config.github_token);
       this.updateEl.textContent = "Installing, OBPTerm will restart…";
-      await this.app.tp.runInstaller(update.name, update.version, bytes);
     } catch (e) {
       this.updateEl.disabled = false;
       this.updateEl.textContent = `Update to ${update.version}`;
       toast(`Update failed: ${e}`);
     }
-  }
-
-  private ghHeaders(): Record<string, string> {
-    const token = this.app.config.github_token;
-    return {
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
-  }
-
-  private async fetchJson(url: string) {
-    const res = await fetch(url, { headers: { ...this.ghHeaders(), Accept: "application/vnd.github+json" } });
-    if (res.status === 404) {
-      throw new Error("release not found — a private repo needs github_token in config.json");
-    }
-    if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
-    return res.json();
   }
 
   paint() {
@@ -312,17 +288,6 @@ function share(used: number, total: number): number {
 
 function gb(bytes: number): string {
   return bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)}G` : `${Math.round(bytes / 1024 ** 2)}M`;
-}
-
-/** Plain numeric compare of dotted versions; suffixes like "-beta" sort before the release. */
-export function compareVersions(a: string, b: string): number {
-  const parts = (v: string) => v.split(/[.-]/).map((p) => (/^\d+$/.test(p) ? Number(p) : -1));
-  const [x, y] = [parts(a), parts(b)];
-  for (let i = 0; i < Math.max(x.length, y.length); i++) {
-    const d = (x[i] ?? 0) - (y[i] ?? 0);
-    if (d) return d < 0 ? -1 : 1;
-  }
-  return 0;
 }
 
 function fmt(n: number): string {

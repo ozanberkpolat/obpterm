@@ -32,7 +32,8 @@ pub fn run() {
             claude::claude_usage,
             metrics::host_metrics,
             update::app_version,
-            update::run_installer,
+            update::update_check,
+            update::update_install,
         ])
         .setup(|app| {
             let main = app.get_webview_window("main").expect("main window");
