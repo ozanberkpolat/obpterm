@@ -17,6 +17,22 @@ fn shell(script_win: &str, script_unix: &str) -> Spawn {
     Spawn { exe, args, cwd: None, env: Default::default(), cols: 80, rows: 24 }
 }
 
+/// Everything a channel delivered, verbatim, so a CI-only failure says what actually arrived.
+async fn drain_log(rx: &mut mpsc::UnboundedReceiver<Delivery>, until: Duration) -> Vec<String> {
+    let mut log = Vec::new();
+    let deadline = tokio::time::Instant::now() + until;
+    while let Ok(Some(d)) = tokio::time::timeout_at(deadline, rx.recv()).await {
+        log.push(match &d {
+            Delivery::Output(b) => format!("Output({} bytes: {:?})", b.len(), String::from_utf8_lossy(&b[..b.len().min(60)])),
+            other => format!("{other:?}"),
+        });
+        if matches!(d, Delivery::Exit(_)) {
+            break;
+        }
+    }
+    log
+}
+
 async fn collect(rx: &mut mpsc::UnboundedReceiver<Delivery>, until: Duration) -> (Vec<u8>, bool, Option<Option<u32>>) {
     let mut bytes = Vec::new();
     let mut live = false;
@@ -48,14 +64,17 @@ async fn a_shell_outlives_the_connection_that_started_it() {
         let c1 = Client::connect(&advert).await.expect("connect");
         assert_eq!(c1.instance, advert.instance);
         let id = c1
-            .spawn(shell("echo marker-from-the-shell & timeout /t 30 >nul", "echo marker-from-the-shell; sleep 30"))
+            // ping, not `timeout /t`: timeout refuses to run when stdin is not a console.
+            .spawn(shell("echo marker-from-the-shell & ping -n 30 127.0.0.1 >nul", "echo marker-from-the-shell; sleep 30"))
             .await
             .expect("spawn");
         let (tx, mut rx) = mpsc::unbounded_channel();
         c1.attach(id, 80, 24, tx).await.expect("attach");
-        let (bytes, live, _) = collect(&mut rx, Duration::from_secs(3)).await;
-        assert!(live, "attach ends with Live");
-        assert!(String::from_utf8_lossy(&bytes).contains("marker-from-the-shell"), "saw the shell's output live");
+        let (bytes, live, _) = collect(&mut rx, Duration::from_secs(5)).await;
+        let seen = String::from_utf8_lossy(&bytes).into_owned();
+        let tail = drain_log(&mut rx, Duration::from_millis(200)).await;
+        assert!(live, "attach never reached Live; got {} bytes {seen:?}, then {tail:?}", bytes.len());
+        assert!(seen.contains("marker-from-the-shell"), "no marker in the live output: {seen:?}");
         id
         // c1 dropped here: the socket closes, the host detaches, the shell keeps running.
     };
@@ -105,8 +124,14 @@ async fn a_finished_shell_is_reported_on_attach_not_lost() {
     // Nobody was attached when it exited. Attaching now must still deliver the exit.
     let (tx, mut rx) = mpsc::unbounded_channel();
     c.attach(id, 80, 24, tx).await.unwrap();
-    let (_, _, exit) = collect(&mut rx, Duration::from_secs(2)).await;
-    assert_eq!(exit, Some(Some(3)), "the exit code waits for the next window");
+    let (bytes, live, exit) = collect(&mut rx, Duration::from_secs(5)).await;
+    assert_eq!(
+        exit,
+        Some(Some(3)),
+        "the exit code waits for the next window; live={live}, {} bytes: {:?}",
+        bytes.len(),
+        String::from_utf8_lossy(&bytes)
+    );
 
     c.shutdown();
     let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
