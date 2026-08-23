@@ -169,6 +169,21 @@ await until(
 );
 await until("document.querySelector('#toast').textContent.includes('never stopped')", "the reattach notice");
 
+
+// Reboot: the host instance in the session file is stale, and claude had been TYPED into a
+// plain shell — the restore must TYPE `claude --resume` into the new shell, not hand
+// --resume to the shell's own args (the v0.10.0 bug that errored every restored pane).
+await evaluate("window.obpterm.tab.active.claudeSessionId = 'sess-reboot-1'");
+await evaluate("window.obpterm.hostInstance = 'rebooted-instance'");
+await evaluate("(() => { window.__rb = false; window.obpterm.flushSession().then(() => (window.__rb = true)); })()");
+await until("window.__rb === true", "the session flushed with the stale instance");
+await send("Page.navigate", { url });
+await until("!!window.obpterm?.tabs?.length", "the app after the reboot");
+await until(
+  `${bufferText("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.claudeSessionId === 'sess-reboot-1')")}.includes('claude --resume sess-reboot-1')`,
+  "the typed resume after a reboot",
+);
+
 // Toolbar presets: the 4-pane button must produce exactly four panes and light up.
 await evaluate("void window.obpterm.applyPreset('4')");
 await until("document.querySelectorAll('.pane').length === 4", "the 4-pane preset");
