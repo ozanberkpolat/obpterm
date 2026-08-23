@@ -309,6 +309,8 @@ pub struct Session {
     pub saved_at: i64,
     /// Shape owned by the frontend (SavedTab[] from src/app.ts).
     pub tabs: serde_json::Value,
+    /// Set when the exit was an installer restart, so the next launch says "updated", not "crashed".
+    pub updated_to: Option<String>,
 }
 
 #[tauri::command]
@@ -320,21 +322,34 @@ pub fn session_load(app: AppHandle) -> Result<Session, String> {
     }
     // Before 0.3.0 the tabs lived in config.json.
     let legacy = config_load(app)?.session.unwrap_or(serde_json::Value::Null);
-    Ok(Session { clean_exit: true, saved_at: 0, tabs: legacy })
+    Ok(Session { clean_exit: true, saved_at: 0, tabs: legacy, updated_to: None })
 }
 
 #[tauri::command]
 pub fn session_save(app: AppHandle, tabs: serde_json::Value) -> Result<(), String> {
-    let session = Session { clean_exit: false, saved_at: now_ms(), tabs };
+    let session = Session { clean_exit: false, saved_at: now_ms(), tabs, updated_to: None };
     write_atomic(&session_path(&app)?, &serde_json::to_string(&session).map_err(|e| e.to_string())?)
+}
+
+/// The installer is about to kill us on purpose: record that, so the relaunch reports an update
+/// rather than a crash.
+pub fn mark_updating(app: &AppHandle, version: &str) {
+    edit_session(app, |s| {
+        s.clean_exit = true;
+        s.updated_to = Some(version.to_string());
+    });
 }
 
 /// Called when the window closes normally, so the next launch knows this was not a crash.
 pub fn mark_clean_exit(app: &AppHandle) {
+    edit_session(app, |s| s.clean_exit = true);
+}
+
+fn edit_session(app: &AppHandle, change: impl FnOnce(&mut Session)) {
     let Ok(path) = session_path(app) else { return };
     let Ok(text) = std::fs::read_to_string(&path) else { return };
     let Ok(mut session) = serde_json::from_str::<Session>(&text) else { return };
-    session.clean_exit = true;
+    change(&mut session);
     if let Ok(text) = serde_json::to_string(&session) {
         let _ = write_atomic(&path, &text);
     }
@@ -369,6 +384,7 @@ mod tests {
             clean_exit: false,
             saved_at: 1_787_463_711_904,
             tabs: serde_json::json!([{ "root": { "kind": "leaf", "profile": "pwsh" } }]),
+            updated_to: Some("0.4.1".into()),
         };
         let text = serde_json::to_string(&session).unwrap();
         assert_eq!(serde_json::from_str::<Session>(&text).unwrap(), session);

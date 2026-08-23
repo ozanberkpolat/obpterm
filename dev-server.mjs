@@ -61,9 +61,19 @@ wss.on("connection", (ws) => {
           catch { return reply(m.reqId, { session: { clean_exit: true, saved_at: 0, tabs: null } }); }
         }
         case "session_save":
-          writeFileSync(SESSION, JSON.stringify({ clean_exit: false, saved_at: Date.now(), tabs: m.tabs }));
+          writeFileSync(SESSION, JSON.stringify({ clean_exit: false, saved_at: Date.now(), tabs: m.tabs, updated_to: null }));
           return reply(m.reqId);
         case "claude_account": return reply(m.reqId, { account: claudeAccount(m.dir) });
+        case "claude_account_names": {
+          try {
+            return reply(m.reqId, {
+              names: readdirSync(`${m.dir}/accounts`, { withFileTypes: true })
+                .filter((d) => d.isDirectory())
+                .map((d) => d.name)
+                .sort(),
+            });
+          } catch { return reply(m.reqId, { names: [] }); }
+        }
         case "claude_usage": return reply(m.reqId, { usage: claudeUsage(m.dir) });
         case "config_load": return reply(m.reqId, { config: JSON.parse(readFileSync(CONFIG, "utf8")) });
         case "config_save": writeFileSync(CONFIG, JSON.stringify(m.config, null, 2) + "\n"); return reply(m.reqId);

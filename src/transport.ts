@@ -62,6 +62,8 @@ export interface Session {
   clean_exit: boolean;
   saved_at: number;
   tabs: unknown;
+  /** Version just installed, when the last exit was an update restart. */
+  updated_to: string | null;
 }
 
 export interface Project {
@@ -126,7 +128,9 @@ export interface Transport {
   hostMetrics(cwd: string | null): Promise<HostMetrics>;
   appVersion(): Promise<string>;
   /** Writes the installer to a temp file, launches it and quits. */
-  runInstaller(name: string, bytes: Uint8Array): Promise<string>;
+  runInstaller(name: string, version: string, bytes: Uint8Array): Promise<string>;
+  /** Logins Claude Code has stored in a config dir. */
+  claudeAccountNames(dir: string): Promise<string[]>;
   sessionLoad(): Promise<Session>;
   sessionSave(tabs: unknown): Promise<void>;
   claudeAccount(dir: string): Promise<ClaudeAccount>;

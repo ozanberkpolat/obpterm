@@ -20,6 +20,8 @@ export class Status {
   private metricsEl = document.querySelector<HTMLElement>("#metrics")!;
   private updateEl = document.querySelector<HTMLButtonElement>("#update-chip")!;
   private login: ClaudeAccount | null = null;
+  /** Logins Claude Code itself keeps in the current account's config dir. */
+  private logins: string[] = [];
   private metrics: HostMetrics | null = null;
   private pendingUpdate: { version: string; name: string; url: string } | null = null;
   private usage: ClaudeUsage | null = null;
@@ -47,6 +49,7 @@ export class Status {
     const dir = this.current()?.claude_dir ?? null;
     if (!dir) {
       this.login = null;
+      this.logins = [];
       this.usage = null;
       this.lastDir = null;
       return this.paint();
@@ -54,7 +57,10 @@ export class Status {
     try {
       const fresh = dir !== this.lastDir;
       this.lastDir = dir;
-      if (fresh) this.login = await this.app.tp.claudeAccount(dir);
+      if (fresh) {
+        this.login = await this.app.tp.claudeAccount(dir);
+        this.logins = await this.app.tp.claudeAccountNames(dir).catch(() => []);
+      }
       this.usage = await this.app.tp.claudeUsage(dir);
     } catch (e) {
       console.warn("usage unavailable", e);
@@ -137,8 +143,8 @@ export class Status {
       if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
       const bytes = new Uint8Array(await res.arrayBuffer());
       await this.app.flushSession();
-      this.updateEl.textContent = "Starting installer…";
-      await this.app.tp.runInstaller(update.name, bytes);
+      this.updateEl.textContent = "Installing, OBPTerm will restart…";
+      await this.app.tp.runInstaller(update.name, update.version, bytes);
     } catch (e) {
       this.updateEl.disabled = false;
       this.updateEl.textContent = `Update to ${update.version}`;
@@ -177,6 +183,7 @@ export class Status {
             `Account: ${account.name}`,
             this.login?.organization ? `Org: ${this.login.organization}` : null,
             this.login?.tier ? `Plan: ${this.login.tier}` : null,
+            this.login?.name ? `Claude Code login: ${this.login.name}` : null,
             Object.entries(account.env).map(([k, v]) => `${k}=${v}`).join("\n") || "no extra environment",
             "Click to open a tab under another account.",
           ]
@@ -238,7 +245,20 @@ export class Status {
           toast(`New tabs use ${a.name}`);
         },
       })),
+      { label: "Add a Claude Code account…", onPick: () => this.app.addClaudeAccount() },
       { label: "Manage accounts…", onPick: () => this.app.settings.open("accounts") },
+      ...(this.logins.length > 1
+        ? [
+            {
+              label: `This folder holds ${this.logins.length} logins: ${this.logins.join(", ")}`,
+              hint: "use /login",
+              onPick: () =>
+                toast(
+                  "Claude Code keeps those logins in one folder and only its own /login can switch between them. Give each account its own CLAUDE_CONFIG_DIR to switch from here.",
+                ),
+            },
+          ]
+        : []),
     ]);
   }
 

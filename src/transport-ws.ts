@@ -61,6 +61,7 @@ export function wsTransport(): Transport {
     runInstaller: async (name) => {
       throw new Error(`installers only run in the app, not the browser (${name})`);
     },
+    claudeAccountNames: async (dir) => (await call("claude_account_names", { dir })).names as string[],
     sessionLoad: async () => (await call("session_load")).session as Session,
     sessionSave: async (tabs) => void (await call("session_save", { tabs })),
     claudeAccount: async (dir) => (await call("claude_account", { dir })).account as ClaudeAccount,

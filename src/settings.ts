@@ -17,6 +17,8 @@ interface Section<T> {
   title: string;
   hint: string;
   fields: Field[];
+  /** Extra per-row buttons, e.g. "Sign in" on an account. */
+  actions?: { label: string; title: string; run(app: App, item: T): void }[];
   list(app: App): T[];
   create(app: App): T;
   remove(app: App, item: T): void;
@@ -53,7 +55,21 @@ const SECTIONS: Section<Record<string, unknown>>[] = [
   {
     id: "accounts",
     title: "Accounts",
-    hint: "Environment presets for new shells. CLAUDE_CONFIG_DIR, AZURE_CONFIG_DIR, AWS_PROFILE…",
+    hint:
+      "Environment presets for new shells. Give each Claude Code login its own CLAUDE_CONFIG_DIR, " +
+      "then press Sign in to run `claude auth login` under it.",
+    actions: [
+      {
+        label: "Sign in",
+        title: "Open a tab under this account and run `claude auth login`",
+        run: (app, item) => void app.signIn(item as unknown as Account),
+      },
+      {
+        label: "New tab",
+        title: "Open a shell under this account",
+        run: (app, item) => void app.newTab(undefined, undefined, null, (item as unknown as Account).id),
+      },
+    ],
     fields: [
       { key: "name", label: "Name", placeholder: "Work" },
       { key: "env", label: "Environment", placeholder: "CLAUDE_CONFIG_DIR=C:\\Users\\you\\.claude-work", kind: "kv" },
@@ -171,6 +187,15 @@ function row(app: App, section: Section<Record<string, unknown>>, item: Record<s
   const el = document.createElement("div");
   el.className = "row";
   for (const field of section.fields) el.appendChild(input(app, field, item, rerender));
+
+  for (const action of section.actions ?? []) {
+    const b = document.createElement("button");
+    b.className = "act";
+    b.textContent = action.label;
+    b.title = action.title;
+    b.onclick = () => action.run(app, item);
+    el.appendChild(b);
+  }
 
   const del = document.createElement("button");
   del.className = "del";

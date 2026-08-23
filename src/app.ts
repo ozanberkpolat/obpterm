@@ -118,6 +118,37 @@ export class App implements PaneHost {
     return { ...profile, env: { ...(profile.env ?? {}), ...account.env } };
   }
 
+  /**
+   * Adds a second Claude Code login the safe way: its own `CLAUDE_CONFIG_DIR`, then a tab under
+   * that account running `claude auth login`. Nothing copies or rewrites a credential file —
+   * Claude Code creates the folder and signs in itself.
+   */
+  async addClaudeAccount() {
+    const home = this.config.default_cwd?.match(/^[A-Za-z]:/) ? "%USERPROFILE%" : "~";
+    const n = this.config.accounts.length + 1;
+    const account: Account = {
+      id: `a${Date.now().toString(36)}`,
+      name: `Account ${n}`,
+      env: { CLAUDE_CONFIG_DIR: `${home}\\.claude-${n}` },
+      claude_dir: `${home}\\.claude-${n}`,
+      color: COLORS[n % COLORS.length]!.value,
+    };
+    this.config.accounts.push(account);
+    this.persistConfig();
+    this.paint();
+    this.settings.open("accounts");
+    toast("Set the folder for this account, then press “Sign in” on its row");
+    return account;
+  }
+
+  /** Opens a tab under `account` and runs the Claude Code login in it. */
+  async signIn(account: Account) {
+    this.settings.close();
+    const tab = await this.newTab(undefined, this.tab?.projectId ?? null, null, account.id);
+    // Give the shell a moment to draw its prompt before typing into it.
+    window.setTimeout(() => tab && this.sendKey("claude auth login\r"), 700);
+  }
+
   addProject(name: string): Project {
     const used = new Set(this.config.projects.map((p) => p.color));
     const color = COLORS.find((c) => !used.has(c.value))?.value ?? COLORS[0]!.value;
@@ -525,15 +556,19 @@ export class App implements PaneHost {
   }
 
   /** Returns how the last run ended, so main.ts can say so when it was not a clean exit. */
-  async restoreSession(): Promise<{ restored: number; crashed: boolean }> {
-    if (!this.config.restore_session) return { restored: 0, crashed: false };
+  async restoreSession(): Promise<{ restored: number; crashed: boolean; updatedTo: string | null }> {
+    if (!this.config.restore_session) return { restored: 0, crashed: false, updatedTo: null };
     const session = await this.tp.sessionLoad().catch(() => null);
     const saved = (session?.tabs as SavedTab[] | null) ?? [];
     let restored = 0;
     for (const tab of Array.isArray(saved) ? saved : []) {
       if (await this.restoreTab(tab)) restored++;
     }
-    return { restored, crashed: restored > 0 && session?.clean_exit === false };
+    return {
+      restored,
+      crashed: restored > 0 && session?.clean_exit === false,
+      updatedTo: session?.updated_to ?? null,
+    };
   }
 
   private async restoreTab(saved: SavedTab): Promise<boolean> {

@@ -145,6 +145,19 @@ means pointing `CLAUDE_CONFIG_DIR` at another config directory, and the same mec
 Environment reaches a process at spawn, so switching applies to **new** tabs and panes, never to
 a shell already running — the menu says so by only offering "New tab as …".
 
+### Adding a second Claude Code login
+
+Account chip → **Add a Claude Code account…**. That creates an account with its own
+`CLAUDE_CONFIG_DIR` and opens Settings; set the folder you want, then press **Sign in** on that
+row and OBPTerm opens a tab under it running `claude auth login`. Claude Code creates the folder
+and stores the credentials — nothing here copies a credential file.
+
+Claude Code can also keep several logins **inside one folder** (`<config dir>/accounts/*` with a
+`current` marker). OBPTerm shows which of those is active on the chip, but only Claude Code's own
+`/login` can switch between them: there is no CLI or environment variable that selects one, and
+swapping the files by hand is how logins get corrupted. One folder per account is the switchable
+arrangement.
+
 `claude_dir` is read (never written) for two things: the login shown on the chip, from
 `accounts/current` + `accounts/<name>/account.json`, and the meters, summed from the
 `projects/**/*.jsonl` transcripts in that directory. **The meters are what this machine sent**
@@ -157,8 +170,13 @@ budget instead of raw totals.
 
 The **check for updates** button asks the GitHub releases API for the newest tag, compares it to
 the running build and either says *App is up to date* or turns into *Update to x.y.z* — pressing
-it again downloads that release's `-setup.exe`, saves the session, runs the installer and closes
-OBPTerm. While the repository is private, put a token with read access to it in `config.json`:
+it again downloads that release's `-setup.exe`, saves the session and runs it with `/S /R`:
+no installer window, no clicking, and OBPTerm comes back by itself with every tab reopened.
+
+Windows cannot swap a running executable, so the process does restart — the installer stops it,
+replaces the files and starts the new build. Shells running inside the tabs are lost with it;
+the tabs, panes and directories come back from `session.json`, and the new window says
+*Updated to x.y.z*. While the repository is private, put a token with read access to it in `config.json`:
 
 ```json
 "update_repo": "ozanberkpolat/obpterm",

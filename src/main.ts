@@ -27,9 +27,11 @@ async function main() {
   installKeys(app);
   (window as unknown as { obpterm: App }).obpterm = app; // devtools handle
   installCrashGuard(app);
-  const { restored, crashed } = await app.restoreSession();
+  const { restored, crashed, updatedTo } = await app.restoreSession();
+  const tabs = `${restored} tab${restored > 1 ? "s" : ""}`;
   if (!restored) await app.newTab();
-  else if (crashed) toast(`Reopened ${restored} tab${restored > 1 ? "s" : ""} — OBPTerm did not shut down cleanly`);
+  if (updatedTo) toast(`Updated to ${updatedTo} — reopened ${tabs}`);
+  else if (crashed) toast(`Reopened ${tabs} — OBPTerm did not shut down cleanly`);
 }
 
 /**

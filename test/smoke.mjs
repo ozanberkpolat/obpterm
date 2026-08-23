@@ -192,6 +192,25 @@ assert.equal(
 );
 await evaluate("window.obpterm.settings.close()");
 
+// A second Claude Code account is an env preset with its own CLAUDE_CONFIG_DIR — never a
+// credential copy — and it can be signed into from its settings row.
+const accountsBefore = await evaluate("window.obpterm.config.accounts.length");
+await evaluate("void window.obpterm.addClaudeAccount()");
+assert.equal(await evaluate("window.obpterm.config.accounts.length"), accountsBefore + 1);
+assert.match(
+  await evaluate("JSON.stringify(window.obpterm.config.accounts.at(-1).env)"),
+  /CLAUDE_CONFIG_DIR/,
+  "the new account points at its own config dir",
+);
+await until("!document.querySelector('#settings').hidden", "settings open on accounts");
+assert.ok(
+  await evaluate("[...document.querySelectorAll('#settings .act')].some(b => b.textContent === 'Sign in')"),
+  "each account row offers Sign in",
+);
+await evaluate("document.querySelectorAll('#settings .row')[document.querySelectorAll('#settings .row').length - 1].querySelector('.del').click()");
+assert.equal(await evaluate("window.obpterm.config.accounts.length"), accountsBefore, "and it can be deleted again");
+await evaluate("window.obpterm.settings.close()");
+
 // Ctrl+wheel zooms.
 const size = await evaluate("window.obpterm.config.font_size");
 await evaluate("document.querySelector('#panes').dispatchEvent(new WheelEvent('wheel', {deltaY: -120, ctrlKey: true, bubbles: true, cancelable: true}))");

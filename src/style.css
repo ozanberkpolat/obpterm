@@ -321,6 +321,11 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 #settings .swatches { display: flex; gap: 4px; }
 .swatch-btn { width: 18px; height: 18px; border-radius: 999px; border: 1px solid var(--border-2); }
 .swatch-btn.on { box-shadow: 0 0 0 2px var(--ink); }
+#settings .act {
+  padding: 7px 14px; border-radius: 999px; font-weight: 600;
+  color: var(--muted); border: 1px solid var(--border-2);
+}
+#settings .act:hover { color: var(--accent); border-color: var(--accent); }
 #settings .del { padding: 7px 14px; border-radius: 999px; color: var(--bad); border: 1px solid transparent; font-weight: 600; }
 #settings .del:hover:not(:disabled) { background: color-mix(in srgb, var(--bad) 18%, transparent); }
 #settings .del:disabled { color: var(--faint); cursor: not-allowed; }
