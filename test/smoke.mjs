@@ -76,6 +76,29 @@ assert.equal(
 assert.match(await evaluate("window.winterm.tab.active.toggleLog()"), /\.log$/, "capture returns a path");
 
 // A saved session round-trips through the same code the app restores from.
+// Status bar: the account chip and the token meters come from Claude Code's own files.
+await until("document.querySelector('#account-chip .who').textContent !== '—'", "the account chip");
+const who = await evaluate("document.querySelector('#account-chip .who').textContent");
+assert.notEqual(who, "no account configured", "the default account resolved");
+const meter = await evaluate("document.querySelector('.meter[data-window=\"5h\"] .val').textContent");
+assert.match(meter, /^5h /, `quota meter shows a value, got ${meter}`);
+// Read it through the page's own transport, parking the result on window: CDP refuses to
+// serialize the promise chain directly.
+await evaluate(
+  "window.__usage = null, void window.winterm.tp.claudeUsage(window.winterm.config.accounts[0].claude_dir).then(u => (window.__usage = JSON.stringify(u)))",
+);
+await until("!!window.__usage", "a usage reading");
+const usage = JSON.parse(await evaluate("window.__usage"));
+assert.ok(usage.window_7d.billed > 0, "7-day token usage was read from the transcripts");
+assert.ok(usage.files_scanned > 0, "transcripts were found");
+
+// Host book: a tab opened on a host runs ssh and says so in the status bar.
+await evaluate("void window.winterm.newTabForHost(window.winterm.config.hosts[0])");
+await until("window.winterm.tab?.hostId === 'pi'", "an ssh tab");
+assert.equal(await evaluate("window.winterm.tab.active.profile.exe"), "ssh");
+assert.equal(await evaluate("document.querySelector('#target-chip .where').textContent"), "Pi");
+await evaluate("window.winterm.closeTab(window.winterm.tab)");
+
 const snap = await evaluate("JSON.stringify(window.winterm.tabs.map(t => window.winterm.snapshot(t)))");
 assert.match(snap, /"kind":"split"/, "the split survives serialization");
 

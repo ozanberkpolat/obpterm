@@ -17,6 +17,41 @@ pub struct Profile {
     /// Working directory; `None` = the user's home.
     #[serde(default)]
     pub cwd: Option<String>,
+    /// Extra environment for this shell — how an account preset reaches the process.
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+}
+
+/// An account is an environment preset: `CLAUDE_CONFIG_DIR` for a Claude Code login,
+/// `AZURE_CONFIG_DIR` / `AWS_PROFILE` / `KUBECONFIG` for a cloud CLI. winterm never touches
+/// credentials itself — it only launches shells pointed at the right directory.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Account {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+    /// Read for the login identity and the token meters in the status bar.
+    #[serde(default)]
+    pub claude_dir: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+/// An SSH target. Becomes a profile whose exe is `ssh.exe` when a tab opens on it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Host {
+    pub id: String,
+    pub name: String,
+    pub host: String,
+    #[serde(default)]
+    pub user: Option<String>,
+    #[serde(default)]
+    pub port: Option<u16>,
+    #[serde(default)]
+    pub identity: Option<String>,
+    #[serde(default)]
+    pub project: Option<String>,
 }
 
 /// A named group of tabs with a colour, a home directory and its own saved layout.
@@ -46,6 +81,13 @@ pub struct Config {
     pub scrollback: u32,
     pub rail_collapsed: bool,
     pub projects: Vec<Project>,
+    pub accounts: Vec<Account>,
+    pub hosts: Vec<Host>,
+    /// Account applied to new shells when nothing else says otherwise.
+    pub default_account: Option<String>,
+    /// Your own budget for the status-bar meters, in tokens. `None` shows plain totals.
+    pub quota_5h_tokens: Option<u64>,
+    pub quota_7d_tokens: Option<u64>,
     /// Reopen the tabs that were open at quit.
     pub restore_session: bool,
     /// The tabs open at last quit; shape owned by the frontend (see src/layout.ts).
@@ -64,6 +106,11 @@ impl Default for Config {
             scrollback: 10_000,
             rail_collapsed: false,
             projects: Vec::new(),
+            accounts: default_accounts(),
+            hosts: Vec::new(),
+            default_account: None,
+            quota_5h_tokens: None,
+            quota_7d_tokens: None,
             restore_session: true,
             session: None,
             theme: sentinel_theme(),
@@ -79,6 +126,7 @@ fn default_profiles() -> Vec<Profile> {
         exe: exe.into(),
         args: args.iter().map(|s| s.to_string()).collect(),
         cwd: None,
+        env: Default::default(),
     };
     vec![
         p("pwsh", "PowerShell 7", "pwsh.exe", &["-NoLogo"]),
@@ -96,6 +144,24 @@ fn default_profiles() -> Vec<Profile> {
         exe: shell,
         args: vec![],
         cwd: None,
+        env: Default::default(),
+    }]
+}
+
+/// One account out of the box: whatever `~/.claude` already holds, so the status bar has
+/// something true to show before anything is configured.
+fn default_accounts() -> Vec<Account> {
+    let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap_or_default();
+    if home.is_empty() {
+        return Vec::new();
+    }
+    let dir = PathBuf::from(&home).join(".claude");
+    vec![Account {
+        id: "default".into(),
+        name: "Default".into(),
+        env: Default::default(), // no CLAUDE_CONFIG_DIR: this *is* the default one
+        claude_dir: Some(dir.display().to_string()),
+        color: None,
     }]
 }
 

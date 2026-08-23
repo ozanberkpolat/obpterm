@@ -22,21 +22,95 @@
   "font_size": 14,
   "scrollback": 10000,
   "rail_collapsed": false,
+  "accounts": [
+    {
+      "id": "default",
+      "name": "Default",
+      "env": {},
+      "claude_dir": "/home/obp/.claude",
+      "color": "#ff8a1e"
+    },
+    {
+      "id": "work",
+      "name": "Work",
+      "env": {
+        "CLAUDE_CONFIG_DIR": "/home/obp/.claude-work"
+      },
+      "claude_dir": "/home/obp/.claude-work",
+      "color": "#4c8dff"
+    }
+  ],
+  "hosts": [
+    {
+      "id": "pi",
+      "name": "Pi",
+      "host": "100.123.23.18",
+      "user": "obp",
+      "port": null,
+      "identity": null,
+      "project": null
+    }
+  ],
+  "default_account": "default",
+  "quota_5h_tokens": null,
+  "quota_7d_tokens": null,
   "projects": [
     {
-      "id": "pmt5guuwb",
+      "id": "pmt5h86xe",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,
       "default_profile": null,
       "layout": null
+    },
+    {
+      "id": "pmt5h8g9g",
+      "name": "Smoke",
+      "color": "#4c8dff",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null
+    },
+    {
+      "id": "pmt5h8nic",
+      "name": "Smoke",
+      "color": "#2fd6a3",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null
+    },
+    {
+      "id": "pmt5h917c",
+      "name": "Smoke",
+      "color": "#b48cff",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null
+    },
+    {
+      "id": "pmt5h98mw",
+      "name": "Smoke",
+      "color": "#22d3ee",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null
+    },
+    {
+      "id": "pmt5h9ljl",
+      "name": "Smoke",
+      "color": "#ffb454",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null
     }
   ],
-  "restore_session": true,
+  "restore_session": false,
   "session": [
     {
-      "project": "pmt5guuwb",
+      "project": "pmt5h9ljl",
       "color": null,
+      "account": "default",
+      "host": null,
       "root": {
         "kind": "split",
         "dir": "row",

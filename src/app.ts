@@ -1,6 +1,6 @@
 // Tabs, panes and projects. A tab owns a pane tree; a project groups tabs, gives them a colour
 // and can save/restore its own set of tabs.
-import type { Config, Profile, Project, Transport } from "./transport";
+import type { Account, Config, Host, Profile, Project, Transport } from "./transport";
 import { Pane, type PaneHost } from "./pane";
 import * as L from "./layout";
 import { applyTermConfig } from "./term";
@@ -8,6 +8,7 @@ import { renderRail } from "./rail";
 import { toast } from "./ui";
 import { COLORS } from "./menu";
 import type { Find } from "./find";
+import type { Status } from "./status";
 
 export interface Tab {
   root: L.Node;
@@ -15,11 +16,17 @@ export interface Tab {
   el: HTMLElement;
   projectId: string | null;
   color: string | null;
+  /** Account whose environment this tab's shells were started with. */
+  accountId: string | null;
+  /** Set when the tab was opened on an SSH host. */
+  hostId: string | null;
 }
 
 export interface SavedTab {
   project: string | null;
   color: string | null;
+  account?: string | null;
+  host?: string | null;
   root: L.SavedNode;
 }
 
@@ -30,6 +37,7 @@ export class App implements PaneHost {
   tabs: Tab[] = [];
   tab: Tab | null = null;
   find!: Find; // set by main.ts once the DOM handlers are installed
+  status!: Status;
   private panesEl = $("#panes");
   private saveTimer = 0;
 
@@ -55,6 +63,46 @@ export class App implements PaneHost {
   /** The colour a tab paints with: its own override, else its project's, else the house orange. */
   accent(tab: Tab | null = this.tab): string {
     return tab?.color ?? this.project(tab?.projectId ?? null)?.color ?? DEFAULT_ACCENT;
+  }
+
+  account(id: string | null | undefined): Account | null {
+    return this.config.accounts.find((a) => a.id === id) ?? null;
+  }
+
+  host(id: string | null | undefined): Host | null {
+    return this.config.hosts.find((h) => h.id === id) ?? null;
+  }
+
+  /** An SSH host is just a profile that runs ssh with the right arguments. */
+  hostProfile(host: Host): Profile {
+    const args = [host.user ? `${host.user}@${host.host}` : host.host];
+    if (host.port) args.push("-p", String(host.port));
+    if (host.identity) args.push("-i", host.identity);
+    return {
+      id: `host:${host.id}`,
+      name: host.name,
+      exe: navigator.userAgent.includes("Windows") ? "ssh.exe" : "ssh",
+      args,
+      cwd: null,
+      env: {},
+    };
+  }
+
+  async newTabForHost(host: Host) {
+    const tab = await this.newTab(this.hostProfile(host), host.project ?? this.tab?.projectId ?? null);
+    if (tab) {
+      tab.hostId = host.id;
+      this.paint();
+      this.persist();
+    }
+    return tab;
+  }
+
+  /** Environment a shell starts with: the profile's own, then the account's on top. */
+  private withAccount(profile: Profile, accountId: string | null): Profile {
+    const account = this.account(accountId);
+    if (!account) return profile;
+    return { ...profile, env: { ...(profile.env ?? {}), ...account.env } };
   }
 
   addProject(name: string): Project {
@@ -107,14 +155,19 @@ export class App implements PaneHost {
 
   // ---- tabs -----------------------------------------------------------------------------
 
-  async newTab(profile?: Profile, projectId: string | null = this.tab?.projectId ?? null, cwd: string | null = null) {
+  async newTab(
+    profile?: Profile,
+    projectId: string | null = this.tab?.projectId ?? null,
+    cwd: string | null = null,
+    accountId: string | null = this.tab?.accountId ?? this.config.default_account,
+  ) {
     const project = this.project(projectId);
     const p = profile ?? this.profileById(project?.default_profile ?? this.config.default_profile);
-    const pane = new Pane(this, p, cwd ?? project?.cwd ?? null);
+    const pane = new Pane(this, this.withAccount(p, accountId), cwd ?? project?.cwd ?? null);
     const el = document.createElement("div");
     el.className = "tab-panes";
     this.panesEl.appendChild(el);
-    const tab: Tab = { root: L.leaf(pane), active: pane, el, projectId, color: null };
+    const tab: Tab = { root: L.leaf(pane), active: pane, el, projectId, color: null, accountId, hostId: null };
     this.tabs.push(tab);
     this.activate(tab);
     await this.startPane(tab, pane);
@@ -154,7 +207,9 @@ export class App implements PaneHost {
   }
 
   activate(tab: Tab) {
+    const accountChanged = this.tab?.accountId !== tab.accountId;
     this.tab = tab;
+    if (accountChanged) void this.status?.refresh();
     for (const t of this.tabs) t.el.classList.toggle("active", t === tab);
     this.layout(tab);
     tab.active.focus();
@@ -195,7 +250,7 @@ export class App implements PaneHost {
     if (!tab) return;
     const from = tab.active;
     // A split inherits where you already are, so `cd` carries over when the shell reports it.
-    const pane = new Pane(this, profile ?? from.profile, from.cwd);
+    const pane = new Pane(this, this.withAccount(profile ?? from.profile, tab.accountId), from.cwd);
     tab.root = L.split(tab.root, from, pane, dir);
     tab.active = pane;
     this.layout(tab);
@@ -326,11 +381,22 @@ export class App implements PaneHost {
   /** Repaint the rail. Cheap: the rail is the only derived view. */
   paint() {
     renderRail(this);
+    this.status?.paint();
     document.documentElement.style.setProperty("--accent", this.accent());
   }
 
   snapshot(tab: Tab): SavedTab {
-    return { project: tab.projectId, color: tab.color, root: L.serialize(tab.root) };
+    return {
+      project: tab.projectId,
+      color: tab.color,
+      account: tab.accountId,
+      host: tab.hostId,
+      root: L.serialize(tab.root),
+    };
+  }
+
+  paneCount(tab: Tab): number {
+    return L.panes(tab.root).length;
   }
 
   /** Debounced: a crash should still leave a usable session behind. */
@@ -354,7 +420,9 @@ export class App implements PaneHost {
   private async restoreTab(saved: SavedTab): Promise<boolean> {
     const build = (n: L.SavedNode): L.Node | null => {
       if (n.kind === "leaf") {
-        return L.leaf(new Pane(this, this.profileById(n.profile), n.cwd ?? null));
+        const host = n.profile?.startsWith("host:") ? this.host(n.profile.slice(5)) : null;
+        const profile = host ? this.hostProfile(host) : this.profileById(n.profile);
+        return L.leaf(new Pane(this, this.withAccount(profile, saved.account ?? null), n.cwd ?? null));
       }
       const a = n.a && build(n.a);
       const b = n.b && build(n.b);
@@ -373,6 +441,8 @@ export class App implements PaneHost {
       el,
       projectId: this.project(saved.project) ? saved.project : null,
       color: saved.color,
+      accountId: saved.account ?? null,
+      hostId: saved.host ?? null,
     };
     this.tabs.push(tab);
     this.activate(tab);

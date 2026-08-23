@@ -4,6 +4,7 @@
 import type { App } from "./app";
 import { closeMenu, openMenu } from "./menu";
 import { newProject } from "./rail";
+import { toast } from "./ui";
 
 const ctrlShift = (e: KeyboardEvent) => e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey;
 const ctrlOnly = (e: KeyboardEvent) => e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
@@ -15,7 +16,7 @@ const ARROWS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDow
 export function ownsKey(e: KeyboardEvent): boolean {
   if (e.type !== "keydown") return false;
   if (ctrlOnly(e) && e.code === "Tab") return true;
-  if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV", "KeyF", "KeyL", "KeyP", "KeyN"].includes(e.code)) return true;
+  if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV", "KeyF", "KeyL", "KeyP", "KeyN", "KeyH"].includes(e.code)) return true;
   if ((ctrlShift(e) || ctrlOnly(e)) && /^Digit[1-9]$/.test(e.code)) return true;
   if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract"].includes(e.code)) return true;
   if ((altOnly(e) || altShift(e)) && e.code in ARROWS) return true;
@@ -43,6 +44,7 @@ export function installKeys(app: App) {
       if (ctrlShift(e) && e.code === "KeyV") { void app.paste(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyF") { app.find.open(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyL") { void app.toggleLog(); return stop(e); }
+      if (ctrlShift(e) && e.code === "KeyH") { hostPicker(app); return stop(e); }
 
       // Panes: Alt+Shift splits and resizes, Alt alone moves focus (Windows Terminal's map).
       if (altShift(e) && ["Equal", "NumpadAdd"].includes(e.code)) { void app.splitPane("row"); return stop(e); }
@@ -94,13 +96,30 @@ function closeActive(app: App) {
 
 function profilePicker(app: App, e?: MouseEvent) {
   const anchor = document.querySelector("#new-tab")!.getBoundingClientRect();
-  openMenu(
-    e?.clientX ?? anchor.left,
-    e?.clientY ?? anchor.top,
-    app.config.profiles.map((p, i) => ({
+  openMenu(e?.clientX ?? anchor.left, e?.clientY ?? anchor.top, [
+    ...app.config.profiles.map((p, i) => ({
       label: p.name,
       hint: `Ctrl+Shift+${i + 1}`,
       onPick: () => void app.newTab(p),
+    })),
+    ...app.config.hosts.map((h) => ({
+      label: h.name,
+      hint: h.user ? `${h.user}@${h.host}` : h.host,
+      onPick: () => void app.newTabForHost(h),
+    })),
+  ]);
+}
+
+function hostPicker(app: App) {
+  const anchor = document.querySelector("#target-chip")!.getBoundingClientRect();
+  if (!app.config.hosts.length) return toast("Add hosts to config.json: { id, name, host, user }");
+  openMenu(
+    anchor.left,
+    anchor.top,
+    app.config.hosts.map((h) => ({
+      label: h.name,
+      hint: h.user ? `${h.user}@${h.host}` : h.host,
+      onPick: () => void app.newTabForHost(h),
     })),
   );
 }

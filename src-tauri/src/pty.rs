@@ -57,6 +57,9 @@ pub fn pty_spawn(
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     cmd.env("WINTERM", env!("CARGO_PKG_VERSION"));
+    for (k, v) in &profile.env {
+        cmd.env(k, v);
+    }
 
     let child = pair
         .slave

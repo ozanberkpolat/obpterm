@@ -1,6 +1,6 @@
 // Browser dev loop: `npm run devserver` (node-pty behind a WebSocket on :1421) + `npm run dev`.
 // Wire format: JSON text frames for control, binary frames = 4-byte big-endian session id + bytes.
-import type { Config, Profile, Transport } from "./transport";
+import type { ClaudeAccount, ClaudeUsage, Config, Profile, Transport } from "./transport";
 
 type Msg = { t: string; id?: number; reqId?: number; [k: string]: unknown };
 
@@ -56,6 +56,8 @@ export function wsTransport(): Transport {
     kill: async (id) => void (await call("kill", { id })),
     logStart: async (id, name, stamp) => (await call("log_start", { id, name, stamp })).path as string,
     logStop: async (id) => void (await call("log_stop", { id })),
+    claudeAccount: async (dir) => (await call("claude_account", { dir })).account as ClaudeAccount,
+    claudeUsage: async (dir) => (await call("claude_usage", { dir })).usage as ClaudeUsage,
     loadConfig: async () => (await call("config_load")).config as Config,
     saveConfig: async (config) => void (await call("config_save", { config })),
     configPath: async () => "dev-config.json (dev server)",

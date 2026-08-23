@@ -2,6 +2,7 @@ import { pickTransport, withDefaults } from "./transport";
 import { App } from "./app";
 import { installKeys } from "./keys";
 import { installFind } from "./find";
+import { Status } from "./status";
 import { toast } from "./ui";
 
 async function main() {
@@ -16,6 +17,7 @@ async function main() {
   await document.fonts.load(`${config.font_size}px "JetBrains Mono"`).catch(() => {});
   const app = new App(tp, config);
   app.find = installFind(app);
+  app.status = new Status(app);
   app.applyConfig();
   installKeys(app);
   (window as unknown as { winterm: App }).winterm = app; // devtools handle

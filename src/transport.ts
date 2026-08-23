@@ -7,6 +7,54 @@ export interface Profile {
   exe: string;
   args: string[];
   cwd: string | null;
+  env?: Record<string, string>;
+}
+
+export interface Account {
+  id: string;
+  name: string;
+  /** Extra environment for shells started under this account (CLAUDE_CONFIG_DIR, AWS_PROFILE, …). */
+  env: Record<string, string>;
+  /** Claude Code config dir to read the login + token meters from. */
+  claude_dir: string | null;
+  color: string | null;
+}
+
+export interface Host {
+  id: string;
+  name: string;
+  host: string;
+  user: string | null;
+  port: number | null;
+  identity: string | null;
+  project: string | null;
+}
+
+/** What Claude Code's own files say about the login in a config dir. */
+export interface ClaudeAccount {
+  dir: string;
+  name: string | null;
+  email: string | null;
+  organization: string | null;
+  tier: string | null;
+  exists: boolean;
+}
+
+export interface UsageBucket {
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write: number;
+  messages: number;
+  billed: number;
+}
+
+export interface ClaudeUsage {
+  dir: string;
+  window_5h: UsageBucket;
+  window_7d: UsageBucket;
+  last_activity: number | null;
+  files_scanned: number;
 }
 
 export interface Project {
@@ -27,6 +75,11 @@ export interface Config {
   scrollback: number;
   rail_collapsed: boolean;
   projects: Project[];
+  accounts: Account[];
+  hosts: Host[];
+  default_account: string | null;
+  quota_5h_tokens: number | null;
+  quota_7d_tokens: number | null;
   restore_session: boolean;
   /** Tabs open at last quit; shape from src/layout.ts (SavedTab[]). */
   session: unknown | null;
@@ -47,6 +100,8 @@ export interface Transport {
   /** Starts teeing this session to a file; returns the path. */
   logStart(id: number, name: string, stamp: string): Promise<string>;
   logStop(id: number): Promise<void>;
+  claudeAccount(dir: string): Promise<ClaudeAccount>;
+  claudeUsage(dir: string): Promise<ClaudeUsage>;
   loadConfig(): Promise<Config>;
   saveConfig(config: Config): Promise<void>;
   configPath(): Promise<string>;
@@ -65,6 +120,11 @@ export function withDefaults(config: Partial<Config>): Config {
     font_size: config.font_size ?? 14,
     scrollback: config.scrollback ?? 10_000,
     rail_collapsed: config.rail_collapsed ?? false,
+    accounts: config.accounts ?? [],
+    hosts: config.hosts ?? [],
+    default_account: config.default_account ?? null,
+    quota_5h_tokens: config.quota_5h_tokens ?? null,
+    quota_7d_tokens: config.quota_7d_tokens ?? null,
     projects: (config.projects ?? []).map((p) => ({ ...p, cwd: p.cwd ?? null, default_profile: p.default_profile ?? null, layout: p.layout ?? null })),
     restore_session: config.restore_session ?? true,
     session: config.session ?? null,

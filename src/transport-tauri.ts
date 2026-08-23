@@ -1,7 +1,7 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
-import type { Config, Profile, Transport } from "./transport";
+import type { ClaudeAccount, ClaudeUsage, Config, Profile, Transport } from "./transport";
 
 export function tauriTransport(): Transport {
   const exits = new Map<number, (code: number | null) => void>();
@@ -28,6 +28,8 @@ export function tauriTransport(): Transport {
       return invoke<string>("pty_log_start", { id, dir: await invoke<string>("log_dir"), name, stamp });
     },
     logStop: (id) => invoke("pty_log_stop", { id }),
+    claudeAccount: (dir) => invoke<ClaudeAccount>("claude_account", { dir }),
+    claudeUsage: (dir) => invoke<ClaudeUsage>("claude_usage", { dir }),
     loadConfig: () => invoke<Config>("config_load"),
     saveConfig: (config) => invoke("config_save", { config }),
     configPath: () => invoke<string>("config_path_string"),

@@ -8,6 +8,7 @@
   </head>
   <body>
     <div id="app">
+      <div id="workbench">
       <nav id="rail" aria-label="Tabs">
         <div id="rail-head"><span class="brand">winterm</span><button id="rail-toggle" title="Toggle rail (Ctrl+Shift+B)">‹</button></div>
         <div id="rail-body"></div>
@@ -28,6 +29,21 @@
           <button class="close" title="Close (Esc)">×</button>
         </div>
       </main>
+      </div>
+      <footer id="status">
+        <button id="account-chip" class="chip" title="Account for new shells (click to switch)">
+          <span class="dot"></span><span class="who">—</span>
+        </button>
+        <button id="quota" class="chip meters" title="Tokens this machine has sent, from Claude Code's own transcripts">
+          <span class="meter" data-window="5h"><span class="bar"><i></i></span><span class="val">—</span></span>
+          <span class="meter" data-window="7d"><span class="bar"><i></i></span><span class="val">—</span></span>
+        </button>
+        <span class="spacer"></span>
+        <button id="target-chip" class="chip" title="Where this pane runs (click for the host book)"><span class="where">—</span></button>
+        <span id="cwd" class="cwd"></span>
+        <span id="capture" class="chip rec" hidden>● capturing</span>
+        <span id="panecount" class="chip"></span>
+      </footer>
       <div id="menu" hidden></div>
       <div id="toast" hidden></div>
     </div>

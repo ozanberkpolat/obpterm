@@ -26,6 +26,7 @@ Download `winterm_<version>_x64-setup.exe` (per-user, no admin) or `winterm_<ver
 | `Alt+Shift+←↑→↓` | Resize the pane |
 | `Ctrl+Shift+F` | Find in scrollback (Enter / Shift+Enter, Esc closes) |
 | `Ctrl+Shift+L` | Start / stop capturing this pane to a log file |
+| `Ctrl+Shift+H` | Host book (open an SSH target in a new tab) |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
 | `Ctrl+1..9` | Jump to tab N |
 | `Ctrl+Shift+B` | Collapse / expand the rail |
@@ -66,10 +67,56 @@ function prompt {
 `%APPDATA%\tr.com.obp.winterm\logs\<title>-<timestamp>.log`; the tab shows a red dot while it
 is capturing.
 
+## Status bar: account, quota, target
+
+The bar along the bottom shows, left to right: the **account** new shells will start under, the
+**tokens this machine has sent** in the last 5 hours and 7 days, then the focused pane's target,
+directory, capture state and pane count. Click the account chip to open a tab under a different
+account or to change the default; click the meters for the breakdown; click the target chip for
+the host book.
+
+**Accounts are environment presets** — winterm never reads, writes or holds a credential. An
+account is a name plus the environment its shells start with, so switching Claude Code logins
+means pointing `CLAUDE_CONFIG_DIR` at another config directory, and the same mechanism covers
+`AZURE_CONFIG_DIR`, `AWS_PROFILE` or `KUBECONFIG`:
+
+```json
+"accounts": [
+  { "id": "personal", "name": "Personal", "env": {}, "claude_dir": "C:\\Users\\ozan\\.claude", "color": "#ff8a1e" },
+  { "id": "work", "name": "Work", "env": { "CLAUDE_CONFIG_DIR": "C:\\Users\\ozan\\.claude-work", "AZURE_CONFIG_DIR": "C:\\Users\\ozan\\.azure-work" },
+    "claude_dir": "C:\\Users\\ozan\\.claude-work", "color": "#4c8dff" }
+],
+"default_account": "personal"
+```
+
+Environment reaches a process at spawn, so switching applies to **new** tabs and panes, never to
+a shell already running — the menu says so by only offering "New tab as …".
+
+`claude_dir` is read (never written) for two things: the login shown on the chip, from
+`accounts/current` + `accounts/<name>/account.json`, and the meters, summed from the
+`projects/**/*.jsonl` transcripts in that directory. **The meters are what this machine sent**
+— input + output + cache-writes, with cache reads counted separately because they are not what a
+plan window is spent on. They are not Anthropic's accounting of your limit, and nothing here goes
+over the network. Set `quota_5h_tokens` / `quota_7d_tokens` to see a percentage of your own
+budget instead of raw totals.
+
+## Host book
+
+```json
+"hosts": [
+  { "id": "vps", "name": "Hetzner VPS", "host": "100.84.61.54", "user": "obp", "port": null, "identity": null, "project": "homelab" }
+]
+```
+
+`Ctrl+Shift+H`, the target chip, or right-clicking `+ Tab` opens one in a new tab (`ssh.exe`
+with the right arguments); the host book also offers to split the current tab with one. A host
+tab remembers its target across restarts, and `project` drops it straight into that project.
+
 ## Config
 
 `%APPDATA%\tr.com.obp.winterm\config.json`, created with defaults on first start. Profiles
-(`id`, `name`, `exe`, `args`, `cwd`), font, scrollback, and the xterm.js theme. A file that does
+(`id`, `name`, `exe`, `args`, `cwd`, `env`), projects, accounts, hosts, font, scrollback, the
+saved session and the xterm.js theme. A file that does
 not parse is reported on screen, not replaced.
 
 ## Development
@@ -112,4 +159,5 @@ pushing a `v*` tag also publishes the MSI and exe as a GitHub release.
 - `src-tauri/src/lib.rs` — plugins, commands, the WebView2 accelerator-key switch
 - `src/app.ts` — tabs, panes and projects; `src/layout.ts` — the pane tree; `src/rail.ts` — the rail
 - `src/keys.ts` — shortcuts, `src/find.ts` — find bar, `src/menu.ts` — popups, `src/term.ts` — xterm setup
+- `src/status.ts` — status bar; `src-tauri/src/claude.rs` — reads Claude Code's login + transcripts
 - `dev-server.mjs` — browser dev loop

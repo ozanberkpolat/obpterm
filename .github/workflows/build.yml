@@ -30,6 +30,8 @@ jobs:
 
       - run: npm run typecheck
 
+      - run: npm test
+
       - name: cargo test
         run: cargo test --manifest-path src-tauri/Cargo.toml
 

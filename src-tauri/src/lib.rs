@@ -1,3 +1,4 @@
+mod claude;
 mod config;
 mod pty;
 
@@ -9,6 +10,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(pty::Sessions::default())
+        .manage(claude::UsageCache::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -20,6 +22,9 @@ pub fn run() {
             config::config_save,
             config::config_path_string,
             config::log_dir,
+            claude::claude_account,
+            claude::claude_account_names,
+            claude::claude_usage,
         ])
         .setup(|app| {
             let main = app.get_webview_window("main").expect("main window");
