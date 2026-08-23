@@ -33,8 +33,8 @@ export function installPalette(app: App) {
     { group: "Panes", label: "Split down", hint: "Alt+Shift+-", run: () => void app.splitPane("col") },
     { group: "Panes", label: "Find in scrollback", hint: "Ctrl+Shift+F", run: () => app.find.open() },
     { group: "Panes", label: app.tab?.active.logPath ? "Stop capture" : "Start capture", hint: "Ctrl+Shift+L", run: () => void app.toggleLog() },
-    { group: "App", label: "Settings", hint: "Ctrl+Shift+,", run: () => void app.tp.openSettings() },
-    { group: "App", label: "Appearance", run: () => void app.tp.openSettings("appearance") },
+    { group: "App", label: "Settings", hint: "Ctrl+Shift+,", run: () => app.settings.open() },
+    { group: "App", label: "Appearance", run: () => app.settings.open("appearance") },
     { group: "App", label: "Check for updates", run: () => void app.status.checkUpdates() },
     { group: "App", label: app.config.rail_collapsed ? "Show the rail" : "Collapse the rail", hint: "Ctrl+Shift+B", run: () => app.toggleRail() },
   ];

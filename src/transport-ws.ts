@@ -12,7 +12,6 @@ export function wsTransport(): Transport {
     ws.onerror = () => rej(new Error("dev-server :1421 not reachable — run `npm run devserver`"));
   });
   const pending = new Map<number, (m: Msg) => void>();
-  const configListeners: (() => void)[] = [];
   const data = new Map<number, (b: Uint8Array) => void>();
   const exits = new Map<number, (code: number | null) => void>();
   let reqSeq = 0;
@@ -28,7 +27,7 @@ export function wsTransport(): Transport {
       pending.get(m.reqId)?.(m);
       pending.delete(m.reqId);
     } else if (m.t === "config:changed") {
-      for (const listener of configListeners) listener();
+      // one window now: nothing to reconcile
     } else if (m.t === "exit" && m.id !== undefined) {
       exits.get(m.id)?.((m.code as number | null) ?? null);
       exits.delete(m.id);
@@ -77,12 +76,9 @@ export function wsTransport(): Transport {
       throw new Error(`installers only run in the app, not the browser (${release.name})`);
     },
     claudeAccountNames: async (dir) => (await call("claude_account_names", { dir })).names as string[],
-    // In the browser loop settings is just another page and there is no window manager.
-    openSettings: async (section) => void window.open(`/settings.html${section ? `#${section}` : ""}`, "obpterm-settings"),
     windowAction: async () => {},
     configReset: async () => (await call("config_reset")).config as Config,
     reveal: async (what) => what,
-    onConfigChanged: (handler) => configListeners.push(handler),
     sessionLoad: async () => (await call("session_load")).session as Session,
     sessionSave: async (tabs) => void (await call("session_save", { tabs })),
     claudeAccount: async (dir) => (await call("claude_account", { dir })).account as ClaudeAccount,

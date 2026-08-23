@@ -3,7 +3,6 @@
 import type { App } from "./app";
 import { openMenu } from "./menu";
 import { newProject } from "./rail";
-import { toast } from "./ui";
 
 export function installHeader(app: App) {
   const bar = document.querySelector<HTMLElement>("#titlebar")!;
@@ -21,7 +20,7 @@ export function installHeader(app: App) {
         onPick: () => void app.newTabForHost(h),
       })),
       { label: "Host book…", hint: "Ctrl+Shift+H", onPick: () => app.palette.open("ssh ") },
-      { label: "Manage profiles…", onPick: () => void app.tp.openSettings("profiles") },
+      { label: "Manage profiles…", onPick: () => app.settings.open("profiles") },
     ]],
     ["Panes", () => [
       { label: "Split right", hint: "Alt+Shift+=", onPick: () => void app.splitPane("row") },
@@ -43,14 +42,14 @@ export function installHeader(app: App) {
         app.paint();
         app.persistConfig();
       } },
-      { label: "Manage projects…", onPick: () => void app.tp.openSettings("projects") },
+      { label: "Manage projects…", onPick: () => app.settings.open("projects") },
     ]],
     ["View", () => [
       { label: app.config.rail_collapsed ? "Show the rail" : "Collapse the rail", hint: "Ctrl+Shift+B", onPick: () => app.toggleRail() },
       { label: "Zoom in", hint: "Ctrl +", onPick: () => app.zoom(1) },
       { label: "Zoom out", hint: "Ctrl −", onPick: () => app.zoom(-1) },
       { label: "Reset zoom", hint: "Ctrl 0", onPick: () => app.zoom(0) },
-      { label: "Appearance…", onPick: () => void app.tp.openSettings("appearance") },
+      { label: "Appearance…", onPick: () => app.settings.open("appearance") },
     ]],
   ];
 
@@ -70,8 +69,7 @@ export function installHeader(app: App) {
   );
 
   bar.querySelector<HTMLElement>(".search")!.onclick = () => app.palette.open();
-  bar.querySelector<HTMLElement>(".gear")!.onclick = () =>
-    void app.tp.openSettings().catch((e) => toast(`Settings did not open: ${e}`));
+  bar.querySelector<HTMLElement>(".gear")!.onclick = () => app.settings.open();
 
   for (const b of bar.querySelectorAll<HTMLButtonElement>(".win")) {
     b.onclick = () => void app.tp.windowAction("main", b.dataset.action as "minimize" | "maximize" | "close");

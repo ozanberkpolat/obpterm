@@ -2389,7 +2389,7 @@ dependencies = [
 
 [[package]]
 name = "obpterm"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "portable-pty",
  "reqwest 0.12.28",

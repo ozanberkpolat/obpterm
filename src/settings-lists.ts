@@ -1,6 +1,6 @@
 // Profiles, accounts, SSH hosts and projects: one list-and-form screen, four field sets.
 // Everything here can be added, edited and deleted — deletes are undoable.
-import { button, card, COLORS, note, number, select, swatches, text, toggle, type Ctx } from "./settings-main";
+import { button, card, COLORS, note, number, select, swatches, text, toggle, type Ctx } from "./settings-panel";
 import { toast } from "./ui";
 import type { Account, Config, Host, Profile, Project } from "./transport";
 

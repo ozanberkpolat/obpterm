@@ -90,7 +90,8 @@ directory.
 
 ## Settings
 
-`Ctrl+Shift+,` (or the gear) opens settings in **its own window**, with a sidebar of sections:
+`Ctrl+Shift+,` (or the gear) opens settings as a sheet over the terminal, with a sidebar of
+sections:
 
 | Section | What it holds |
 | --- | --- |
@@ -103,9 +104,12 @@ directory.
 | Updates | Release source, token, check-on-launch, and the update button |
 | Files & reset | Show the config / log folders, reset to defaults |
 
-Every control writes to `config.json` as you change it — no Apply button — and the terminal
-window picks the change up immediately. The file stays hand-editable; edit it and the settings
-window follows.
+Every control writes to `config.json` as you change it — no Apply button — and the app repaints
+immediately. The file stays hand-editable.
+
+It is a sheet rather than a second window on purpose: the app's capability scope covers the
+`main` window only, so a second Tauri window's webview gets no IPC and renders as a black
+rectangle.
 
 ## Projects
 

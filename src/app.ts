@@ -50,6 +50,7 @@ export class App implements PaneHost {
   status!: Status;
   toolbar!: { paint(): void };
   palette!: import("./palette").Palette;
+  settings!: import("./settings-panel").Settings;
   private panesEl = $("#panes");
   private sessionTimer = 0;
   private configTimer = 0;
@@ -136,7 +137,7 @@ export class App implements PaneHost {
     this.config.accounts.push(account);
     this.persistConfig();
     this.paint();
-    void this.tp.openSettings("accounts");
+    this.settings.open("accounts");
     toast("Set the folder for this account, then open a tab under it and run `claude auth login`");
     return account;
   }

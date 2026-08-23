@@ -6,6 +6,8 @@ import { Status } from "./status";
 import { installToolbar } from "./toolbar";
 import { installHeader } from "./header";
 import { installPalette } from "./palette";
+import { installSettings } from "./settings-panel";
+import "./settings.css";
 import { toast } from "./ui";
 
 async function main() {
@@ -23,8 +25,8 @@ async function main() {
   app.status = new Status(app);
   app.toolbar = installToolbar(app);
   app.palette = installPalette(app);
+  app.settings = installSettings(app);
   installHeader(app);
-  tp.onConfigChanged(() => void app.reloadConfig());
   app.applyRailWidth();
   app.applyConfig();
   installKeys(app);

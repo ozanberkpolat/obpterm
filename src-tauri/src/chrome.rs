@@ -1,29 +1,7 @@
-//! The settings window, and the buttons that replace the title bar we turned off.
+//! The buttons that replace the title bar we turned off. Settings is a sheet inside the main
+//! window: a second window falls outside the capability scope and comes up with no IPC at all.
 
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
-
-/// Opens settings in its own window (or focuses the one already open).
-#[tauri::command]
-pub fn open_settings(app: AppHandle, section: Option<String>) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("settings") {
-        let _ = window.unminimize();
-        window.set_focus().map_err(|e| e.to_string())?;
-        if let Some(section) = section {
-            let _ = window.emit_to("settings", "settings:section", section);
-        }
-        return Ok(());
-    }
-    let url = format!("settings.html{}", section.map(|s| format!("#{s}")).unwrap_or_default());
-    WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App(url.into()))
-        .title("OBPTerm Settings")
-        .inner_size(1180.0, 880.0)
-        .min_inner_size(720.0, 520.0)
-        .decorations(false)
-        .background_color(tauri::webview::Color(10, 14, 20, 255))
-        .build()
-        .map_err(|e| format!("open settings: {e}"))?;
-    Ok(())
-}
+use tauri::{AppHandle, Manager};
 
 /// minimize | maximize | close, for the buttons in our own header bar.
 #[tauri::command]

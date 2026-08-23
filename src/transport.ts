@@ -149,14 +149,10 @@ export interface Transport {
   updateInstall(release: ReleaseInfo, token: string | null): Promise<string>;
   /** Logins Claude Code has stored in a config dir. */
   claudeAccountNames(dir: string): Promise<string[]>;
-  /** Opens (or focuses) the settings window on a section. */
-  openSettings(section?: string): Promise<void>;
   /** minimize | maximize | close, for our own title bar. */
   windowAction(label: string, action: "minimize" | "maximize" | "close"): Promise<void>;
   configReset(): Promise<Config>;
   reveal(what: "config" | "logs"): Promise<string>;
-  /** Fires when the other window saved the config. */
-  onConfigChanged(handler: () => void): void;
   sessionLoad(): Promise<Session>;
   sessionSave(tabs: unknown): Promise<void>;
   claudeAccount(dir: string): Promise<ClaudeAccount>;

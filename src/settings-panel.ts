@@ -1,10 +1,11 @@
-// The settings window: a sidebar of sections over one config file. Every control writes on
-// change — there is no Apply button, and config.json stays hand-editable.
-import { pickTransport, withDefaults, type Config, type Transport } from "./transport";
+// Settings, as a sheet over the terminal. It lives in the main window on purpose: a second
+// Tauri window is outside the app's capability scope, so its webview comes up with no IPC —
+// a black rectangle.
+import type { App } from "./app";
+import type { Config, Transport } from "./transport";
 import { KEYMAP } from "./keymap";
 import { renderList } from "./settings-lists";
 import { toast } from "./ui";
-import "./settings.css";
 
 export interface Ctx {
   tp: Transport;
@@ -42,77 +43,61 @@ const SECTIONS: { id: string; title: string; group: string; icon: string; count?
   { id: "files", title: "Files & reset", group: "System", icon: "files" },
 ];
 
-const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
-
-async function main() {
-  const tp = await pickTransport();
-  let config = withDefaults(await tp.loadConfig());
-  let active = location.hash.slice(1) || "terminal";
-  if (!SECTIONS.some((s) => s.id === active)) active = "terminal";
-  let saveTimer = 0;
+export function installSettings(app: App) {
+  const root = document.querySelector<HTMLElement>("#settings")!;
+  const nav = root.querySelector<HTMLElement>(".sw-nav")!;
+  const body = root.querySelector<HTMLElement>(".sw-main")!;
+  const crumb = root.querySelector<HTMLElement>(".crumb")!;
+  const saved = root.querySelector<HTMLElement>(".saved")!;
+  const pathEl = root.querySelector<HTMLElement>(".path")!;
+  let active = "terminal";
+  let savedTimer = 0;
 
   const ctx: Ctx = {
-    tp,
+    tp: app.tp,
     get config() {
-      return config;
+      return app.config;
     },
     save() {
-      clearTimeout(saveTimer);
-      saveTimer = window.setTimeout(() => {
-        void tp.saveConfig(config).then(showSaved).catch((e) => toast(`Not saved: ${e}`));
-      }, 250);
-      applyAccent(config);
+      app.applyConfig();
+      app.paint();
+      app.persistConfig();
+      saved.hidden = false;
+      clearTimeout(savedTimer);
+      savedTimer = window.setTimeout(() => (saved.hidden = true), 1400);
     },
     rerender: () => render(),
     go: (section) => {
       active = section;
-      location.hash = section;
       render();
     },
   } as Ctx;
 
-  tp.onConfigChanged(() => {
-    // The terminal window saved something (a colour, a rail drag) — take its copy.
-    void tp.loadConfig().then((fresh) => {
-      config = withDefaults(fresh);
-      render();
-    });
-  });
-  tp.configPath().then((p) => ($("#sw-head .path").textContent = p)).catch(() => {});
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !(e.target as HTMLElement)?.matches("input, select")) close();
-  });
-  $("#sw-head .close").addEventListener("click", () => close());
-  applyAccent(config);
-  render();
+  root.querySelector<HTMLButtonElement>(".close")!.onclick = () => close();
+  root.addEventListener("mousedown", (e) => e.target === root && close());
+  void app.tp.configPath().then((p) => (pathEl.textContent = p)).catch(() => {});
 
   function close() {
-    void tp.windowAction("settings", "close");
-  }
-
-  function showSaved() {
-    const el = $("#sw-head .saved");
-    el.hidden = false;
-    window.setTimeout(() => (el.hidden = true), 1400);
+    root.hidden = true;
+    app.tab?.active.focus();
   }
 
   function render() {
-    const nav = $("#sw-nav");
     nav.replaceChildren();
     let group = "";
     for (const section of SECTIONS) {
       if (section.group !== group) {
         group = section.group;
-        const cap = document.createElement("div");
-        cap.className = "cap";
-        cap.textContent = group;
-        nav.appendChild(cap);
+        const capEl = document.createElement("div");
+        capEl.className = "cap";
+        capEl.textContent = group;
+        nav.appendChild(capEl);
       }
       const b = document.createElement("button");
       b.className = section.id === active ? "on" : "";
       b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICONS[section.icon]}</svg>`;
       b.appendChild(document.createTextNode(section.title));
-      const n = section.count?.(config);
+      const n = section.count?.(app.config);
       if (n !== undefined) {
         const c = document.createElement("span");
         c.className = "count";
@@ -125,15 +110,29 @@ async function main() {
     const version = document.createElement("div");
     version.className = "version";
     version.textContent = "OBPTerm";
-    void tp.appVersion().then((v) => (version.textContent = `OBPTerm ${v}`));
+    void app.tp.appVersion().then((v) => (version.textContent = `OBPTerm ${v}`));
     nav.appendChild(version);
 
-    $("#sw-head .crumb").textContent = SECTIONS.find((s) => s.id === active)?.title ?? "";
-    const main = $("#sw-main");
-    main.scrollTop = 0;
-    main.replaceChildren(SECTION_BODY[active]!(ctx));
+    crumb.textContent = SECTIONS.find((s) => s.id === active)?.title ?? "";
+    body.scrollTop = 0;
+    body.replaceChildren(SECTION_BODY[active]!(ctx));
   }
+
+  return {
+    open(section?: string) {
+      if (section && SECTIONS.some((s) => s.id === section)) active = section;
+      root.hidden = false;
+      render();
+      root.querySelector<HTMLButtonElement>(".sw-nav button.on")?.focus();
+    },
+    close,
+    get isOpen() {
+      return !root.hidden;
+    },
+  };
 }
+
+export type Settings = ReturnType<typeof installSettings>;
 
 // ---- controls -------------------------------------------------------------------------------
 
@@ -301,14 +300,6 @@ export function button(label: string, onClick: () => void, kind = ""): HTMLButto
   return b;
 }
 
-function applyAccent(config: Config) {
-  document.documentElement.style.setProperty("--accent", config.accent);
-  document.documentElement.style.setProperty(
-    "--accent-fill",
-    `linear-gradient(135deg, color-mix(in srgb, ${config.accent} 78%, white), ${config.accent})`,
-  );
-}
-
 // ---- sections -------------------------------------------------------------------------------
 
 const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
@@ -390,7 +381,7 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
       preview,
       card(
         row("Accent", "One accent marks the active thing. A project or tab colour overrides it locally.",
-          withInput(swatches(c.accent, (v) => { c.accent = v ?? "#ff8a1e"; paintPreview(); ctx.save(); ctx.rerender(); }, false),
+          withInput(swatches(c.accent, (v) => { c.accent = v ?? "#ff8a1e"; paintPreview(); ctx.save(); }, false),
             text(c.accent, (v) => { c.accent = v; paintPreview(); ctx.save(); }, { width: 100 }))),
         row("Dim inactive panes", "The focused pane keeps its accent edge; the others fade back.",
           toggle(c.dim_inactive_panes, (v) => { c.dim_inactive_panes = v; ctx.save(); })),
@@ -537,7 +528,8 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
         row("Reset every setting", "Profiles, accounts, hosts, projects and colours go back to defaults. Open tabs are left alone.",
           button("Reset to defaults", () => {
             void ctx.tp.configReset().then((fresh) => {
-              Object.assign(ctx.config, withDefaults(fresh));
+              Object.assign(ctx.config, fresh);
+              ctx.save();
               ctx.rerender();
               toast("Settings reset to defaults");
             });
@@ -579,7 +571,3 @@ function withInput(a: HTMLElement, b: HTMLElement): HTMLElement {
   return el;
 }
 
-main().catch((e) => {
-  console.error(e);
-  document.querySelector("#sw-main")!.textContent = String(e);
-});

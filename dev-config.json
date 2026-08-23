@@ -20,7 +20,7 @@
     }
   ],
   "font_family": "JetBrains Mono, Cascadia Mono, Consolas, monospace",
-  "font_size": 22,
+  "font_size": 24,
   "scrollback": 10000,
   "rail_collapsed": false,
   "rail_width": 300,
@@ -72,7 +72,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt5myg5e",
+      "id": "hmt5nwll0",
       "name": "New host",
       "host": "",
       "user": null,
@@ -393,6 +393,51 @@
     },
     {
       "id": "pmt5mydsh",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5nv1ql",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5nvdgt",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5nwasp",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5nwex2",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5nwje3",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,

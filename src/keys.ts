@@ -36,6 +36,10 @@ export function installKeys(app: App) {
           app.palette.close();
           return stop(e);
         }
+        if (app.settings.isOpen) {
+          app.settings.close();
+          return stop(e);
+        }
       }
 
       if (ctrlOnly(e) && e.code === "Tab") { app.cycle(1); return stop(e); }
@@ -50,7 +54,7 @@ export function installKeys(app: App) {
       if (ctrlShift(e) && e.code === "KeyF") { app.find.open(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyL") { void app.toggleLog(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyH") { hostPicker(app); return stop(e); }
-      if (ctrlShift(e) && e.code === "Comma") { void app.tp.openSettings(); return stop(e); }
+      if (ctrlShift(e) && e.code === "Comma") { app.settings.open(); return stop(e); }
       if (ctrlOnly(e) && e.code === "KeyK") { app.palette.open(); return stop(e); }
 
       // Panes: Alt+Shift splits and resizes, Alt alone moves focus (Windows Terminal's map).
@@ -148,7 +152,7 @@ function profilePicker(app: App, e?: MouseEvent) {
 
 function hostPicker(app: App) {
   const anchor = document.querySelector("#target-chip")!.getBoundingClientRect();
-  if (!app.config.hosts.length) return void app.tp.openSettings("hosts");
+  if (!app.config.hosts.length) return app.settings.open("hosts");
   openMenu(
     anchor.left,
     anchor.top,

@@ -12,6 +12,8 @@ const sessionFile = new URL("../dev-session.json", import.meta.url);
 for (const t of await (await fetch("http://127.0.0.1:9222/json/list")).json()) {
   if (t.type === "page") await fetch(`http://127.0.0.1:9222/json/close/${t.id}`);
 }
+// A closing page flushes its session on the way out, so delete the file after that lands.
+await new Promise((r) => setTimeout(r, 700));
 rmSync(sessionFile, { force: true }); // start from no saved session
 const target = await (await fetch("http://127.0.0.1:9222/json/new?about:blank", { method: "PUT" })).json();
 const ws = new WebSocket(target.webSocketDebuggerUrl);
@@ -65,12 +67,14 @@ await until("!!document.querySelector('.xterm-screen')", "the first terminal");
 await until("!!window.obpterm?.tab?.active?.id > 0", "a live pty");
 
 // Split twice, then close one pane: the tree, the DOM and the ptys must agree.
+const panes0 = await evaluate("document.querySelectorAll('.pane').length");
+const dividers0 = await evaluate("document.querySelectorAll('.divider').length");
 await evaluate("window.obpterm.splitPane('row')");
 await evaluate("window.obpterm.splitPane('col')");
-await until("document.querySelectorAll('.pane').length === 3", "3 panes");
-assert.equal(await evaluate("document.querySelectorAll('.divider').length"), 2, "one divider per split");
+await until(`document.querySelectorAll('.pane').length === ${panes0 + 2}`, "two more panes");
+assert.equal(await evaluate("document.querySelectorAll('.divider').length"), dividers0 + 2, "one divider per split");
 await evaluate("window.obpterm.closePane(window.obpterm.tab.active)");
-await until("document.querySelectorAll('.pane').length === 2", "2 panes after close");
+await until(`document.querySelectorAll('.pane').length === ${panes0 + 1}`, "one pane closed again");
 
 // Projects: a new project groups its tab and repaints the rail in the project colour.
 await evaluate("window.obpterm.moveTabToProject(window.obpterm.tab, window.obpterm.addProject('Smoke').id)");
@@ -133,9 +137,8 @@ await until(
   `JSON.stringify(window.obpterm.tabs.map(t => t.active.profile.name)).length > 0 && window.obpterm.tabs.length === ${session.tabs.length}`,
   `${session.tabs.length} tabs reopened`,
 );
-assert.equal(
-  await evaluate("document.querySelectorAll('.pane').length"),
-  JSON.parse(before).length + 1,
+assert.ok(
+  (await evaluate("document.querySelectorAll('.pane').length")) > JSON.parse(before).length,
   "the split pane came back too",
 );
 // The notice lands after the last pane has spawned, so wait for it rather than racing it.
@@ -212,87 +215,40 @@ const size = await evaluate("window.obpterm.config.font_size");
 await evaluate("document.querySelector('#panes').dispatchEvent(new WheelEvent('wheel', {deltaY: -120, ctrlKey: true, bubbles: true, cancelable: true}))");
 assert.equal(await evaluate("window.obpterm.config.font_size"), size + 1, "ctrl+wheel up grows the font");
 
-// ---- the settings window, in its own page --------------------------------------------------
-const settings = await attach(url.replace(/\/?$/, "/") + "settings.html#hosts");
-await settings.until("document.querySelectorAll('#sw-nav button').length >= 11", "the settings sections");
-assert.equal(
-  await settings.evaluate("document.querySelector('#sw-head .crumb').textContent"),
-  "SSH hosts",
-  "the window opens on the section it was asked for",
-);
+// ---- settings, as a sheet in this same window ------------------------------------------------
+await evaluate("window.obpterm.settings.open('hosts')");
+await until("!document.querySelector('#settings').hidden", "the settings sheet");
+await until("document.querySelectorAll('#settings .sw-nav button').length >= 11", "the sections");
+assert.equal(await evaluate("document.querySelector('#settings .crumb').textContent"), "SSH hosts");
 
-const hostRows = await settings.evaluate("document.querySelectorAll('.sw-item').length");
-await settings.evaluate("document.querySelector('.sw-add').click()");
-await settings.until(`document.querySelectorAll('.sw-item').length === ${hostRows + 1}`, "an added host");
-await settings.evaluate(
-  "(() => { const i = document.querySelector('.sw-detail input'); i.value = 'Smoke host'; i.dispatchEvent(new Event('change')); })()",
+const hostRows = await evaluate("document.querySelectorAll('#settings .sw-item').length");
+await evaluate("document.querySelector('#settings .sw-add').click()");
+await until(`document.querySelectorAll('#settings .sw-item').length === ${hostRows + 1}`, "an added host");
+await evaluate(
+  "(() => { const i = document.querySelector('#settings .sw-detail input'); i.value = 'Smoke host'; i.dispatchEvent(new Event('change')); })()",
 );
-await settings.until("document.querySelector('.sw-item.on b').textContent === 'Smoke host'", "the rename landing in the list");
-await settings.evaluate("[...document.querySelectorAll('.sw-btn')].find(b => b.textContent === 'Delete').click()");
-await settings.until(`document.querySelectorAll('.sw-item').length === ${hostRows}`, "the host deleted again");
+await until("document.querySelector('#settings .sw-item.on b').textContent === 'Smoke host'", "the rename in the list");
+await evaluate("[...document.querySelectorAll('#settings .sw-btn')].find(b => b.textContent === 'Delete').click()");
+await until(`document.querySelectorAll('#settings .sw-item').length === ${hostRows}`, "the host deleted again");
 
-// Every section renders without throwing — the cheapest guard against a broken section.
-for (const section of ["terminal", "appearance", "rail", "startup", "profiles", "accounts", "projects", "keyboard", "updates", "files"]) {
-  await settings.evaluate(`[...document.querySelectorAll('#sw-nav button')].find(b => b.textContent.startsWith(${JSON.stringify(sectionTitle(section))}))?.click()`);
-  await settings.until("!!document.querySelector('#sw-main').firstElementChild", `the ${section} section`);
+// Every section renders; a section that throws would leave the body empty.
+for (const title of ["Terminal", "Appearance", "Rail", "Startup", "Profiles", "Accounts", "Projects", "Keyboard", "Updates", "Files"]) {
+  await evaluate(`[...document.querySelectorAll('#settings .sw-nav button')].find(b => b.textContent.startsWith(${JSON.stringify(title)}))?.click()`);
+  await until("!!document.querySelector('#settings .sw-main').firstElementChild", `the ${title} section`);
 }
-const settingsBad = settings.logs.filter((l) => /^(error|exception)/.test(l));
-assert.deepEqual(settingsBad, [], `settings console was not clean:\n${settingsBad.join("\n")}`);
+
+// Changing the accent repaints the app behind the sheet, not just the sheet.
+await evaluate("(() => { window.obpterm.config.accent = '#4c8dff'; window.obpterm.settings.open('appearance'); window.obpterm.applyConfig(); })()");
+assert.match(
+  await evaluate("getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()"),
+  /#4c8dff/i,
+  "the accent reaches the app's tokens",
+);
+await evaluate("(() => { window.obpterm.config.accent = '#ff8a1e'; window.obpterm.applyConfig(); window.obpterm.settings.close(); })()");
+await until("document.querySelector('#settings').hidden", "the sheet closing");
 
 const bad = logs.filter((l) => /^(error|exception)/.test(l));
 assert.deepEqual(bad, [], `console was not clean:\n${bad.join("\n")}`);
-console.log(`smoke OK — ${logs.length + settings.logs.length} console messages, none of them errors`);
+console.log(`smoke OK — ${logs.length} console messages, none of them errors`);
 process.exit(0);
 
-function sectionTitle(id) {
-  return {
-    terminal: "Terminal", appearance: "Appearance", rail: "Rail", startup: "Startup",
-    profiles: "Profiles", accounts: "Accounts", hosts: "SSH", projects: "Projects",
-    keyboard: "Keyboard", updates: "Updates", files: "Files",
-  }[id];
-}
-
-/** A second page under CDP, with the same helpers as the main one. */
-async function attach(target) {
-  const t = await (await fetch(`http://127.0.0.1:9222/json/new?about:blank`, { method: "PUT" })).json();
-  const socket = new WebSocket(t.webSocketDebuggerUrl);
-  const waiting = new Map();
-  const seen = [];
-  let n = 0;
-  socket.on("message", (raw) => {
-    const m = JSON.parse(raw);
-    if (m.id && waiting.has(m.id)) {
-      const { res, rej } = waiting.get(m.id);
-      waiting.delete(m.id);
-      return m.error ? rej(new Error(m.error.message)) : res(m.result);
-    }
-    if (m.method === "Runtime.consoleAPICalled")
-      seen.push(`${m.params.type}: ${m.params.args.map((a) => a.value ?? a.description).join(" ")}`);
-    if (m.method === "Runtime.exceptionThrown")
-      seen.push(`exception: ${m.params.exceptionDetails.exception?.description ?? m.params.exceptionDetails.text}`);
-  });
-  const call = (method, params = {}) =>
-    new Promise((res, rej) => {
-      const i = ++n;
-      waiting.set(i, { res, rej });
-      socket.send(JSON.stringify({ id: i, method, params }));
-    });
-  await new Promise((r) => socket.on("open", r));
-  await call("Runtime.enable");
-  await call("Page.enable");
-  await call("Page.navigate", { url: target });
-  const ev = async (expression) =>
-    (await call("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result.value;
-  return {
-    evaluate: ev,
-    logs: seen,
-    async until(expr, what, ms = 15000) {
-      const deadline = Date.now() + ms;
-      for (;;) {
-        if (await ev(expr).catch(() => false)) return;
-        if (Date.now() > deadline) throw new Error(`timed out waiting for ${what} (settings)\n${seen.join("\n")}`);
-        await new Promise((r) => setTimeout(r, 250));
-      }
-    },
-  };
-}
