@@ -2,10 +2,10 @@
 // Everything here can be added, edited and deleted — deletes are undoable.
 import { button, card, COLORS, note, number, select, swatches, text, toggle, type Ctx } from "./settings-panel";
 import { toast } from "./ui";
-import type { Account, Config, Host, Profile, Project } from "./transport";
+import type { Account, Config, Host, Profile, Project, Snippet } from "./transport";
 
-type Kind = "profiles" | "accounts" | "hosts" | "projects";
-type Item = Profile | Account | Host | Project;
+type Kind = "profiles" | "accounts" | "hosts" | "projects" | "snippets";
+type Item = Profile | Account | Host | Project | Snippet;
 
 interface Spec {
   title: string;
@@ -39,6 +39,10 @@ const SPECS: Record<Kind, Spec> = {
           field("Executable", text(p.exe, (v) => { p.exe = v; ctx.save(); rerender(); }, { placeholder: "pwsh.exe" })),
           field("Arguments", text(p.args.join(" "), (v) => { p.args = v.split(/\s+/).filter(Boolean); ctx.save(); }, { placeholder: "-NoLogo" })),
           field("Start in", text(p.cwd ?? "", (v) => { p.cwd = v || null; ctx.save(); }, { placeholder: "the default folder" })),
+        ),
+        grid(
+          field("Capture to a log automatically", toggle(p.capture ?? false, (v) => { p.capture = v; ctx.save(); })),
+          field("", staticText("Every shell on this profile starts recording; Ctrl+Shift+L still toggles it.")),
         ),
         envCard(p.env ?? (p.env = {}), ctx, "Environment for this shell"),
         note(`Opened by Ctrl+Shift+${(ctx.config.profiles.indexOf(p) + 1) || 1}, or from the + Tab menu.`),
@@ -106,6 +110,26 @@ const SPECS: Record<Kind, Spec> = {
             (v) => { h.project = v || null; ctx.save(); },
           )),
         ),
+      ];
+    },
+  },
+
+  snippets: {
+    title: "Snippets",
+    blurb: "Commands you keep retyping. They show up in the command palette (Ctrl+K) and type into the focused pane.",
+    singular: "snippet",
+    create: () => ({ id: id("s"), name: "New snippet", text: "", send: false }) as Snippet,
+    subtitle: (item) => (item as Snippet).text || "empty",
+    color: () => null,
+    form: (item, ctx, rerender) => {
+      const s = item as Snippet;
+      return [
+        grid(
+          field("Name", text(s.name, (v) => { s.name = v; ctx.save(); rerender(); })),
+          field("Press Enter for me", toggle(s.send, (v) => { s.send = v; ctx.save(); })),
+          field("Command", text(s.text, (v) => { s.text = v; ctx.save(); rerender(); }, { placeholder: "docker compose ps" }), true),
+        ),
+        note("Nothing is sent until you pick it from the palette, and it goes to the focused pane only."),
       ];
     },
   },

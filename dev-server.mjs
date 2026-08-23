@@ -67,7 +67,7 @@ wss.on("connection", (ws) => {
           catch { return reply(m.reqId, { session: { clean_exit: true, saved_at: 0, tabs: null } }); }
         }
         case "session_save":
-          writeFileSync(SESSION, JSON.stringify({ clean_exit: false, saved_at: Date.now(), tabs: m.tabs, updated_to: null }));
+          writeFileSync(SESSION, JSON.stringify({ clean_exit: false, saved_at: Date.now(), tabs: m.tabs, active: m.active ?? 0, updated_to: null }));
           return reply(m.reqId);
         case "claude_account": return reply(m.reqId, { account: claudeAccount(m.dir) });
         case "claude_account_names": {

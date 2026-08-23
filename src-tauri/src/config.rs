@@ -20,6 +20,20 @@ pub struct Profile {
     /// Extra environment for this shell — how an account preset reaches the process.
     #[serde(default)]
     pub env: std::collections::BTreeMap<String, String>,
+    /// Start capturing this shell's output to a log the moment it opens.
+    #[serde(default)]
+    pub capture: bool,
+}
+
+/// A command you keep retyping. The palette lists them; picking one types it into the pane.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Snippet {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+    /// Press Enter for you. Off means it is left on the prompt to edit.
+    #[serde(default)]
+    pub send: bool,
 }
 
 /// An account is an environment preset: `CLAUDE_CONFIG_DIR` for a Claude Code login,
@@ -109,6 +123,7 @@ pub struct Config {
     pub projects: Vec<Project>,
     pub accounts: Vec<Account>,
     pub hosts: Vec<Host>,
+    pub snippets: Vec<Snippet>,
     /// Account applied to new shells when nothing else says otherwise.
     pub default_account: Option<String>,
     /// Your own budget for the status-bar meters, in tokens. `None` shows plain totals.
@@ -146,6 +161,7 @@ impl Default for Config {
             projects: Vec::new(),
             accounts: default_accounts(),
             hosts: Vec::new(),
+            snippets: Vec::new(),
             default_account: None,
             quota_5h_tokens: None,
             quota_7d_tokens: None,
@@ -165,6 +181,7 @@ fn default_profiles() -> Vec<Profile> {
         args: args.iter().map(|s| s.to_string()).collect(),
         cwd: None,
         env: Default::default(),
+        capture: false,
     };
     vec![
         p("pwsh", "PowerShell 7", "pwsh.exe", &["-NoLogo"]),
@@ -183,6 +200,7 @@ fn default_profiles() -> Vec<Profile> {
         args: vec![],
         cwd: None,
         env: Default::default(),
+        capture: false,
     }]
 }
 
@@ -367,6 +385,10 @@ pub struct Session {
     pub saved_at: i64,
     /// Shape owned by the frontend (SavedTab[] from src/app.ts).
     pub tabs: serde_json::Value,
+    /// Index of the tab that was in front — restoring to the last tab in the array is not
+    /// where you were when the app died.
+    #[serde(default)]
+    pub active: usize,
     /// Set when the exit was an installer restart, so the next launch says "updated", not "crashed".
     pub updated_to: Option<String>,
 }
@@ -380,12 +402,12 @@ pub fn session_load(app: AppHandle) -> Result<Session, String> {
     }
     // Before 0.3.0 the tabs lived in config.json.
     let legacy = config_load(app)?.session.unwrap_or(serde_json::Value::Null);
-    Ok(Session { clean_exit: true, saved_at: 0, tabs: legacy, updated_to: None })
+    Ok(Session { clean_exit: true, saved_at: 0, tabs: legacy, active: 0, updated_to: None })
 }
 
 #[tauri::command]
-pub fn session_save(app: AppHandle, tabs: serde_json::Value) -> Result<(), String> {
-    let session = Session { clean_exit: false, saved_at: now_ms(), tabs, updated_to: None };
+pub fn session_save(app: AppHandle, tabs: serde_json::Value, active: usize) -> Result<(), String> {
+    let session = Session { clean_exit: false, saved_at: now_ms(), tabs, active, updated_to: None };
     write_atomic(&session_path(&app)?, &serde_json::to_string(&session).map_err(|e| e.to_string())?)
 }
 
@@ -442,6 +464,7 @@ mod tests {
             clean_exit: false,
             saved_at: 1_787_463_711_904,
             tabs: serde_json::json!([{ "root": { "kind": "leaf", "profile": "pwsh" } }]),
+            active: 2,
             updated_to: Some("0.4.1".into()),
         };
         let text = serde_json::to_string(&session).unwrap();

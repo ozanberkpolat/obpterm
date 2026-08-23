@@ -18,7 +18,7 @@ export function installPalette(app: App) {
 
   const build = (): Entry[] => [
     ...app.config.profiles.map((p, i) => ({
-      group: "New tab", label: p.name, hint: `Ctrl+Shift+${i + 1}`, run: () => void app.newTab(p),
+      group: "New tab", label: p.name, hint: i < 9 ? `Ctrl+Shift+${i + 1}` : "", run: () => void app.newTab(p),
     })),
     ...app.config.hosts.map((h) => ({
       group: "SSH", label: h.name, hint: h.user ? `${h.user}@${h.host}` : h.host, run: () => void app.newTabForHost(h),
@@ -27,13 +27,24 @@ export function installPalette(app: App) {
       group: "Project", label: `New tab in ${p.name}`, run: () => void app.newTab(undefined, p.id),
     })),
     ...app.tabs.map((t, i) => ({
-      group: "Go to", label: app.title(t), hint: `Ctrl+${i + 1}`, run: () => app.activate(t),
+      group: "Go to",
+      label: app.title(t),
+      // Only the first nine have a key; advertising Ctrl+27 would be a lie.
+      hint: i < 9 ? `Ctrl+${i + 1}` : (t.active.cwd ?? ""),
+      run: () => app.activate(t),
+    })),
+    ...app.config.snippets.map((s) => ({
+      group: "Snippet",
+      label: s.name,
+      hint: s.text.length > 42 ? `${s.text.slice(0, 42)}…` : s.text,
+      run: () => app.sendKey(s.send ? `${s.text}\r` : s.text),
     })),
     { group: "Panes", label: "Split right", hint: "Alt+Shift+=", run: () => void app.splitPane("row") },
     { group: "Panes", label: "Split down", hint: "Alt+Shift+-", run: () => void app.splitPane("col") },
     { group: "Panes", label: "Find in scrollback", hint: "Ctrl+Shift+F", run: () => app.find.open() },
     { group: "Panes", label: app.tab?.active.logPath ? "Stop capture" : "Start capture", hint: "Ctrl+Shift+L", run: () => void app.toggleLog() },
     { group: "App", label: "Settings", hint: "Ctrl+Shift+,", run: () => app.settings.open() },
+    { group: "App", label: "Manage snippets", run: () => app.settings.open("snippets") },
     { group: "App", label: "Appearance", run: () => app.settings.open("appearance") },
     { group: "App", label: "Check for updates", run: () => void app.status.checkUpdates() },
     { group: "App", label: app.config.rail_collapsed ? "Show the rail" : "Collapse the rail", hint: "Ctrl+Shift+B", run: () => app.toggleRail() },
@@ -42,7 +53,8 @@ export function installPalette(app: App) {
   /** Subsequence match, so "spr" finds "Split right". */
   const score = (entry: Entry, query: string): number => {
     if (!query) return 1;
-    const hay = `${entry.group} ${entry.label}`.toLowerCase();
+    // Twelve Claude sessions are told apart by their directory and host, not their titles.
+    const hay = `${entry.group} ${entry.label} ${entry.hint ?? ""}`.toLowerCase();
     const direct = hay.indexOf(query);
     if (direct >= 0) return 1000 - direct;
     let i = 0;

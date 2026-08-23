@@ -27,6 +27,7 @@ const ICONS: Record<string, string> = {
   keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>',
   updates: '<path d="M12 3v11"/><polyline points="8 10 12 14 16 10"/><path d="M4 18h16"/>',
   files: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  snippets: '<polyline points="8 7 4 12 8 17"/><polyline points="16 7 20 12 16 17"/><line x1="13" y1="5" x2="11" y2="19"/>',
 };
 
 const SECTIONS: { id: string; title: string; group: string; icon: string; count?(c: Config): number }[] = [
@@ -38,6 +39,7 @@ const SECTIONS: { id: string; title: string; group: string; icon: string; count?
   { id: "accounts", title: "Accounts", group: "Things you make", icon: "accounts", count: (c) => c.accounts.length },
   { id: "hosts", title: "SSH hosts", group: "Things you make", icon: "hosts", count: (c) => c.hosts.length },
   { id: "projects", title: "Projects", group: "Things you make", icon: "projects", count: (c) => c.projects.length },
+  { id: "snippets", title: "Snippets", group: "Things you make", icon: "snippets", count: (c) => c.snippets.length },
   { id: "keyboard", title: "Keyboard", group: "System", icon: "keyboard" },
   { id: "updates", title: "Updates", group: "System", icon: "updates" },
   { id: "files", title: "Files & reset", group: "System", icon: "files" },
@@ -550,6 +552,7 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
   accounts: (ctx) => renderList(ctx, "accounts"),
   hosts: (ctx) => renderList(ctx, "hosts"),
   projects: (ctx) => renderList(ctx, "projects"),
+  snippets: (ctx) => renderList(ctx, "snippets"),
 };
 
 export function note(message: string): HTMLElement {

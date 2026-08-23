@@ -14,6 +14,8 @@ export interface PaneHost {
   isFocused(pane: Pane): boolean;
   /** A pane started or stopped producing output, or rang. */
   onPaneActivity(): void;
+  /** `r` on a dead pane: run its shell again in the same terminal. */
+  onPaneRespawn(pane: Pane): void;
   onPaneTitle(pane: Pane): void;
   onPaneExit(pane: Pane, code: number | null): void;
   onPaneFocus(pane: Pane): void;
@@ -75,7 +77,10 @@ export class Pane {
       return false; // let xterm's own OSC 9 (notifications) still see it
     });
     t.onData((d) => {
-      if (this.exited) return host.onPaneExit(this, 0); // any key closes an exited pane
+      if (this.exited) {
+        if (d === "r" || d === "R") return host.onPaneRespawn(this);
+        return host.onPaneExit(this, 0); // any other key closes an exited pane
+      }
       void host.tp.write(this.id, d).catch(() => {});
     });
     t.onResize(({ cols, rows }) => {
@@ -127,6 +132,9 @@ export class Pane {
         this.host.onPaneExit(this, code);
       },
     );
+    if (this.profile.capture && !this.logPath) {
+      await this.toggleLog().catch((e) => console.warn("auto-capture failed", e));
+    }
   }
 
   async toggleLog(): Promise<string | null> {

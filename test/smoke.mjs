@@ -150,7 +150,8 @@ await until(
 // Toolbar presets: the 4-pane button must produce exactly four panes and light up.
 await evaluate("void window.obpterm.applyPreset('4')");
 await until("document.querySelectorAll('.pane').length === 4", "the 4-pane preset");
-assert.equal(await evaluate("document.querySelector('.layout-picker .tb.on').dataset.layout"), "4");
+// The picker is painted after the new panes have spawned, so wait for it rather than race it.
+await until("document.querySelector('.layout-picker .tb.on')?.dataset.layout === '4'", "the picker showing 4");
 // Shrinking ends live shells, so the first click only arms it.
 await evaluate("void window.obpterm.applyPreset('1')");
 await until("window.obpterm.armedPreset === '1'", "the shrink arming instead of killing");
@@ -297,6 +298,41 @@ await evaluate(
 );
 await until("typeof window.__copied === 'string' && window.__copied.includes('copy-on-select-marker')", "the selection copied itself");
 await evaluate("window.obpterm.tab.active.term.term.clearSelection()");
+
+// Tier 2: the session remembers which tab was in front.
+await evaluate("void window.obpterm.newTab()");
+await until("window.obpterm.tabs.length >= 2", "a second tab");
+await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+await evaluate("(() => { window.__f = false; window.obpterm.flushSession().then(() => (window.__f = true)); })()");
+await until("window.__f === true", "a session flush");
+assert.equal(JSON.parse(readFileSync(sessionFile, "utf8")).active, 0, "the front tab index is saved");
+
+// Ctrl+Tab goes back to where you were, not to the next one created.
+const second = await evaluate("window.obpterm.tabs.length - 1");
+await evaluate(`window.obpterm.activate(window.obpterm.tabs[${second}])`);
+await evaluate("window.obpterm.recent()");
+assert.equal(await evaluate("window.obpterm.tabs.indexOf(window.obpterm.tab)"), 0, "back to the previous tab");
+await evaluate("window.obpterm.recent()");
+assert.equal(await evaluate("window.obpterm.tabs.indexOf(window.obpterm.tab)"), second, "and back again");
+
+// A tab can be moved down the rail.
+const movedId = await evaluate("window.obpterm.tabs[0].id");
+await evaluate("window.obpterm.moveTab(window.obpterm.tabs[0], 1)");
+assert.equal(await evaluate("window.obpterm.tabs[1].id"), movedId, "the tab moved one place down");
+
+// Snippets reach the focused pane through the palette.
+await evaluate(
+  "(() => { window.__sent = ''; window.obpterm.tp.write = (id, d) => { window.__sent += d; return Promise.resolve(); };" +
+  " window.obpterm.config.snippets = [{id: 's1', name: 'List containers', text: 'docker compose ps', send: true}]; })()",
+);
+await evaluate("window.obpterm.palette.open('list containers')");
+await until("!!document.querySelector('#palette .presult')", "the snippet in the palette");
+assert.match(await evaluate("document.querySelector('#palette .presult .pgroup').textContent"), /Snippet/);
+await evaluate("document.querySelector('#palette .presult').click()");
+await until("window.__sent.includes('docker compose ps')", "the snippet typed into the pane");
+assert.match(await evaluate("window.__sent"), /\r$/, "send:true presses Enter");
+
+await evaluate(`window.obpterm.closeTab(window.obpterm.tabs[${second}])`);
 
 // ---- settings, as a sheet in this same window ------------------------------------------------
 await evaluate("window.obpterm.settings.open('hosts')");

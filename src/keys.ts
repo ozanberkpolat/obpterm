@@ -15,7 +15,7 @@ const ARROWS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDow
 export function ownsKey(e: KeyboardEvent): boolean {
   if (e.type !== "keydown") return false;
   if (ctrlOnly(e) && e.code === "Tab") return true;
-  if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV", "KeyF", "KeyL", "KeyP", "KeyN", "KeyH", "KeyQ", "Comma"].includes(e.code)) return true;
+  if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV", "KeyF", "KeyL", "KeyP", "KeyN", "KeyH", "KeyQ", "Comma", "ArrowUp", "ArrowDown"].includes(e.code)) return true;
   if ((ctrlShift(e) || ctrlOnly(e)) && /^Digit[1-9]$/.test(e.code)) return true;
   if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract", "KeyK"].includes(e.code)) return true;
   if ((altOnly(e) || altShift(e)) && e.code in ARROWS) return true;
@@ -51,7 +51,7 @@ export function installKeys(app: App) {
         }
       }
 
-      if (ctrlOnly(e) && e.code === "Tab") { app.cycle(1); return stop(e); }
+      if (ctrlOnly(e) && e.code === "Tab") { app.recent(); return stop(e); }
       if (ctrlShift(e) && e.code === "Tab") { app.cycle(-1); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyT") { void app.newTab(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyP") { profilePicker(app); return stop(e); }
@@ -65,6 +65,10 @@ export function installKeys(app: App) {
       if (ctrlShift(e) && e.code === "KeyL") { void app.toggleLog(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyH") { hostPicker(app); return stop(e); }
       if (e.code === "F2" && !e.ctrlKey && !e.altKey) { if (app.tab) renameTab(app, app.tab); return stop(e); }
+      if (ctrlShift(e) && (e.code === "ArrowUp" || e.code === "ArrowDown")) {
+        if (app.tab) app.moveTab(app.tab, e.code === "ArrowUp" ? -1 : 1);
+        return stop(e);
+      }
       if (ctrlShift(e) && e.code === "Comma") { app.settings.open(); return stop(e); }
       if (ctrlOnly(e) && e.code === "KeyK") { app.palette.open(); return stop(e); }
 

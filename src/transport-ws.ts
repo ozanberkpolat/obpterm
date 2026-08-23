@@ -80,7 +80,7 @@ export function wsTransport(): Transport {
     configReset: async () => (await call("config_reset")).config as Config,
     reveal: async (what) => what,
     sessionLoad: async () => (await call("session_load")).session as Session,
-    sessionSave: async (tabs) => void (await call("session_save", { tabs })),
+    sessionSave: async (tabs, active) => void (await call("session_save", { tabs, active })),
     claudeAccount: async (dir) => (await call("claude_account", { dir })).account as ClaudeAccount,
     claudeUsage: async (dir) => (await call("claude_usage", { dir })).usage as ClaudeUsage,
     loadConfig: async () => (await call("config_load")).config as Config,

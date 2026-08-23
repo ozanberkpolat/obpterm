@@ -20,7 +20,7 @@
     }
   ],
   "font_family": "JetBrains Mono, Cascadia Mono, Consolas, monospace",
-  "font_size": 30,
+  "font_size": 34,
   "scrollback": 10000,
   "rail_collapsed": false,
   "rail_width": 300,
@@ -73,13 +73,21 @@
   ],
   "hosts": [
     {
-      "id": "hmt5sxhaz",
+      "id": "hmt5t7gsm",
       "name": "New host",
       "host": "",
       "user": null,
       "port": null,
       "identity": null,
       "project": null
+    }
+  ],
+  "snippets": [
+    {
+      "id": "s1",
+      "name": "List containers",
+      "text": "docker compose ps",
+      "send": true
     }
   ],
   "default_account": "default",
@@ -502,6 +510,69 @@
     },
     {
       "id": "pmt5sxey1",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5t4iu7",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5t4stx",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5t5b08",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5t5ll4",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5t6xs7",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5t79zy",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5t7ecu",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,

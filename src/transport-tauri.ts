@@ -37,7 +37,7 @@ export function tauriTransport(): Transport {
     configReset: () => invoke<Config>("config_reset"),
     reveal: (what) => invoke<string>("reveal", { what }),
     sessionLoad: () => invoke<Session>("session_load"),
-    sessionSave: (tabs) => invoke("session_save", { tabs }),
+    sessionSave: (tabs, active) => invoke("session_save", { tabs, active }),
     claudeAccount: (dir) => invoke<ClaudeAccount>("claude_account", { dir }),
     claudeUsage: (dir) => invoke<ClaudeUsage>("claude_usage", { dir }),
     loadConfig: () => invoke<Config>("config_load"),

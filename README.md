@@ -61,7 +61,9 @@ With neither set, the build is unsigned and says so in the log.
 | `Ctrl+Shift+H` | Host book (open an SSH target in a new tab) |
 | `Ctrl+Shift+,` | Settings — profiles, accounts, hosts, projects |
 | `Ctrl+wheel` | Zoom the terminal in and out |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+Tab` | Back to the tab you were just in |
+| `Ctrl+Shift+Tab` | Previous tab in the rail |
+| `Ctrl+Shift+↑` / `Ctrl+Shift+↓` | Move this tab up / down the rail |
 | `Ctrl+1..9` | Jump to tab N |
 | `Ctrl+Shift+B` | Collapse / expand the rail |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste. Right-click copies a selection, otherwise pastes |
@@ -159,6 +161,9 @@ Panes split with `Alt+Shift+=` / `Alt+Shift+-`, resize by dragging the divider (
 `Alt+Shift+arrow`) and close with `Ctrl+Shift+W`. Every tab and its pane tree is written back to
 `config.json` as you work and reopened on the next launch (`restore_session: false` turns that
 off).
+
+A shell that dies leaves its pane on screen with its output; press `r` to run it again in the
+same terminal, keeping the scrollback — which is what you want when an SSH connection drops.
 
 A restored pane starts in the directory the shell last reported. PowerShell only reports it if
 you ask it to, so add this to your `$PROFILE`:
@@ -263,12 +268,22 @@ tab remembers its target across restarts, and `project` drops it straight into t
 environment values, since Windows does not expand them for a spawned process. An unset variable
 is left as written rather than turning into an empty path.
 
+## Snippets
+
+Commands you keep retyping live in Settings → Snippets and show up in the palette under
+**Snippet**. Picking one types it into the focused pane; with "Press Enter for me" off it is
+left on the prompt for you to edit first. Nothing is sent until you pick it.
+
 ## Sessions and crashes
 
 The open tabs — pane tree, project, colour, account, host, each pane's reported directory — are
 written to `session.json` next to `config.json` on every change (250 ms debounce, flushed on
 blur, on close and once a minute) and reopened on the next launch. The file is written to a temp
 file and renamed over the old one, so a crash mid-write cannot leave a half-written session.
+
+The tab that was in front comes back in front, and a profile with **Capture to a log
+automatically** starts recording every shell it opens — so a crash leaves a file behind even
+when you never thought to press `Ctrl+Shift+L`.
 
 `session.json` also carries `clean_exit`: false while OBPTerm is running, true once the window
 closes normally. A launch that finds `clean_exit: false` reopens the tabs and says the app did

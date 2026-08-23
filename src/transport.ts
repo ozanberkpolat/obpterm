@@ -8,6 +8,16 @@ export interface Profile {
   args: string[];
   cwd: string | null;
   env?: Record<string, string>;
+  /** Start capturing to a log as soon as the shell opens. */
+  capture?: boolean;
+}
+
+export interface Snippet {
+  id: string;
+  name: string;
+  text: string;
+  /** Press Enter for you, instead of leaving it on the prompt. */
+  send: boolean;
 }
 
 export interface Account {
@@ -62,6 +72,8 @@ export interface Session {
   clean_exit: boolean;
   saved_at: number;
   tabs: unknown;
+  /** Index of the tab that was in front. */
+  active: number;
   /** Version just installed, when the last exit was an update restart. */
   updated_to: string | null;
 }
@@ -118,6 +130,7 @@ export interface Config {
   projects: Project[];
   accounts: Account[];
   hosts: Host[];
+  snippets: Snippet[];
   default_account: string | null;
   quota_5h_tokens: number | null;
   quota_7d_tokens: number | null;
@@ -155,7 +168,7 @@ export interface Transport {
   configReset(): Promise<Config>;
   reveal(what: "config" | "logs"): Promise<string>;
   sessionLoad(): Promise<Session>;
-  sessionSave(tabs: unknown): Promise<void>;
+  sessionSave(tabs: unknown, active: number): Promise<void>;
   claudeAccount(dir: string): Promise<ClaudeAccount>;
   claudeUsage(dir: string): Promise<ClaudeUsage>;
   loadConfig(): Promise<Config>;
@@ -190,6 +203,7 @@ export function withDefaults(config: Partial<Config>): Config {
     github_token: config.github_token ?? null,
     accounts: config.accounts ?? [],
     hosts: config.hosts ?? [],
+    snippets: config.snippets ?? [],
     default_account: config.default_account ?? null,
     quota_5h_tokens: config.quota_5h_tokens ?? null,
     quota_7d_tokens: config.quota_7d_tokens ?? null,

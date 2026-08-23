@@ -64,6 +64,8 @@ export class App implements PaneHost {
   settings!: import("./settings-panel").Settings;
   private panesEl = $("#panes");
   private sessionTimer = 0;
+  /** Most recently used first. Only ever read through `recent()`. */
+  private mru: Tab[] = [];
   /** A shrink preset waiting for its second click. */
   armedPreset: Preset | null = null;
   private armedTimer = 0;
@@ -270,6 +272,7 @@ export class App implements PaneHost {
   activate(tab: Tab) {
     const accountChanged = this.tab?.accountId !== tab.accountId;
     this.tab = tab;
+    this.mru = [tab, ...this.mru.filter((t) => t !== tab && this.tabs.includes(t))];
     this.clearBells(tab);
     if (accountChanged) void this.status?.refresh();
     for (const t of this.tabs) t.el.classList.toggle("active", t === tab);
@@ -278,10 +281,30 @@ export class App implements PaneHost {
     this.paint();
   }
 
+  /** Ctrl+Tab: back to the tab you were just in. Walking creation order is useless at twelve. */
+  recent() {
+    const previous = this.mru.find((t) => t !== this.tab && this.tabs.includes(t));
+    if (previous) this.activate(previous);
+  }
+
+  /** Ctrl+Shift+Tab: the neighbour above in the rail — spatial, not historical. */
   cycle(delta: number) {
     if (!this.tab || this.tabs.length < 2) return;
     const i = this.tabs.indexOf(this.tab);
     this.activate(this.tabs[(i + delta + this.tabs.length) % this.tabs.length]!);
+  }
+
+  /** Moves the focused tab up or down the rail, so Ctrl+1..9 can be made to mean something. */
+  moveTab(tab: Tab, delta: number) {
+    const from = this.tabs.indexOf(tab);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= this.tabs.length) return;
+    this.tabs.splice(from, 1);
+    this.tabs.splice(to, 0, tab);
+    // Moving across a group boundary adopts that group, which is what dragging it there means.
+    tab.projectId = this.tabs[to + (delta > 0 ? -1 : 1)]?.projectId ?? tab.projectId;
+    this.paint();
+    void this.flushSession();
   }
 
   jump(index: number) {
@@ -370,6 +393,20 @@ export class App implements PaneHost {
       this.layout(tab);
       this.persistSession();
     }
+  }
+
+  /** Restarts a dead pane's shell in place, keeping its terminal and scrollback. */
+  async respawnPane(pane: Pane) {
+    const tab = this.tabOf(pane);
+    if (!tab || pane.deadReason) return;
+    pane.exited = false;
+    pane.exitAcknowledged = false;
+    pane.exitCode = null;
+    pane.id = -1;
+    pane.term.term.write("\r\n\x1b[38;2;140;160;190m[reconnecting…]\x1b[0m\r\n");
+    await this.startPane(tab, pane);
+    pane.focus();
+    this.paint();
   }
 
   /** Sends a literal string to the focused pane, e.g. "\x03" for Ctrl+C. */
@@ -492,13 +529,18 @@ export class App implements PaneHost {
     pane.exitAcknowledged = true;
     pane.exitCode = code;
     pane.term.term.write(
-      `\r\n\x1b[38;2;255;107;115m[${pane.profile.exe} exited with code ${code}]\x1b[0m press any key to close\r\n`,
+      `\r\n\x1b[38;2;255;107;115m[${pane.profile.exe} exited with code ${code}]\x1b[0m  ` +
+        `press \x1b[38;2;255;138;30mr\x1b[0m to run it again, any other key to close\r\n`,
     );
     this.paint();
   }
 
   onPaneFocus(pane: Pane) {
     this.focusPane(pane);
+  }
+
+  onPaneRespawn(pane: Pane) {
+    void this.respawnPane(pane);
   }
 
   isFocused(pane: Pane): boolean {
@@ -643,8 +685,9 @@ export class App implements PaneHost {
   /** Writes the tabs now. Always writes: a caller asking for a flush is about to lose the process. */
   async flushSession() {
     clearTimeout(this.sessionTimer);
+    const active = Math.max(0, this.tab ? this.tabs.indexOf(this.tab) : 0);
     await this.tp
-      .sessionSave(this.tabs.map((t) => this.snapshot(t)))
+      .sessionSave(this.tabs.map((t) => this.snapshot(t)), active)
       .catch((e) => console.warn("session not saved", e));
   }
 
@@ -665,6 +708,10 @@ export class App implements PaneHost {
     for (const tab of Array.isArray(saved) ? saved : []) {
       if (await this.restoreTab(tab)) restored++;
     }
+    // Activate once, at the end, on the tab that was in front — not on whichever happened to
+    // be built last, and without repainting the whole rail per restored tab.
+    const target = this.tabs[Math.min(session?.active ?? 0, this.tabs.length - 1)];
+    if (target) this.activate(target);
     return {
       restored,
       crashed: restored > 0 && session?.clean_exit === false,
@@ -721,8 +768,9 @@ export class App implements PaneHost {
       hostId: saved.host ?? null,
     };
     this.tabs.push(tab);
-    this.activate(tab);
-    for (const p of list) await this.startPane(tab, p);
+    this.layout(tab);
+    // ConPTY spawns are independent: 24 panes should not be 24 round trips in series.
+    await Promise.all(list.map((p) => this.startPane(tab, p)));
     return true;
   }
 
