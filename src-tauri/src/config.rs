@@ -147,6 +147,8 @@ pub struct Config {
     /// An endpoint on your own machine serving the same numbers (the homelab /ssh/ terminal
     /// already does: http://host:3007/api/status). Nothing is contacted unless this is set.
     pub limits_url: Option<String>,
+    /// Shortcut overrides: action id -> chord ("Ctrl+Shift+KeyT"); the frontend owns the ids.
+    pub keybindings: BTreeMap<String, String>,
     /// Your own budget for the status-bar meters, in tokens. `None` shows plain totals.
     pub quota_5h_tokens: Option<u64>,
     pub quota_7d_tokens: Option<u64>,
@@ -198,6 +200,7 @@ impl Default for Config {
             restore_session: true,
             session: None,
             theme: sentinel_theme(),
+            keybindings: BTreeMap::new(),
         }
     }
 }

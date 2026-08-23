@@ -3,7 +3,7 @@
 // the belt to that braces, and the only guard in the browser dev loop.
 import type { App } from "./app";
 import { closeMenu, openMenu } from "./menu";
-import { newProject, renameTab } from "./rail";
+import { actionFor } from "./keymap";
 
 const ctrlShift = (e: KeyboardEvent) => e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey;
 const ctrlOnly = (e: KeyboardEvent) => e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
@@ -14,13 +14,12 @@ const ARROWS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDow
 /** Keys the app handles itself; xterm must not forward them to the pty. */
 export function ownsKey(e: KeyboardEvent): boolean {
   if (e.type !== "keydown") return false;
-  if (ctrlOnly(e) && e.code === "Tab") return true;
-  if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV", "KeyF", "KeyL", "KeyP", "KeyN", "KeyH", "KeyQ", "Comma", "ArrowUp", "ArrowDown"].includes(e.code)) return true;
+  if (actionFor(e)) return true; // every rebindable chord, at its CURRENT binding
+  if (ctrlShift(e) && ["ArrowUp", "ArrowDown"].includes(e.code)) return true;
   if ((ctrlShift(e) || ctrlOnly(e)) && /^Digit[1-9]$/.test(e.code)) return true;
-  if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract", "KeyK", "KeyG"].includes(e.code)) return true;
+  if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract"].includes(e.code)) return true;
   if ((altOnly(e) || altShift(e)) && e.code in ARROWS) return true;
-  if (altShift(e) && ["Equal", "Minus", "NumpadAdd", "NumpadSubtract", "KeyD"].includes(e.code)) return true;
-  if (e.code === "F2") return true; // rename, not a key any shell here uses
+  if (altShift(e) && ["NumpadAdd", "NumpadSubtract", "KeyD"].includes(e.code)) return true;
   return e.code === "F12"; // F5 is a real key for the shell (ESC[15~); only devtools is ours
 }
 
@@ -58,31 +57,17 @@ export function installKeys(app: App) {
         }
       }
 
-      if (ctrlOnly(e) && e.code === "Tab") { app.recent(); return stop(e); }
-      if (ctrlShift(e) && e.code === "Tab") { app.cycle(-1); return stop(e); }
-      if (ctrlShift(e) && e.code === "KeyT") { void app.newTab(); return stop(e); }
-      if (ctrlShift(e) && e.code === "KeyP") { profilePicker(app); return stop(e); }
-      if (ctrlShift(e) && e.code === "KeyN") { newProject(app); return stop(e); }
-      if (ctrlShift(e) && e.code === "KeyW") { closeActive(app); return stop(e); }
-      if (ctrlShift(e) && e.code === "KeyQ") { if (app.tab) app.closeTab(app.tab); return stop(e); }
-      if (ctrlShift(e) && e.code === "KeyB") { app.toggleRail(); return stop(e); }
-      if (ctrlShift(e) && e.code === "KeyC") { void app.copy(); return stop(e); }
-      if (ctrlShift(e) && e.code === "KeyV") { void app.paste(); return stop(e); }
-      if (ctrlShift(e) && e.code === "KeyF") { app.find.open(); return stop(e); }
-      if (ctrlShift(e) && e.code === "KeyL") { void app.toggleLog(); return stop(e); }
-      if (ctrlShift(e) && e.code === "KeyH") { hostPicker(app); return stop(e); }
-      if (e.code === "F2" && !e.ctrlKey && !e.altKey) { if (app.tab) renameTab(app, app.tab); return stop(e); }
+      // Rebindable chords, at whatever the user bound them to.
+      const action = actionFor(e);
+      if (action) { action.run(app); return stop(e); }
+
       if (ctrlShift(e) && (e.code === "ArrowUp" || e.code === "ArrowDown")) {
         if (app.tab) app.moveTab(app.tab, e.code === "ArrowUp" ? -1 : 1);
         return stop(e);
       }
-      if (ctrlShift(e) && e.code === "Comma") { app.settings.open(); return stop(e); }
-      if (ctrlOnly(e) && e.code === "KeyK") { app.palette.open(); return stop(e); }
-      if (ctrlOnly(e) && e.code === "KeyG") { app.deck.toggle(); return stop(e); }
-
-      // Panes: Alt+Shift splits and resizes, Alt alone moves focus (Windows Terminal's map).
-      if (altShift(e) && ["Equal", "NumpadAdd"].includes(e.code)) { void app.splitPane("row"); return stop(e); }
-      if (altShift(e) && ["Minus", "NumpadSubtract"].includes(e.code)) { void app.splitPane("col"); return stop(e); }
+      // Numpad aliases for the splits, and Windows Terminal's Alt+Shift+D.
+      if (altShift(e) && e.code === "NumpadAdd") { void app.splitPane("row"); return stop(e); }
+      if (altShift(e) && e.code === "NumpadSubtract") { void app.splitPane("col"); return stop(e); }
       if (altShift(e) && e.code === "KeyD") { void app.splitPane("row"); return stop(e); }
       if (altShift(e) && e.code in ARROWS) { app.resizePane(ARROWS[e.code as keyof typeof ARROWS]); return stop(e); }
       if (altOnly(e) && e.code in ARROWS) { app.moveFocus(ARROWS[e.code as keyof typeof ARROWS]); return stop(e); }
@@ -110,7 +95,7 @@ export function installKeys(app: App) {
     e.preventDefault();
     profilePicker(app, e as MouseEvent);
   });
-  document.querySelector("#new-project")!.addEventListener("click", () => newProject(app));
+  document.querySelector("#new-project")!.addEventListener("click", () => void import("./rail").then((r) => r.newProject(app)));
 
   // Ctrl+wheel zooms, the way every editor does — the terminal keeps its own scroll.
   document.querySelector("#panes")!.addEventListener(
@@ -150,14 +135,7 @@ export function installKeys(app: App) {
   });
 }
 
-/** Ctrl+Shift+W closes the pane you are in, or the tab when it is the last one. */
-function closeActive(app: App) {
-  const tab = app.tab;
-  if (!tab) return;
-  app.closePane(tab.active, tab);
-}
-
-function profilePicker(app: App, e?: MouseEvent) {
+export function profilePicker(app: App, e?: MouseEvent) {
   const anchor = document.querySelector("#new-tab")!.getBoundingClientRect();
   openMenu(e?.clientX ?? anchor.left, e?.clientY ?? anchor.top, [
     ...app.config.profiles.map((p, i) => ({
@@ -173,7 +151,7 @@ function profilePicker(app: App, e?: MouseEvent) {
   ]);
 }
 
-function hostPicker(app: App) {
+export function hostPicker(app: App) {
   const anchor = document.querySelector("#target-chip")!.getBoundingClientRect();
   if (!app.config.hosts.length) return app.settings.open("hosts");
   openMenu(

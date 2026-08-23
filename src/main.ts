@@ -1,6 +1,7 @@
 import { pickTransport, withDefaults } from "./transport";
 import { App } from "./app";
 import { installKeys } from "./keys";
+import { bindKeys } from "./keymap";
 import { installFind } from "./find";
 import { Status } from "./status";
 import { installToolbar } from "./toolbar";
@@ -32,6 +33,7 @@ async function main() {
   installHeader(app);
   app.applyRailWidth();
   app.applyConfig();
+  bindKeys(config);
   installKeys(app);
   (window as unknown as { obpterm: App }).obpterm = app; // devtools handle
   installCrashGuard(app);

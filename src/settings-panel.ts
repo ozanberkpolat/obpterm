@@ -3,7 +3,7 @@
 // a black rectangle.
 import type { App } from "./app";
 import type { Config, Transport } from "./transport";
-import { KEYMAP } from "./keymap";
+import { ACTIONS, bindKeys, chordFor, chordOf, FIXED, pretty } from "./keymap";
 import { renderList, renderLogins } from "./settings-lists";
 import { toast } from "./ui";
 
@@ -474,27 +474,93 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
     return wrap;
   },
 
-  keyboard: () => {
+  keyboard: (ctx) => {
+    const c = ctx.config;
     const wrap = document.createElement("div");
     const list = document.createElement("div");
     list.className = "sw-card sw-keys";
-    for (const binding of KEYMAP) {
+    for (const action of ACTIONS) {
+      const el = document.createElement("div");
+      el.className = "sw-key";
+      const b = document.createElement("b");
+      b.textContent = action.label;
+      const chordBtn = document.createElement("button");
+      chordBtn.className = "sw-chord";
+      const overridden = !!c.keybindings[action.id] && c.keybindings[action.id] !== action.def;
+      chordBtn.textContent = pretty(chordFor(c, action));
+      chordBtn.classList.toggle("changed", overridden);
+      chordBtn.title = "Click, then press the new keys. Esc cancels.";
+      chordBtn.onclick = () => {
+        chordBtn.textContent = "press keys…";
+        chordBtn.classList.add("recording");
+        const done = () => { window.removeEventListener("keydown", grab, true); ctx.rerender(); };
+        const grab = (e: KeyboardEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.code === "Escape") return done();
+          const chord = chordOf(e);
+          if (!chord) return; // a bare modifier — keep listening
+          const holder = ACTIONS.find((a) => a !== action && chordFor(c, a) === chord);
+          if (holder) {
+            toast(`${pretty(chord)} already runs “${holder.label}” — free it first`);
+            return done();
+          }
+          if (chord === action.def) delete c.keybindings[action.id];
+          else c.keybindings[action.id] = chord;
+          bindKeys(c);
+          ctx.save();
+          done();
+        };
+        window.addEventListener("keydown", grab, true);
+      };
+      el.append(b, chordBtn);
+      if (overridden) {
+        const reset = document.createElement("button");
+        reset.className = "sw-btn";
+        reset.textContent = "Reset";
+        reset.onclick = () => {
+          delete c.keybindings[action.id];
+          bindKeys(c);
+          ctx.save();
+          ctx.rerender();
+        };
+        el.appendChild(reset);
+      }
+      list.appendChild(el);
+    }
+    const fixed = document.createElement("div");
+    fixed.className = "sw-card sw-keys";
+    for (const binding of FIXED) {
       const el = document.createElement("div");
       el.className = "sw-key";
       const b = document.createElement("b");
       b.textContent = binding.label;
       const keys = document.createElement("span");
       keys.className = "keys";
-      for (const k of binding.keys) {
-        const s = document.createElement("span");
-        s.textContent = k;
-        keys.appendChild(s);
+      for (const k of binding.keys.split(" ")) {
+        const chip = document.createElement("span");
+        chip.textContent = k;
+        keys.appendChild(chip);
       }
       el.append(b, keys);
-      list.appendChild(el);
+      fixed.appendChild(el);
     }
-    wrap.append(head("Keyboard", "What the app reserves. Everything else goes to the shell, F5 included."), list,
-      note("Rebinding is not in yet — these are fixed for now."));
+    const resetAll = document.createElement("button");
+    resetAll.className = "sw-btn";
+    resetAll.textContent = "Reset all to defaults";
+    resetAll.onclick = () => {
+      c.keybindings = {};
+      bindKeys(c);
+      ctx.save();
+      ctx.rerender();
+    };
+    wrap.append(
+      head("Keyboard", "Click a shortcut, press the new keys. Whatever you bind is reserved by the app; everything else goes to the shell, F5 included."),
+      list,
+      resetAll,
+      note("Fixed keys — these carry a number or a direction and cannot be rebound:"),
+      fixed,
+    );
     return wrap;
   },
 

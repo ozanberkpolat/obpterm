@@ -11,11 +11,12 @@ export function installFind(app: App) {
   const opts = () => ({
     caseSensitive: caseBtn.classList.contains("on"),
     regex: reBtn.classList.contains("on"),
+    // Neon green on request: matches must be findable at a glance in any scrollback.
     decorations: {
-      matchBackground: "#3a2b12",
-      activeMatchBackground: app.accent(),
-      matchOverviewRuler: app.accent(),
-      activeMatchColorOverviewRuler: app.accent(),
+      matchBackground: "#136b06",
+      activeMatchBackground: "#39ff14",
+      matchOverviewRuler: "#39ff14",
+      activeMatchColorOverviewRuler: "#39ff14",
     },
   });
 
