@@ -66,6 +66,7 @@ function row(app: App, tab: Tab): HTMLLIElement {
   const sub = tab.active.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? tab.active.profile.name;
   li.querySelector(".sub")!.textContent = sub === app.title(tab) ? "" : sub;
   li.onclick = () => app.activate(tab);
+  li.ondblclick = () => renameTab(app, tab, li);
   li.onauxclick = (e) => e.button === 1 && app.closeTab(tab);
   li.oncontextmenu = (e) => {
     e.preventDefault();
@@ -78,9 +79,19 @@ function row(app: App, tab: Tab): HTMLLIElement {
   return li;
 }
 
+export function renameTab(app: App, tab: Tab, row?: HTMLElement) {
+  const host = (row ?? document.querySelector<HTMLElement>(".tab.active"))?.querySelector<HTMLElement>(".label");
+  if (!host) return;
+  editInline(host, app.title(tab), "Tab name", (v) => {
+    app.renameTab(tab, v === app.title(tab) ? (tab.name ?? "") : v);
+    app.paint();
+  });
+}
+
 function tabMenu(app: App, tab: Tab, x: number, y: number) {
   const capturing = tab.active.logPath;
   openMenu(x, y, [
+    { label: "Rename tab", hint: "F2", onPick: () => renameTab(app, tab) },
     { label: "Split right", hint: "Alt+Shift+=", onPick: () => void app.splitPane("row") },
     { label: "Split down", hint: "Alt+Shift+-", onPick: () => void app.splitPane("col") },
     { label: "Settings…", hint: "Ctrl+Shift+,", onPick: () => app.settings.open() },

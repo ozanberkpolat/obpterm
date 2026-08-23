@@ -20,17 +20,18 @@
     }
   ],
   "font_family": "JetBrains Mono, Cascadia Mono, Consolas, monospace",
-  "font_size": 24,
+  "font_size": 26,
   "scrollback": 10000,
   "rail_collapsed": false,
   "rail_width": 300,
   "cursor_style": "bar",
   "cursor_blink": true,
   "right_click_paste": true,
+  "copy_on_select": true,
   "accent": "#ff8a1e",
   "dim_inactive_panes": true,
   "capture_dir": null,
-  "update_check_on_launch": true,
+  "update_check_on_launch": false,
   "default_cwd": "~",
   "update_repo": "ozanberkpolat/obpterm",
   "github_token": null,
@@ -72,7 +73,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt5nwll0",
+      "id": "hmt5qu55r",
       "name": "New host",
       "host": "",
       "user": null,
@@ -438,6 +439,24 @@
     },
     {
       "id": "pmt5nwje3",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5qtmzf",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5qu2q5",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,

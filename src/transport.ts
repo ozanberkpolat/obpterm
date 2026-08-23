@@ -107,6 +107,7 @@ export interface Config {
   cursor_style: "bar" | "block" | "underline";
   cursor_blink: boolean;
   right_click_paste: boolean;
+  copy_on_select: boolean;
   accent: string;
   dim_inactive_panes: boolean;
   capture_dir: string | null;
@@ -179,6 +180,7 @@ export function withDefaults(config: Partial<Config>): Config {
     cursor_style: config.cursor_style ?? "bar",
     cursor_blink: config.cursor_blink ?? true,
     right_click_paste: config.right_click_paste ?? true,
+    copy_on_select: config.copy_on_select ?? true,
     accent: config.accent ?? "#ff8a1e",
     dim_inactive_panes: config.dim_inactive_panes ?? true,
     capture_dir: config.capture_dir ?? null,

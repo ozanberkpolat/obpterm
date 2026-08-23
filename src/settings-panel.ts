@@ -325,6 +325,8 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
           text(c.default_cwd ?? "", (v) => { c.default_cwd = v || null; ctx.save(); }, { width: 280, placeholder: "C:\\OBP" })),
         row("Default profile", "What Ctrl+Shift+T opens.",
           select(c.profiles.map((p) => ({ value: p.id, label: p.name })), c.default_profile, (v) => { c.default_profile = v; ctx.save(); })),
+        row("Copy on select", "Finishing a drag puts the selection on the clipboard — no keypress.",
+          toggle(c.copy_on_select, (v) => { c.copy_on_select = v; ctx.save(); })),
         row("Right-click", "Copies the selection, pastes when there is none.",
           toggle(c.right_click_paste, (v) => { c.right_click_paste = v; ctx.save(); })),
         row("Capture folder", "Where Ctrl+Shift+L writes a pane's raw output.",

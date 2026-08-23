@@ -3,7 +3,7 @@
 // the belt to that braces, and the only guard in the browser dev loop.
 import type { App } from "./app";
 import { closeMenu, openMenu } from "./menu";
-import { newProject } from "./rail";
+import { newProject, renameTab } from "./rail";
 
 const ctrlShift = (e: KeyboardEvent) => e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey;
 const ctrlOnly = (e: KeyboardEvent) => e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
@@ -20,6 +20,7 @@ export function ownsKey(e: KeyboardEvent): boolean {
   if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract", "KeyK"].includes(e.code)) return true;
   if ((altOnly(e) || altShift(e)) && e.code in ARROWS) return true;
   if (altShift(e) && ["Equal", "Minus", "NumpadAdd", "NumpadSubtract", "KeyD"].includes(e.code)) return true;
+  if (e.code === "F2") return true; // rename, not a key any shell here uses
   return e.code === "F12"; // F5 is a real key for the shell (ESC[15~); only devtools is ours
 }
 
@@ -54,6 +55,7 @@ export function installKeys(app: App) {
       if (ctrlShift(e) && e.code === "KeyF") { app.find.open(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyL") { void app.toggleLog(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyH") { hostPicker(app); return stop(e); }
+      if (e.code === "F2" && !e.ctrlKey && !e.altKey) { if (app.tab) renameTab(app, app.tab); return stop(e); }
       if (ctrlShift(e) && e.code === "Comma") { app.settings.open(); return stop(e); }
       if (ctrlOnly(e) && e.code === "KeyK") { app.palette.open(); return stop(e); }
 

@@ -17,6 +17,8 @@ export interface Tab {
   el: HTMLElement;
   projectId: string | null;
   color: string | null;
+  /** Set by the user; wins over whatever the shell calls itself. */
+  name: string | null;
   /** Account whose environment this tab's shells were started with. */
   accountId: string | null;
   /** Set when the tab was opened on an SSH host. */
@@ -26,6 +28,7 @@ export interface Tab {
 export interface SavedTab {
   project: string | null;
   color: string | null;
+  name?: string | null;
   account?: string | null;
   host?: string | null;
   root: L.SavedNode;
@@ -212,7 +215,7 @@ export class App implements PaneHost {
     const el = document.createElement("div");
     el.className = "tab-panes";
     this.panesEl.appendChild(el);
-    const tab: Tab = { root: L.leaf(pane), active: pane, el, projectId, color: null, accountId, hostId: null };
+    const tab: Tab = { root: L.leaf(pane), active: pane, el, projectId, color: null, name: null, accountId, hostId: null };
     this.tabs.push(tab);
     this.activate(tab);
     await this.startPane(tab, pane);
@@ -287,7 +290,14 @@ export class App implements PaneHost {
   }
 
   title(tab: Tab): string {
-    return tab.active.title || tab.active.profile.name;
+    return tab.name || tab.active.title || tab.active.profile.name;
+  }
+
+  /** An empty name hands the tab back to whatever the shell calls itself. */
+  renameTab(tab: Tab, name: string) {
+    tab.name = name.trim() || null;
+    this.paint();
+    this.persistSession();
   }
 
   // ---- panes ----------------------------------------------------------------------------
@@ -462,6 +472,10 @@ export class App implements PaneHost {
     this.focusPane(pane);
   }
 
+  onPaneSelection(text: string) {
+    void this.tp.writeClipboard(text).catch(() => {});
+  }
+
   // ---- config & session -------------------------------------------------------------------
 
   applyConfig() {
@@ -533,6 +547,7 @@ export class App implements PaneHost {
     return {
       project: tab.projectId,
       color: tab.color,
+      name: tab.name,
       account: tab.accountId,
       host: tab.hostId,
       root: L.serialize(tab.root),
@@ -614,6 +629,7 @@ export class App implements PaneHost {
       el,
       projectId: this.project(saved.project) ? saved.project : null,
       color: saved.color,
+      name: saved.name ?? null,
       accountId: saved.account ?? null,
       hostId: saved.host ?? null,
     };

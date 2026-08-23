@@ -90,6 +90,8 @@ pub struct Config {
     pub cursor_blink: bool,
     /// Right-click copies a selection and pastes when there is none.
     pub right_click_paste: bool,
+    /// Finishing a drag copies the selection, the way the /ssh/ terminal behaves.
+    pub copy_on_select: bool,
     /// The UI accent. The terminal's own cursor colour lives in `theme`.
     pub accent: String,
     /// Fade panes that are not focused.
@@ -133,6 +135,7 @@ impl Default for Config {
             cursor_style: "bar".into(),
             cursor_blink: true,
             right_click_paste: true,
+            copy_on_select: true,
             accent: "#ff8a1e".into(),
             dim_inactive_panes: true,
             capture_dir: None,

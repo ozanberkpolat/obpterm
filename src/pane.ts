@@ -10,6 +10,8 @@ export interface PaneHost {
   onPaneTitle(pane: Pane): void;
   onPaneExit(pane: Pane, code: number | null): void;
   onPaneFocus(pane: Pane): void;
+  /** A drag left a selection and copy-on-select is on. */
+  onPaneSelection(text: string): void;
 }
 
 export class Pane {
@@ -57,6 +59,22 @@ export class Pane {
       if (this.id > 0 && !this.exited) void host.tp.resize(this.id, cols, rows).catch(() => {});
     });
     this.el.addEventListener("mousedown", () => host.onPaneFocus(this), true);
+
+    // A left drag always selects, even while the program has mouse reporting on — without
+    // this, dragging inside Claude Code or vim never leaves a selection to copy.
+    const selection = (t as unknown as { _core?: { _selectionService?: { shouldForceSelection?(e: MouseEvent): boolean } } })._core
+      ?._selectionService;
+    if (selection?.shouldForceSelection) {
+      const original = selection.shouldForceSelection.bind(selection);
+      selection.shouldForceSelection = (e: MouseEvent) => (e && e.button === 0 ? true : original(e));
+    }
+
+    // Copy-on-select: finishing a drag puts the selection on the clipboard, no keypress.
+    this.el.addEventListener("mouseup", (e) => {
+      if (e.button !== 0 || !host.config.copy_on_select) return;
+      const text = t.getSelection();
+      if (text.trim()) void host.onPaneSelection(text);
+    });
     new ResizeObserver(() => this.term.fit()).observe(this.el);
   }
 

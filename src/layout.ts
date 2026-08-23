@@ -75,11 +75,19 @@ export function nudge(root: Node, target: Pane, dir: "row" | "col", delta: numbe
 
 /** Rebuilds `container` around the panes' existing elements. */
 export function render(root: Node, container: HTMLElement, onRatioCommit: () => void) {
-  container.replaceChildren(build(root, onRatioCommit));
+  const el = build(root, onRatioCommit);
+  // The root fills the tab; whatever flex it carried as somebody's child is stale.
+  el.style.flex = "";
+  container.replaceChildren(el);
 }
 
 function build(node: Node, onRatioCommit: () => void): HTMLElement {
-  if (node.kind === "leaf") return node.pane.el;
+  if (node.kind === "leaf") {
+    // A pane element outlives the tree it was in: closing its sibling must not leave it
+    // sized for a split that no longer exists.
+    node.pane.el.style.flex = "";
+    return node.pane.el;
+  }
   const el = document.createElement("div");
   el.className = `split ${node.dir}`;
   const a = build(node.a, onRatioCommit);

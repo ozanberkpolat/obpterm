@@ -65,6 +65,7 @@ With neither set, the build is unsigned and says so in the log.
 | `Ctrl+1..9` | Jump to tab N |
 | `Ctrl+Shift+B` | Collapse / expand the rail |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste. Right-click copies a selection, otherwise pastes |
+| `F2` / double-click a tab | Rename the tab |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Font size |
 
 Everything else, including `F5`, `Ctrl+R`, `Ctrl+F`, `Ctrl+W`, goes to the shell: WebView2's
@@ -110,6 +111,18 @@ immediately. The file stays hand-editable.
 It is a sheet rather than a second window on purpose: the app's capability scope covers the
 `main` window only, so a second Tauri window's webview gets no IPC and renders as a black
 rectangle.
+
+## Selecting and copying
+
+Finishing a left drag copies the selection straight to the clipboard — no keypress, the way the
+`/ssh/` terminal in iot-stack behaves. A left drag always selects, even while the program running
+in the pane has mouse reporting on (Claude Code, vim), so text stays selectable. `Ctrl+Shift+C`
+copies an existing selection and `Ctrl+Shift+V` pastes; plain `Ctrl+C` is left to the shell as an
+interrupt. Turn copy-on-select off in Settings → Terminal.
+
+A tab's name is whatever the shell reports, until you give it one: `F2`, a double-click on the
+rail row, or Rename in its menu. Clearing the field hands the name back to the shell. The name
+travels with the session.
 
 ## Projects
 

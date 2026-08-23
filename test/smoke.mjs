@@ -215,6 +215,40 @@ const size = await evaluate("window.obpterm.config.font_size");
 await evaluate("document.querySelector('#panes').dispatchEvent(new WheelEvent('wheel', {deltaY: -120, ctrlKey: true, bubbles: true, cancelable: true}))");
 assert.equal(await evaluate("window.obpterm.config.font_size"), size + 1, "ctrl+wheel up grows the font");
 
+// Closing a split must hand the whole tab back to the survivor — a stale flex once left it
+// sitting at half width.
+await evaluate("void window.obpterm.applyPreset('2c')");
+await until("document.querySelectorAll('.pane').length === 2", "two panes");
+const full = await evaluate("document.querySelector('#panes').getBoundingClientRect().width");
+await evaluate("void window.obpterm.applyPreset('1')");
+await until("document.querySelectorAll('.pane').length === 1", "one pane");
+const wide = await evaluate("document.querySelector('.pane').getBoundingClientRect().width");
+assert.ok(wide > full * 0.9, `the surviving pane fills the tab (${wide} of ${full})`);
+
+// Tab rename wins over the shell's own title, and clearing it hands the name back.
+await evaluate("window.obpterm.renameTab(window.obpterm.tab, 'Renamed')");
+assert.equal(await evaluate("window.obpterm.title(window.obpterm.tab)"), "Renamed");
+await until("document.querySelector('.tab.active .title').textContent === 'Renamed'", "the rename in the rail");
+assert.match(
+  await evaluate("JSON.stringify(window.obpterm.snapshot(window.obpterm.tab))"),
+  /"name":"Renamed"/,
+  "the name is saved with the session",
+);
+await evaluate("window.obpterm.renameTab(window.obpterm.tab, '')");
+assert.notEqual(await evaluate("window.obpterm.title(window.obpterm.tab)"), "Renamed", "clearing it gives the shell its title back");
+
+// Copy-on-select: a finished left drag copies without a keypress (the /ssh/ terminal's habit).
+await evaluate(
+  "(() => { window.__copied = null; window.obpterm.tp.writeClipboard = (t) => { window.__copied = t; return Promise.resolve(); }; })()",
+);
+await evaluate("window.obpterm.tab.active.term.term.write('copy-on-select-marker\\r\\n')");
+await new Promise((r) => setTimeout(r, 200));
+await evaluate(
+  "(() => { window.obpterm.tab.active.term.term.selectAll(); window.obpterm.tab.active.el.dispatchEvent(new MouseEvent('mouseup', {button: 0, bubbles: true})); })()",
+);
+await until("typeof window.__copied === 'string' && window.__copied.includes('copy-on-select-marker')", "the selection copied itself");
+await evaluate("window.obpterm.tab.active.term.term.clearSelection()");
+
 // ---- settings, as a sheet in this same window ------------------------------------------------
 await evaluate("window.obpterm.settings.open('hosts')");
 await until("!document.querySelector('#settings').hidden", "the settings sheet");

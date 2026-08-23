@@ -9,6 +9,7 @@ export const KEYMAP: Binding[] = [
   { id: "new-tab", label: "New tab", keys: ["Ctrl", "Shift", "T"] },
   { id: "profiles", label: "Pick a profile", keys: ["Ctrl", "Shift", "P"] },
   { id: "palette", label: "Command palette", keys: ["Ctrl", "K"] },
+  { id: "rename", label: "Rename the tab", keys: ["F2"] },
   { id: "close", label: "Close pane, or the tab when it is the last", keys: ["Ctrl", "Shift", "W"] },
   { id: "cycle", label: "Next / previous tab", keys: ["Ctrl", "Tab"] },
   { id: "jump", label: "Jump to tab 1…9", keys: ["Ctrl", "1…9"] },
