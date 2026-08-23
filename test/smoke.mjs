@@ -211,6 +211,8 @@ await until("!!document.querySelector('.group.collapsed')", "a collapsed project
 assert.equal(await evaluate("getComputedStyle(document.querySelector('.group.collapsed .glist')).display"), "none");
 await evaluate("void window.obpterm.toggleProject(window.obpterm.config.projects[0])");
 await until("!document.querySelector('.group.collapsed')", "the project expanded again");
+// A run that died between collapse and expand leaves rail_collapsed behind — normalize first.
+await evaluate("(() => { if (window.obpterm.config.rail_collapsed) window.obpterm.toggleRail(); })()");
 await evaluate("window.obpterm.setRailWidth(300)");
 assert.equal(await evaluate("document.querySelector('#rail').getBoundingClientRect().width"), 300);
 assert.equal(
@@ -284,7 +286,7 @@ await evaluate("(() => { const t = window.obpterm.tabs[0]; window.obpterm.panesO
 assert.equal(await evaluate("window.obpterm.activity(window.obpterm.tabs[0])"), "bell", "a bell outranks idle");
 await until("document.querySelector('#rail-waiting').textContent === '1 waiting'", "the waiting count");
 await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
-assert.equal(await evaluate("window.obpterm.activity(window.obpterm.tabs[0])"), "idle", "focusing answers the bell");
+assert.notEqual(await evaluate("window.obpterm.activity(window.obpterm.tabs[0])"), "bell", "focusing answers the bell"); // idle, or running if the shell just printed
 await until("document.querySelector('#rail-waiting').hidden === true", "the count disappearing at zero");
 
 // The rail patches rows instead of rebuilding them: the same element must survive a repaint.
@@ -320,8 +322,9 @@ const box = JSON.parse(
   await evaluate("(() => { const r = document.querySelector('.tab').getBoundingClientRect(); return JSON.stringify([r.width, r.height]); })()"),
 );
 assert.deepEqual(box, [30, 30], "a collapsed row is a 30px circle");
+await until("!!document.querySelector('.tab .st.idle')", "a row going idle"); // running decays 2s after the last byte
 assert.equal(
-  await evaluate("getComputedStyle(document.querySelector('.tab .st.idle') ?? document.createElement('i')).display"),
+  await evaluate("getComputedStyle(document.querySelector('.tab .st.idle')).display"),
   "none",
   "an idle glyph is hidden when collapsed",
 );
@@ -579,6 +582,38 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   devWs.close();
   await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
 }
+
+
+// ---- shortcut rebinding: the map follows config, and the old chord is released ------------
+await evaluate("window.obpterm.settings.open('keyboard')");
+await until("document.querySelectorAll('#settings .sw-chord').length > 10", "the rebindable rows");
+// Rebind the palette to Ctrl+Shift+O through the capture flow.
+await evaluate("[...document.querySelectorAll('#settings .sw-key')].find(k => k.querySelector('b').textContent === 'Command palette').querySelector('.sw-chord').click()");
+await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyO', key: 'O', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }))");
+await until("window.obpterm.config.keybindings['palette'] === 'Ctrl+Shift+KeyO'", "the override stored");
+await evaluate("window.obpterm.settings.close()");
+// The new chord opens it…
+await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyO', key: 'O', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }))");
+await until("window.obpterm.palette.isOpen", "the palette on the new chord");
+await evaluate("window.obpterm.palette.close()");
+// …and the old one no longer does.
+await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyK', key: 'k', ctrlKey: true, bubbles: true, cancelable: true }))");
+await new Promise((r) => setTimeout(r, 200));
+assert.equal(await evaluate("window.obpterm.palette.isOpen"), false, "the default chord was released");
+// A conflicting rebind is refused.
+await evaluate("window.obpterm.settings.open('keyboard')");
+await until("document.querySelectorAll('#settings .sw-chord').length > 10", "the rows again");
+await evaluate("[...document.querySelectorAll('#settings .sw-key')].find(k => k.querySelector('b').textContent === 'New tab').querySelector('.sw-chord').click()");
+await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyO', key: 'O', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }))");
+await new Promise((r) => setTimeout(r, 200));
+assert.equal(await evaluate("window.obpterm.config.keybindings['new-tab'] ?? null"), null, "the taken chord was refused");
+// Reset all puts Ctrl+K back.
+await evaluate("[...document.querySelectorAll('#settings .sw-btn')].find(b => b.textContent === 'Reset all to defaults').click()");
+await until("Object.keys(window.obpterm.config.keybindings).length === 0", "the overrides cleared");
+await evaluate("window.obpterm.settings.close()");
+await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyK', key: 'k', ctrlKey: true, bubbles: true, cancelable: true }))");
+await until("window.obpterm.palette.isOpen", "Ctrl+K back after the reset");
+await evaluate("window.obpterm.palette.close()");
 
 // ---- settings, as a sheet in this same window ------------------------------------------------
 await evaluate("window.obpterm.settings.open('hosts')");

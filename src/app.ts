@@ -6,6 +6,7 @@ import { ACTIVE_MS, Pane, type PaneHost } from "./pane";
 import * as L from "./layout";
 import { applyTermConfig } from "./term";
 import { renderRail } from "./rail";
+import { bindKeys } from "./keymap";
 import { toast } from "./ui";
 import { COLORS } from "./menu";
 import type { Find } from "./find";
@@ -924,6 +925,7 @@ export class App implements PaneHost {
     const fresh = withDefaults(await this.tp.loadConfig());
     // The session lives in session.json; everything else comes from the file.
     Object.assign(this.config, fresh);
+    bindKeys(this.config);
     this.applyConfig();
     this.applyRailWidth();
     document.querySelector("#rail")!.classList.toggle("collapsed", this.config.rail_collapsed);

@@ -175,3 +175,14 @@
   padding: 12px 18px; border-radius: 16px; border: 1px dashed var(--border-2);
   color: var(--muted); font-size: 12px;
 }
+
+/* rebindable shortcut chips */
+.sw-chord {
+  font: 600 11px var(--mono); padding: 4px 12px; border-radius: 999px;
+  background: var(--bg); border: 1px solid var(--border-2); color: var(--ink); cursor: pointer;
+}
+.sw-chord:hover { border-color: var(--accent); }
+.sw-chord.changed { border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent); }
+.sw-chord.recording { border-color: var(--accent); color: var(--accent); animation: chord-pulse 1s infinite; }
+@keyframes chord-pulse { 50% { opacity: .55; } }
+.sw-key .sw-btn { margin-left: 8px; }

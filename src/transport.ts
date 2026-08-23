@@ -165,6 +165,8 @@ export interface Config {
   default_account: string | null;
   limits_file: string | null;
   limits_url: string | null;
+  /** Shortcut overrides: action id -> chord ("Ctrl+Shift+KeyT"). Missing = the default. */
+  keybindings: Record<string, string>;
   quota_5h_tokens: number | null;
   quota_7d_tokens: number | null;
   restore_session: boolean;
@@ -308,6 +310,7 @@ export function withDefaults(config: Partial<Config>): Config {
     default_account: config.default_account ?? null,
     limits_file: config.limits_file ?? null,
     limits_url: config.limits_url ?? null,
+    keybindings: config.keybindings ?? {},
     quota_5h_tokens: config.quota_5h_tokens ?? null,
     quota_7d_tokens: config.quota_7d_tokens ?? null,
     projects: (config.projects ?? []).map((p) => ({
