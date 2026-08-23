@@ -226,8 +226,10 @@ the app talks to Rust over Tauri IPC. Rust changes are checked from Linux withou
 
 ```sh
 rustup target add x86_64-pc-windows-msvc
-cargo check --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
+cargo check --tests --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
 ```
+
+Pass `--tests`: without it the unit tests are not compiled and a broken test only shows up in CI.
 
 (`tauri-build` needs `llvm-rc` on `PATH` for that; `apt install llvm` or extract it from the
 `llvm-NN` package.) Pushing to `master` runs `cargo test` + typecheck + a full Windows build;

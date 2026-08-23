@@ -386,6 +386,7 @@ mod tests {
             cwd: Some("C:\\work".into()),
             default_profile: Some("pwsh".into()),
             layout: Some(serde_json::json!([{"kind": "leaf", "profile": "pwsh"}])),
+            collapsed: true,
         });
         // The frontend owns the session shape: whatever it wrote must come back byte-identical.
         cfg.session = Some(serde_json::json!([{"root": {"kind": "split", "dir": "row", "ratio": 0.5}}]));
