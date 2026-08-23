@@ -1,6 +1,8 @@
 mod claude;
 mod config;
+mod metrics;
 mod pty;
+mod update;
 
 use tauri::Manager;
 
@@ -11,6 +13,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(pty::Sessions::default())
         .manage(claude::UsageCache::default())
+        .manage(metrics::Metrics::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -27,6 +30,9 @@ pub fn run() {
             claude::claude_account,
             claude::claude_account_names,
             claude::claude_usage,
+            metrics::host_metrics,
+            update::app_version,
+            update::run_installer,
         ])
         .setup(|app| {
             let main = app.get_webview_window("main").expect("main window");

@@ -1,7 +1,7 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
-import type { ClaudeAccount, ClaudeUsage, Config, Profile, Session, Transport } from "./transport";
+import type { ClaudeAccount, ClaudeUsage, Config, HostMetrics, Profile, Session, Transport } from "./transport";
 
 export function tauriTransport(): Transport {
   const exits = new Map<number, (code: number | null) => void>();
@@ -28,6 +28,9 @@ export function tauriTransport(): Transport {
       return invoke<string>("pty_log_start", { id, dir: await invoke<string>("log_dir"), name, stamp });
     },
     logStop: (id) => invoke("pty_log_stop", { id }),
+    hostMetrics: (cwd) => invoke<HostMetrics>("host_metrics", { cwd }),
+    appVersion: () => invoke<string>("app_version"),
+    runInstaller: (name, bytes) => invoke<string>("run_installer", { name, bytes: Array.from(bytes) }),
     sessionLoad: () => invoke<Session>("session_load"),
     sessionSave: (tabs) => invoke("session_save", { tabs }),
     claudeAccount: (dir) => invoke<ClaudeAccount>("claude_account", { dir }),

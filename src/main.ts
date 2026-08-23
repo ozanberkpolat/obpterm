@@ -3,6 +3,8 @@ import { App } from "./app";
 import { installKeys } from "./keys";
 import { installFind } from "./find";
 import { Status } from "./status";
+import { installToolbar } from "./toolbar";
+import { installSettings } from "./settings";
 import { toast } from "./ui";
 
 async function main() {
@@ -18,6 +20,9 @@ async function main() {
   const app = new App(tp, config);
   app.find = installFind(app);
   app.status = new Status(app);
+  app.toolbar = installToolbar(app);
+  app.settings = installSettings(app);
+  app.applyRailWidth();
   app.applyConfig();
   installKeys(app);
   (window as unknown as { obpterm: App }).obpterm = app; // devtools handle

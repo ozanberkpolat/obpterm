@@ -50,8 +50,7 @@ pub fn pty_spawn(
 
     let mut cmd = CommandBuilder::new(&profile.exe);
     cmd.args(&profile.args);
-    let cwd = profile.cwd.clone().or_else(home_dir);
-    if let Some(cwd) = cwd {
+    if let Some(cwd) = usable_cwd(profile.cwd.clone()) {
         cmd.cwd(cwd);
     }
     cmd.env("TERM", "xterm-256color");
@@ -175,4 +174,21 @@ pub fn kill_all(sessions: &Sessions) {
 
 fn home_dir() -> Option<String> {
     std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()
+}
+
+/// Creates the configured directory if it is missing; falls back to the home directory rather
+/// than letting the shell start wherever the process happens to be.
+fn usable_cwd(cwd: Option<String>) -> Option<String> {
+    let Some(cwd) = cwd else { return home_dir() };
+    let path = std::path::Path::new(&cwd);
+    if path.is_dir() {
+        return Some(cwd);
+    }
+    match std::fs::create_dir_all(path) {
+        Ok(()) => Some(cwd),
+        Err(e) => {
+            eprintln!("OBPTerm: cannot use {cwd} ({e}), starting in the home directory instead");
+            home_dir()
+        }
+    }
 }

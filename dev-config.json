@@ -19,9 +19,13 @@
     }
   ],
   "font_family": "JetBrains Mono, Cascadia Mono, Consolas, monospace",
-  "font_size": 14,
+  "font_size": 18,
   "scrollback": 10000,
   "rail_collapsed": false,
+  "rail_width": 300,
+  "default_cwd": "/home/obp",
+  "update_repo": "ozanberkpolat/obpterm",
+  "github_token": null,
   "accounts": [
     {
       "id": "default",
@@ -61,7 +65,8 @@
       "color": "#ff8a1e",
       "cwd": null,
       "default_profile": null,
-      "layout": null
+      "layout": null,
+      "collapsed": false
     },
     {
       "id": "pmt5h8g9g",
@@ -69,7 +74,8 @@
       "color": "#4c8dff",
       "cwd": null,
       "default_profile": null,
-      "layout": null
+      "layout": null,
+      "collapsed": false
     },
     {
       "id": "pmt5h8nic",
@@ -77,7 +83,8 @@
       "color": "#2fd6a3",
       "cwd": null,
       "default_profile": null,
-      "layout": null
+      "layout": null,
+      "collapsed": false
     },
     {
       "id": "pmt5h917c",
@@ -85,7 +92,8 @@
       "color": "#b48cff",
       "cwd": null,
       "default_profile": null,
-      "layout": null
+      "layout": null,
+      "collapsed": false
     },
     {
       "id": "pmt5h98mw",
@@ -93,7 +101,8 @@
       "color": "#22d3ee",
       "cwd": null,
       "default_profile": null,
-      "layout": null
+      "layout": null,
+      "collapsed": false
     },
     {
       "id": "pmt5h9ljl",
@@ -101,7 +110,8 @@
       "color": "#ffb454",
       "cwd": null,
       "default_profile": null,
-      "layout": null
+      "layout": null,
+      "collapsed": false
     },
     {
       "id": "pmt5hrs27",
@@ -109,7 +119,8 @@
       "color": "#ff6b73",
       "cwd": null,
       "default_profile": null,
-      "layout": null
+      "layout": null,
+      "collapsed": false
     },
     {
       "id": "pmt5hsdd1",
@@ -117,7 +128,8 @@
       "color": "#8b97a8",
       "cwd": null,
       "default_profile": null,
-      "layout": null
+      "layout": null,
+      "collapsed": false
     },
     {
       "id": "pmt5huujt",
@@ -125,7 +137,8 @@
       "color": "#ff8a1e",
       "cwd": null,
       "default_profile": null,
-      "layout": null
+      "layout": null,
+      "collapsed": false
     },
     {
       "id": "pmt5hv2ve",
@@ -133,7 +146,8 @@
       "color": "#ff8a1e",
       "cwd": null,
       "default_profile": null,
-      "layout": null
+      "layout": null,
+      "collapsed": false
     },
     {
       "id": "pmt5hvzlk",
@@ -141,7 +155,116 @@
       "color": "#ff8a1e",
       "cwd": null,
       "default_profile": null,
-      "layout": null
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5j15an",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5j207w",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5j29nx",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5j2vho",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5j3czk",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5j3ryh",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5j42e2",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5j4hgu",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5j4l2c",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5j4zu3",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5j5378",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5j56nz",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
     }
   ],
   "restore_session": true,

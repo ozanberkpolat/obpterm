@@ -3,7 +3,7 @@
 // Protocol mirrors transport-ws.ts; config lives in ./dev-config.json.
 import { WebSocketServer } from "ws";
 import pty from "node-pty";
-import { createWriteStream, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { createWriteStream, mkdirSync, readFileSync, readdirSync, statSync, statfsSync, writeFileSync } from "node:fs";
 import os from "node:os";
 
 const CONFIG = new URL("./dev-config.json", import.meta.url);
@@ -54,6 +54,8 @@ wss.on("connection", (ws) => {
           return reply(m.reqId, { path });
         }
         case "log_stop": logs.get(m.id)?.end(); logs.delete(m.id); return reply(m.reqId);
+        case "host_metrics": return reply(m.reqId, { metrics: hostMetrics() });
+        case "app_version": return reply(m.reqId, { version: "0.0.0-dev" });
         case "session_load": {
           try { return reply(m.reqId, { session: JSON.parse(readFileSync(SESSION, "utf8")) }); }
           catch { return reply(m.reqId, { session: { clean_exit: true, saved_at: 0, tabs: null } }); }
@@ -73,6 +75,36 @@ wss.on("connection", (ws) => {
   });
   ws.on("close", () => sessions.forEach((p) => p.kill()));
 });
+// Dev twin of src-tauri/src/metrics.rs. Linux only, which is all the browser loop needs.
+let lastCpu = os.cpus();
+function hostMetrics() {
+  const now = os.cpus();
+  let idle = 0, total = 0;
+  now.forEach((c, i) => {
+    const prev = lastCpu[i]?.times ?? c.times;
+    for (const k of Object.keys(c.times)) total += c.times[k] - prev[k];
+    idle += c.times.idle - prev.idle;
+  });
+  lastCpu = now;
+  const fs = statfsSync("/");
+  let swapTotal = 0, swapFree = 0;
+  try {
+    const meminfo = readFileSync("/proc/meminfo", "utf8");
+    swapTotal = Number(/SwapTotal:\s+(\d+)/.exec(meminfo)?.[1] ?? 0) * 1024;
+    swapFree = Number(/SwapFree:\s+(\d+)/.exec(meminfo)?.[1] ?? 0) * 1024;
+  } catch {}
+  return {
+    cpu: total > 0 ? ((total - idle) / total) * 100 : 0,
+    mem_used: os.totalmem() - os.freemem(),
+    mem_total: os.totalmem(),
+    swap_used: swapTotal - swapFree,
+    swap_total: swapTotal,
+    disk_used: (fs.blocks - fs.bfree) * fs.bsize,
+    disk_total: fs.blocks * fs.bsize,
+    disk_name: "/",
+  };
+}
+
 // Dev twin of src-tauri/src/claude.rs — same files, no incremental cache.
 function readJSON(path) {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; }

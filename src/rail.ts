@@ -20,12 +20,17 @@ function group(app: App, project: Project | null, tabs: Tab[]): HTMLElement {
   el.className = "group";
   if (project) {
     el.style.setProperty("--group", project.color);
+    el.classList.toggle("collapsed", project.collapsed);
     const head = document.createElement("div");
     head.className = "group-head";
-    head.innerHTML = `<span class="dot"></span><span class="gname"></span><span class="gcount"></span><button class="gadd" title="New tab in this project">+</button>`;
+    head.innerHTML =
+      `<button class="chev" title="Collapse or expand"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 3 11 8 6 13"/></svg></button>` +
+      `<span class="dot"></span><span class="gname"></span><span class="gcount"></span>` +
+      `<button class="gadd" title="New tab in this project">+</button>`;
     head.querySelector(".gname")!.textContent = project.name;
     head.querySelector(".gcount")!.textContent = tabs.length ? String(tabs.length) : "";
-    head.onclick = () => void app.newTab(undefined, project.id);
+    // Clicking the row folds the group; the + is how you add a tab to it.
+    head.onclick = () => app.toggleProject(project);
     head.oncontextmenu = (e) => {
       e.preventDefault();
       projectMenu(app, project, e.clientX, e.clientY, head.querySelector<HTMLElement>(".gname")!);
@@ -78,6 +83,7 @@ function tabMenu(app: App, tab: Tab, x: number, y: number) {
   openMenu(x, y, [
     { label: "Split right", hint: "Alt+Shift+=", onPick: () => void app.splitPane("row") },
     { label: "Split down", hint: "Alt+Shift+-", onPick: () => void app.splitPane("col") },
+    { label: "Settings…", hint: "Ctrl+Shift+,", onPick: () => app.settings.open() },
     { label: capturing ? "Stop capture" : "Start capture", hint: "Ctrl+Shift+L", onPick: () => void app.toggleLog() },
     { label: "Move to project…", onPick: () => moveMenu(app, tab, x, y) },
     { label: "Tab colour…", onPick: () => colorMenu(x, y, tab.color, (c) => app.setTabColor(tab, c)) },
@@ -120,6 +126,7 @@ function projectMenu(app: App, project: Project, x: number, y: number, nameEl: H
           app.persist();
         }),
     },
+    { label: "Edit in settings…", onPick: () => app.settings.open("projects") },
     { label: "Delete project", danger: true, onPick: () => app.deleteProject(project) },
   ]);
 }

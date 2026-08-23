@@ -4,7 +4,6 @@
 import type { App } from "./app";
 import { closeMenu, openMenu } from "./menu";
 import { newProject } from "./rail";
-import { toast } from "./ui";
 
 const ctrlShift = (e: KeyboardEvent) => e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey;
 const ctrlOnly = (e: KeyboardEvent) => e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
@@ -16,7 +15,7 @@ const ARROWS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDow
 export function ownsKey(e: KeyboardEvent): boolean {
   if (e.type !== "keydown") return false;
   if (ctrlOnly(e) && e.code === "Tab") return true;
-  if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV", "KeyF", "KeyL", "KeyP", "KeyN", "KeyH"].includes(e.code)) return true;
+  if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV", "KeyF", "KeyL", "KeyP", "KeyN", "KeyH", "Comma"].includes(e.code)) return true;
   if ((ctrlShift(e) || ctrlOnly(e)) && /^Digit[1-9]$/.test(e.code)) return true;
   if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract"].includes(e.code)) return true;
   if ((altOnly(e) || altShift(e)) && e.code in ARROWS) return true;
@@ -31,7 +30,13 @@ export function installKeys(app: App) {
       // Browser-only chords: swallow unconditionally (reload, devtools, print…)
       if (e.code === "F12" || (ctrlShift(e) && ["KeyI", "KeyJ", "KeyR"].includes(e.code))) return stop(e);
       if (e.code === "F5" && e.ctrlKey) return stop(e);
-      if (e.code === "Escape") closeMenu();
+      if (e.code === "Escape") {
+        closeMenu();
+        if (app.settings.isOpen) {
+          app.settings.close();
+          return stop(e);
+        }
+      }
 
       if (ctrlOnly(e) && e.code === "Tab") { app.cycle(1); return stop(e); }
       if (ctrlShift(e) && e.code === "Tab") { app.cycle(-1); return stop(e); }
@@ -45,6 +50,7 @@ export function installKeys(app: App) {
       if (ctrlShift(e) && e.code === "KeyF") { app.find.open(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyL") { void app.toggleLog(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyH") { hostPicker(app); return stop(e); }
+      if (ctrlShift(e) && e.code === "Comma") { app.settings.open(); return stop(e); }
 
       // Panes: Alt+Shift splits and resizes, Alt alone moves focus (Windows Terminal's map).
       if (altShift(e) && ["Equal", "NumpadAdd"].includes(e.code)) { void app.splitPane("row"); return stop(e); }
@@ -77,6 +83,34 @@ export function installKeys(app: App) {
     profilePicker(app, e as MouseEvent);
   });
   document.querySelector("#new-project")!.addEventListener("click", () => newProject(app));
+
+  // Ctrl+wheel zooms, the way every editor does — the terminal keeps its own scroll.
+  document.querySelector("#panes")!.addEventListener(
+    "wheel",
+    (e) => {
+      const ev = e as WheelEvent;
+      if (!ev.ctrlKey) return;
+      ev.preventDefault();
+      app.zoom(ev.deltaY < 0 ? 1 : -1);
+    },
+    { passive: false },
+  );
+
+  // Dragging the rail's edge resizes it; the width is remembered.
+  const handle = document.querySelector<HTMLElement>("#rail-resize")!;
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add("dragging");
+    const move = (ev: PointerEvent) => app.setRailWidth(ev.clientX);
+    const up = () => {
+      handle.classList.remove("dragging");
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+  });
 
   // Right-click in a pane: copy the selection if there is one, otherwise paste (WT behaviour).
   document.querySelector("#panes")!.addEventListener("contextmenu", (e) => {
@@ -112,7 +146,7 @@ function profilePicker(app: App, e?: MouseEvent) {
 
 function hostPicker(app: App) {
   const anchor = document.querySelector("#target-chip")!.getBoundingClientRect();
-  if (!app.config.hosts.length) return toast("Add hosts to config.json: { id, name, host, user }");
+  if (!app.config.hosts.length) return app.settings.open("hosts");
   openMenu(
     anchor.left,
     anchor.top,

@@ -59,6 +59,8 @@ With neither set, the build is unsigned and says so in the log.
 | `Ctrl+Shift+F` | Find in scrollback (Enter / Shift+Enter, Esc closes) |
 | `Ctrl+Shift+L` | Start / stop capturing this pane to a log file |
 | `Ctrl+Shift+H` | Host book (open an SSH target in a new tab) |
+| `Ctrl+Shift+,` | Settings — profiles, accounts, hosts, projects |
+| `Ctrl+wheel` | Zoom the terminal in and out |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
 | `Ctrl+1..9` | Jump to tab N |
 | `Ctrl+Shift+B` | Collapse / expand the rail |
@@ -67,6 +69,21 @@ With neither set, the build is unsigned and says so in the log.
 
 Everything else, including `F5`, `Ctrl+R`, `Ctrl+F`, `Ctrl+W`, goes to the shell: WebView2's
 browser accelerator keys are switched off at startup (`src-tauri/src/lib.rs`).
+
+## The toolbar
+
+Top-right of the terminal area, the same actions as the `/ssh/` terminal in iot-stack: **copy**,
+**paste**, **send Ctrl+C**, **clear**, then a layout picker — one pane, two side by side, two
+stacked, four. The picker highlights the shape you are currently in; picking a smaller one closes
+the extra panes (and their shells), picking a bigger one opens new ones in the focused pane's
+directory.
+
+## Settings
+
+`Ctrl+Shift+,` opens one sheet with four lists — **Profiles**, **Accounts**, **SSH hosts**,
+**Projects**. Everything the app can create is editable and deletable there, deletes come with an
+undo, and the only thing you cannot remove is the last profile (the app needs a shell to start).
+The same lists still live in `config.json` if you prefer editing it directly.
 
 ## Projects
 
@@ -102,10 +119,14 @@ is capturing.
 ## Status bar: account, quota, target
 
 The bar along the bottom shows, left to right: the **account** new shells will start under, the
-**tokens this machine has sent** in the last 5 hours and 7 days, then the focused pane's target,
-directory, capture state and pane count. Click the account chip to open a tab under a different
+**tokens this machine has sent** in the last 5 hours and 7 days, the machine's **CPU, memory,
+swap and disk** (the disk holding the focused pane's directory, sampled every 3 s), a **check for
+updates** button, then the focused pane's target, directory, capture state and pane count. Click the account chip to open a tab under a different
 account or to change the default; click the meters for the breakdown; click the target chip for
 the host book.
+
+Projects fold away: click a group header in the rail to collapse or expand it, and that stays
+folded across restarts. Drag the rail's right edge to resize it; that sticks too.
 
 **Accounts are environment presets** — obpterm never reads, writes or holds a credential. An
 account is a name plus the environment its shells start with, so switching Claude Code logins
@@ -131,6 +152,21 @@ a shell already running — the menu says so by only offering "New tab as …".
 plan window is spent on. They are not Anthropic's accounting of your limit, and nothing here goes
 over the network. Set `quota_5h_tokens` / `quota_7d_tokens` to see a percentage of your own
 budget instead of raw totals.
+
+## Updates
+
+The **check for updates** button asks the GitHub releases API for the newest tag, compares it to
+the running build and either says *App is up to date* or turns into *Update to x.y.z* — pressing
+it again downloads that release's `-setup.exe`, saves the session, runs the installer and closes
+OBPTerm. While the repository is private, put a token with read access to it in `config.json`:
+
+```json
+"update_repo": "ozanberkpolat/obpterm",
+"github_token": "github_pat_…"
+```
+
+A public repository needs no token. Nothing is downloaded until you press the button a second
+time, and the installer is run from `%TEMP%`.
 
 ## Host book
 
@@ -159,8 +195,9 @@ not shut down cleanly. Set `restore_session: false` in `config.json` to always s
 
 `%APPDATA%\tr.com.obp.obpterm\config.json`, created with defaults on first start (a
 `tr.com.obp.winterm` config from before the rename is carried over automatically). Profiles
-(`id`, `name`, `exe`, `args`, `cwd`, `env`), projects, accounts, hosts, font, scrollback, the
-saved session and the xterm.js theme. A file that does
+(`id`, `name`, `exe`, `args`, `cwd`, `env`), projects, accounts, hosts, font, scrollback, rail
+width, the update repo and the xterm.js theme. New shells start in `default_cwd` — `C:\OBP` out
+of the box, created if it does not exist — unless the project or profile says otherwise. A file that does
 not parse is reported on screen, not replaced.
 
 ## Development

@@ -9,6 +9,7 @@ import { toast } from "./ui";
 import { COLORS } from "./menu";
 import type { Find } from "./find";
 import type { Status } from "./status";
+import type { Preset } from "./toolbar";
 
 export interface Tab {
   root: L.Node;
@@ -30,6 +31,15 @@ export interface SavedTab {
   root: L.SavedNode;
 }
 
+/** The four shapes the toolbar's layout picker draws. `currentPreset` reads them back. */
+function presetTree(preset: Preset, p: Pane[]): L.Node {
+  const split = (dir: "row" | "col", a: L.Node, b: L.Node): L.Node => ({ kind: "split", dir, ratio: 0.5, a, b });
+  if (preset === "1") return L.leaf(p[0]!);
+  if (preset === "2c") return split("row", L.leaf(p[0]!), L.leaf(p[1]!));
+  if (preset === "2r") return split("col", L.leaf(p[0]!), L.leaf(p[1]!));
+  return split("row", split("col", L.leaf(p[0]!), L.leaf(p[1]!)), split("col", L.leaf(p[2]!), L.leaf(p[3]!)));
+}
+
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const DEFAULT_ACCENT = "#ff8a1e";
 
@@ -38,6 +48,8 @@ export class App implements PaneHost {
   tab: Tab | null = null;
   find!: Find; // set by main.ts once the DOM handlers are installed
   status!: Status;
+  toolbar!: { paint(): void };
+  settings!: import("./settings").Settings;
   private panesEl = $("#panes");
   private sessionTimer = 0;
   private configTimer = 0;
@@ -116,6 +128,7 @@ export class App implements PaneHost {
       cwd: null,
       default_profile: null,
       layout: null,
+      collapsed: false,
     };
     this.config.projects.push(project);
     this.persist();
@@ -164,7 +177,7 @@ export class App implements PaneHost {
   ) {
     const project = this.project(projectId);
     const p = profile ?? this.profileById(project?.default_profile ?? this.config.default_profile);
-    const pane = new Pane(this, this.withAccount(p, accountId), cwd ?? project?.cwd ?? null);
+    const pane = new Pane(this, this.withAccount(p, accountId), cwd ?? project?.cwd ?? this.config.default_cwd);
     const el = document.createElement("div");
     el.className = "tab-panes";
     this.panesEl.appendChild(el);
@@ -305,6 +318,66 @@ export class App implements PaneHost {
     }
   }
 
+  /** Sends a literal string to the focused pane, e.g. "\x03" for Ctrl+C. */
+  sendKey(data: string) {
+    const pane = this.tab?.active;
+    if (!pane || pane.exited) return;
+    void this.tp.write(pane.id, data).catch(() => {});
+    pane.focus();
+  }
+
+  clearPane() {
+    const pane = this.tab?.active;
+    if (!pane) return;
+    pane.term.term.clear();
+    pane.focus();
+  }
+
+  /** Which toolbar preset the tab currently matches, if any. */
+  currentPreset(tab: Tab): Preset | null {
+    const root = tab.root;
+    if (root.kind === "leaf") return "1";
+    const twoLeaves = root.a.kind === "leaf" && root.b.kind === "leaf";
+    if (twoLeaves) return root.dir === "row" ? "2c" : "2r";
+    const quad =
+      root.dir === "row" &&
+      root.a.kind === "split" &&
+      root.b.kind === "split" &&
+      root.a.dir === "col" &&
+      root.b.dir === "col" &&
+      L.panes(root).length === 4;
+    return quad ? "4" : null;
+  }
+
+  /**
+   * Snaps the tab to a preset: extra panes are closed, missing ones spawned from the focused
+   * pane's profile and directory, then the tree is rebuilt in the shape the button draws.
+   */
+  async applyPreset(preset: Preset) {
+    const tab = this.tab;
+    if (!tab) return;
+    const want = preset === "1" ? 1 : preset === "4" ? 4 : 2;
+    const existing = L.panes(tab.root);
+    for (const extra of existing.slice(want)) {
+      extra.kill();
+      extra.dispose();
+    }
+    const panes = existing.slice(0, want);
+    while (panes.length < want) {
+      const from = panes[panes.length - 1]!;
+      panes.push(new Pane(this, this.withAccount(from.profile, tab.accountId), from.cwd));
+    }
+    tab.root = presetTree(preset, panes);
+    tab.active = panes[0]!;
+    this.layout(tab);
+    for (const pane of panes) {
+      if (pane.id < 0) await this.startPane(tab, pane);
+    }
+    tab.active.focus();
+    this.paint();
+    void this.flushSession();
+  }
+
   async toggleLog() {
     const pane = this.tab?.active;
     if (!pane) return;
@@ -377,14 +450,32 @@ export class App implements PaneHost {
 
   toggleRail() {
     this.config.rail_collapsed = $("#rail").classList.toggle("collapsed");
+    this.applyRailWidth();
     this.persistConfig();
+  }
+
+  setRailWidth(px: number) {
+    this.config.rail_width = Math.round(Math.min(420, Math.max(150, px)));
+    this.applyRailWidth();
+    this.persistConfig();
+  }
+
+  applyRailWidth() {
+    document.documentElement.style.setProperty("--rail-w", `${this.config.rail_width}px`);
     for (const t of this.tabs) for (const p of L.panes(t.root)) p.term.fit();
+  }
+
+  toggleProject(project: Project) {
+    project.collapsed = !project.collapsed;
+    this.paint();
+    this.persistConfig();
   }
 
   /** Repaint the rail. Cheap: the rail is the only derived view. */
   paint() {
     renderRail(this);
     this.status?.paint();
+    this.toolbar?.paint();
     document.documentElement.style.setProperty("--accent", this.accent());
   }
 

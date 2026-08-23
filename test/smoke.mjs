@@ -143,6 +143,60 @@ await until(
   "the unclean-exit notice",
 );
 
+// Toolbar presets: the 4-pane button must produce exactly four panes and light up.
+await evaluate("void window.obpterm.applyPreset('4')");
+await until("document.querySelectorAll('.pane').length === 4", "the 4-pane preset");
+assert.equal(await evaluate("document.querySelector('.layout-picker .tb.on').dataset.layout"), "4");
+await evaluate("void window.obpterm.applyPreset('1')");
+await until("document.querySelectorAll('.pane').length === 1", "the 1-pane preset");
+
+// Machine gauges come from the host, not from placeholders.
+await until("document.querySelectorAll('#metrics .gauge').length === 4", "cpu/ram/swap/disk gauges");
+assert.ok(
+  await evaluate("(() => { const m = window.obpterm.status; return true; })()"),
+  "status bar is wired",
+);
+
+// Rail: a project folds away, the width sticks, and nothing scrolls sideways.
+// Start from expanded: the collapse state is persisted, so a previous run must not decide this.
+await evaluate("(() => { window.obpterm.config.projects[0].collapsed = false; window.obpterm.paint(); })()");
+await evaluate("void window.obpterm.toggleProject(window.obpterm.config.projects[0])");
+await until("!!document.querySelector('.group.collapsed')", "a collapsed project");
+assert.equal(await evaluate("getComputedStyle(document.querySelector('.group.collapsed .glist')).display"), "none");
+await evaluate("void window.obpterm.toggleProject(window.obpterm.config.projects[0])");
+await until("!document.querySelector('.group.collapsed')", "the project expanded again");
+await evaluate("window.obpterm.setRailWidth(300)");
+assert.equal(await evaluate("document.querySelector('#rail').getBoundingClientRect().width"), 300);
+assert.equal(
+  await evaluate("document.querySelector('#rail-body').scrollWidth <= document.querySelector('#rail-body').clientWidth"),
+  true,
+  "the rail never scrolls sideways",
+);
+
+// Settings: every list can add, edit and delete — hosts is the representative one.
+await evaluate("window.obpterm.settings.open('hosts')");
+await until("!document.querySelector('#settings').hidden", "the settings sheet");
+const hostsBefore = await evaluate("window.obpterm.config.hosts.length");
+await evaluate("document.querySelectorAll('#settings .add')[0].click()");
+assert.equal(await evaluate("window.obpterm.config.hosts.length"), hostsBefore + 1, "a host can be added");
+await evaluate(
+  "(() => { const i = document.querySelectorAll('#settings .row')[1].querySelector('input'); i.value = 'Edited'; i.dispatchEvent(new Event('change')); })()",
+);
+assert.equal(await evaluate("window.obpterm.config.hosts[1].name"), "Edited", "a host can be edited");
+await evaluate("document.querySelectorAll('#settings .row')[1].querySelector('.del').click()");
+assert.equal(await evaluate("window.obpterm.config.hosts.length"), hostsBefore, "a host can be deleted");
+assert.equal(
+  await evaluate("document.querySelectorAll('#settings .row')[0].querySelector('.del').disabled"),
+  false,
+  "the remaining host is still deletable",
+);
+await evaluate("window.obpterm.settings.close()");
+
+// Ctrl+wheel zooms.
+const size = await evaluate("window.obpterm.config.font_size");
+await evaluate("document.querySelector('#panes').dispatchEvent(new WheelEvent('wheel', {deltaY: -120, ctrlKey: true, bubbles: true, cancelable: true}))");
+assert.equal(await evaluate("window.obpterm.config.font_size"), size + 1, "ctrl+wheel up grows the font");
+
 const bad = logs.filter((l) => /^(error|exception)/.test(l));
 assert.deepEqual(bad, [], `console was not clean:\n${bad.join("\n")}`);
 console.log(`smoke OK — ${logs.length} console messages, none of them errors`);

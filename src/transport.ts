@@ -72,6 +72,18 @@ export interface Project {
   default_profile: string | null;
   /** Tabs saved by "Save layout"; shape from src/layout.ts (SavedTab[]). */
   layout: unknown | null;
+  collapsed: boolean;
+}
+
+export interface HostMetrics {
+  cpu: number;
+  mem_used: number;
+  mem_total: number;
+  swap_used: number;
+  swap_total: number;
+  disk_used: number;
+  disk_total: number;
+  disk_name: string;
 }
 
 export interface Config {
@@ -81,6 +93,10 @@ export interface Config {
   font_size: number;
   scrollback: number;
   rail_collapsed: boolean;
+  rail_width: number;
+  default_cwd: string | null;
+  update_repo: string | null;
+  github_token: string | null;
   projects: Project[];
   accounts: Account[];
   hosts: Host[];
@@ -107,6 +123,10 @@ export interface Transport {
   /** Starts teeing this session to a file; returns the path. */
   logStart(id: number, name: string, stamp: string): Promise<string>;
   logStop(id: number): Promise<void>;
+  hostMetrics(cwd: string | null): Promise<HostMetrics>;
+  appVersion(): Promise<string>;
+  /** Writes the installer to a temp file, launches it and quits. */
+  runInstaller(name: string, bytes: Uint8Array): Promise<string>;
   sessionLoad(): Promise<Session>;
   sessionSave(tabs: unknown): Promise<void>;
   claudeAccount(dir: string): Promise<ClaudeAccount>;
@@ -129,12 +149,22 @@ export function withDefaults(config: Partial<Config>): Config {
     font_size: config.font_size ?? 14,
     scrollback: config.scrollback ?? 10_000,
     rail_collapsed: config.rail_collapsed ?? false,
+    rail_width: config.rail_width ?? 232,
+    default_cwd: config.default_cwd ?? null,
+    update_repo: config.update_repo ?? "ozanberkpolat/obpterm",
+    github_token: config.github_token ?? null,
     accounts: config.accounts ?? [],
     hosts: config.hosts ?? [],
     default_account: config.default_account ?? null,
     quota_5h_tokens: config.quota_5h_tokens ?? null,
     quota_7d_tokens: config.quota_7d_tokens ?? null,
-    projects: (config.projects ?? []).map((p) => ({ ...p, cwd: p.cwd ?? null, default_profile: p.default_profile ?? null, layout: p.layout ?? null })),
+    projects: (config.projects ?? []).map((p) => ({
+      ...p,
+      cwd: p.cwd ?? null,
+      default_profile: p.default_profile ?? null,
+      layout: p.layout ?? null,
+      collapsed: p.collapsed ?? false,
+    })),
     restore_session: config.restore_session ?? true,
     session: config.session ?? null,
     theme: config.theme ?? {},

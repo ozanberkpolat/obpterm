@@ -69,6 +69,9 @@ pub struct Project {
     /// Tabs saved with "Save project layout" - shape owned by the frontend.
     #[serde(default)]
     pub layout: Option<serde_json::Value>,
+    /// Rail groups remember whether they are folded away.
+    #[serde(default)]
+    pub collapsed: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -80,6 +83,14 @@ pub struct Config {
     pub font_size: u16,
     pub scrollback: u32,
     pub rail_collapsed: bool,
+    /// Rail width in pixels, set by dragging its edge.
+    pub rail_width: u32,
+    /// Where shells start when nothing more specific applies.
+    pub default_cwd: Option<String>,
+    /// `owner/repo` the "check for updates" button asks GitHub about.
+    pub update_repo: Option<String>,
+    /// Needed only while that repo is private: a token with read access to its releases.
+    pub github_token: Option<String>,
     pub projects: Vec<Project>,
     pub accounts: Vec<Account>,
     pub hosts: Vec<Host>,
@@ -105,6 +116,10 @@ impl Default for Config {
             font_size: 14,
             scrollback: 10_000,
             rail_collapsed: false,
+            rail_width: 232,
+            default_cwd: default_cwd(),
+            update_repo: Some("ozanberkpolat/obpterm".into()),
+            github_token: None,
             projects: Vec::new(),
             accounts: default_accounts(),
             hosts: Vec::new(),
@@ -146,6 +161,16 @@ fn default_profiles() -> Vec<Profile> {
         cwd: None,
         env: Default::default(),
     }]
+}
+
+/// A working directory of one's own, created on first use rather than dropping into
+/// `C:\Windows\System32` or the user's profile root.
+fn default_cwd() -> Option<String> {
+    if cfg!(windows) {
+        Some("C:\\OBP".into())
+    } else {
+        std::env::var("HOME").ok()
+    }
 }
 
 /// One account out of the box: whatever `~/.claude` already holds, so the status bar has

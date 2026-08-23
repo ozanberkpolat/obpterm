@@ -13,12 +13,14 @@
         <div id="rail-head"><span class="brand">OBPTerm</span><button id="rail-toggle" title="Toggle rail (Ctrl+Shift+B)">‹</button></div>
         <div id="rail-body"></div>
         <div id="rail-new" hidden></div>
+        <div id="rail-resize" title="Drag to resize the rail"></div>
         <div id="rail-foot">
           <button id="new-tab" title="New tab (Ctrl+Shift+T). Right-click: pick a profile">+ Tab</button>
           <button id="new-project" title="Group tabs into a project">+ Project</button>
         </div>
       </nav>
       <main id="panes">
+        <div id="toolbar" role="toolbar" aria-label="Pane actions"></div>
         <div id="find" hidden>
           <input type="text" placeholder="Find in scrollback" aria-label="Find in scrollback" spellcheck="false" />
           <span class="count"></span>
@@ -39,12 +41,21 @@
           <span class="meter" data-window="7d"><span class="bar"><i></i></span><span class="val">—</span></span>
         </button>
         <span class="spacer"></span>
+        <span id="metrics" class="metrics" title="This machine"></span>
+        <button id="update-chip" class="chip" title="Check GitHub for a newer release">Check for updates</button>
         <button id="target-chip" class="chip" title="Where this pane runs (click for the host book)"><span class="where">—</span></button>
         <span id="cwd" class="cwd"></span>
         <span id="capture" class="chip rec" hidden>● capturing</span>
         <span id="panecount" class="chip"></span>
       </footer>
       <div id="menu" hidden></div>
+      <div id="settings" hidden>
+        <div class="sheet">
+          <header><h2>Settings</h2><button class="close" title="Close (Esc)">×</button></header>
+          <nav class="tabs"></nav>
+          <div class="body"></div>
+        </div>
+      </div>
       <div id="toast" hidden></div>
     </div>
     <script type="module" src="/src/main.ts"></script>

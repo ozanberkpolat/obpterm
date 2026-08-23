@@ -3,10 +3,11 @@
 // obpterm can see locally, not Anthropic's own accounting of the plan window.
 import type { App } from "./app";
 import { openMenu } from "./menu";
-import type { Account, ClaudeAccount, ClaudeUsage } from "./transport";
+import type { Account, ClaudeAccount, ClaudeUsage, HostMetrics } from "./transport";
 import { toast } from "./ui";
 
 const REFRESH_MS = 60_000;
+const METRICS_MS = 3_000;
 
 export class Status {
   private who = document.querySelector<HTMLElement>("#account-chip .who")!;
@@ -16,7 +17,11 @@ export class Status {
   private cwd = document.querySelector<HTMLElement>("#cwd")!;
   private capture = document.querySelector<HTMLElement>("#capture")!;
   private panecount = document.querySelector<HTMLElement>("#panecount")!;
+  private metricsEl = document.querySelector<HTMLElement>("#metrics")!;
+  private updateEl = document.querySelector<HTMLButtonElement>("#update-chip")!;
   private login: ClaudeAccount | null = null;
+  private metrics: HostMetrics | null = null;
+  private pendingUpdate: { version: string; name: string; url: string } | null = null;
   private usage: ClaudeUsage | null = null;
   private lastDir: string | null = null;
 
@@ -24,9 +29,12 @@ export class Status {
     document.querySelector("#account-chip")!.addEventListener("click", (e) => this.accountMenu(e as MouseEvent));
     document.querySelector("#target-chip")!.addEventListener("click", (e) => this.hostMenu(e as MouseEvent));
     this.quota.addEventListener("click", (e) => this.usageMenu(e as MouseEvent));
+    this.updateEl.addEventListener("click", () => void this.checkUpdates());
     window.addEventListener("focus", () => void this.refresh());
     window.setInterval(() => void this.refresh(), REFRESH_MS);
+    window.setInterval(() => void this.refreshMetrics(), METRICS_MS);
     void this.refresh();
+    void this.refreshMetrics();
   }
 
   /** The account new shells inherit: the focused tab's, else the configured default. */
@@ -52,6 +60,107 @@ export class Status {
       console.warn("usage unavailable", e);
     }
     this.paint();
+  }
+
+  async refreshMetrics() {
+    this.metrics = await this.app.tp.hostMetrics(this.app.tab?.active.cwd ?? null).catch(() => null);
+    this.paintMetrics();
+  }
+
+  private paintMetrics() {
+    const m = this.metrics;
+    if (!m) {
+      this.metricsEl.replaceChildren();
+      return;
+    }
+    const gauges: [string, number, string][] = [
+      ["cpu", m.cpu / 100, `${Math.round(m.cpu)}%`],
+      ["ram", share(m.mem_used, m.mem_total), `${gb(m.mem_used)}/${gb(m.mem_total)}`],
+      ["swap", share(m.swap_used, m.swap_total), m.swap_total ? `${gb(m.swap_used)}/${gb(m.swap_total)}` : "none"],
+      ["disk", share(m.disk_used, m.disk_total), `${gb(m.disk_used)}/${gb(m.disk_total)}`],
+    ];
+    this.metricsEl.replaceChildren(
+      ...gauges.map(([label, fraction, text]) => {
+        const el = document.createElement("span");
+        el.className = "gauge" + (fraction >= 0.9 ? " full" : fraction >= 0.75 ? " high" : "");
+        el.dataset.metric = label;
+        el.title = `${label.toUpperCase()} ${text}${label === "disk" && m.disk_name ? ` on ${m.disk_name}` : ""}`;
+        el.innerHTML = `<span class="k">${label}</span><span class="bar"><i></i></span><span class="v"></span>`;
+        el.querySelector<HTMLElement>("i")!.style.width = `${Math.round(Math.min(1, fraction) * 100)}%`;
+        el.querySelector<HTMLElement>(".v")!.textContent =
+          label === "cpu" ? text : `${Math.round(Math.min(1, fraction) * 100)}%`;
+        return el;
+      }),
+    );
+  }
+
+  /**
+   * Asks GitHub for the newest release. The repo is private, so `github_token` from config.json
+   * is sent when it is there; a public repo needs nothing.
+   */
+  async checkUpdates() {
+    if (this.pendingUpdate) return void this.install();
+    const repo = this.app.config.update_repo;
+    if (!repo) return toast("Set update_repo in config.json to check for updates");
+    this.updateEl.textContent = "Checking…";
+    this.updateEl.disabled = true;
+    try {
+      const current = await this.app.tp.appVersion();
+      const release = await this.fetchJson(`https://api.github.com/repos/${repo}/releases/latest`);
+      const latest = String(release.tag_name ?? "").replace(/^v/, "");
+      const asset = (release.assets ?? []).find((a: { name: string }) => a.name.endsWith("-setup.exe"));
+      if (!latest || !asset) throw new Error("that release has no installer attached");
+      if (compareVersions(latest, current) <= 0) {
+        this.updateEl.textContent = "App is up to date";
+        this.updateEl.title = `${current} is the newest release`;
+        return;
+      }
+      this.pendingUpdate = { version: latest, name: asset.name, url: asset.url };
+      this.updateEl.classList.add("has-update");
+      this.updateEl.textContent = `Update to ${latest}`;
+      this.updateEl.title = `Downloads and runs ${asset.name}, then closes OBPTerm`;
+    } catch (e) {
+      this.updateEl.textContent = "Check for updates";
+      toast(`Update check failed: ${e}`);
+    } finally {
+      this.updateEl.disabled = false;
+    }
+  }
+
+  private async install() {
+    const update = this.pendingUpdate!;
+    this.updateEl.disabled = true;
+    this.updateEl.textContent = `Downloading ${update.version}…`;
+    try {
+      // The asset API URL needs the octet-stream Accept header to return the file itself.
+      const res = await fetch(update.url, { headers: { ...this.ghHeaders(), Accept: "application/octet-stream" } });
+      if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      await this.app.flushSession();
+      this.updateEl.textContent = "Starting installer…";
+      await this.app.tp.runInstaller(update.name, bytes);
+    } catch (e) {
+      this.updateEl.disabled = false;
+      this.updateEl.textContent = `Update to ${update.version}`;
+      toast(`Update failed: ${e}`);
+    }
+  }
+
+  private ghHeaders(): Record<string, string> {
+    const token = this.app.config.github_token;
+    return {
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  }
+
+  private async fetchJson(url: string) {
+    const res = await fetch(url, { headers: { ...this.ghHeaders(), Accept: "application/vnd.github+json" } });
+    if (res.status === 404) {
+      throw new Error("release not found — a private repo needs github_token in config.json");
+    }
+    if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
+    return res.json();
   }
 
   paint() {
@@ -111,7 +220,7 @@ export class Status {
 
   private accountMenu(e: MouseEvent) {
     const accounts = this.app.config.accounts;
-    if (!accounts.length) return toast("Add an account to config.json: { id, name, env, claude_dir }");
+    if (!accounts.length) return this.app.settings.open("accounts");
     const current = this.current();
     openMenu(e.clientX, e.clientY, [
       ...accounts.map((a) => ({
@@ -129,14 +238,13 @@ export class Status {
           toast(`New tabs use ${a.name}`);
         },
       })),
+      { label: "Manage accounts…", onPick: () => this.app.settings.open("accounts") },
     ]);
   }
 
   private hostMenu(e: MouseEvent) {
     const hosts = this.app.config.hosts;
-    if (!hosts.length) {
-      return toast("Add hosts to config.json: { id, name, host, user, port, identity }");
-    }
+    if (!hosts.length) return this.app.settings.open("hosts");
     openMenu(e.clientX, e.clientY, [
       ...hosts.map((h) => ({
         label: h.name,
@@ -144,6 +252,7 @@ export class Status {
         onPick: () => void this.app.newTabForHost(h),
       })),
       { label: "Split with this host…", onPick: () => this.hostSplitMenu(e) },
+      { label: "Manage hosts…", onPick: () => this.app.settings.open("hosts") },
     ]);
   }
 
@@ -175,6 +284,25 @@ export class Status {
       { label: "Refresh now", onPick: () => void this.refresh() },
     ]);
   }
+}
+
+function share(used: number, total: number): number {
+  return total > 0 ? used / total : 0;
+}
+
+function gb(bytes: number): string {
+  return bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)}G` : `${Math.round(bytes / 1024 ** 2)}M`;
+}
+
+/** Plain numeric compare of dotted versions; suffixes like "-beta" sort before the release. */
+export function compareVersions(a: string, b: string): number {
+  const parts = (v: string) => v.split(/[.-]/).map((p) => (/^\d+$/.test(p) ? Number(p) : -1));
+  const [x, y] = [parts(a), parts(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (d) return d < 0 ? -1 : 1;
+  }
+  return 0;
 }
 
 function fmt(n: number): string {
