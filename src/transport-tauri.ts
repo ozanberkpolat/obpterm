@@ -58,6 +58,26 @@ export function tauriTransport(): Transport {
       return true;
     },
     attention: (on) => invoke("attention", { on }),
+    async badge(count) {
+      // Drawn here because the webview already has a canvas and the brand font; Rust only
+      // hands the pixels to the taskbar.
+      if (!count) return invoke("taskbar_badge", { rgba: [], size: 0 });
+      const size = 32;
+      const c = document.createElement("canvas");
+      c.width = c.height = size;
+      const g = c.getContext("2d")!;
+      g.beginPath();
+      g.arc(16, 16, 15, 0, Math.PI * 2);
+      g.fillStyle = "#ff8a1e";
+      g.fill();
+      g.fillStyle = "#04101f";
+      g.font = "700 19px 'Plus Jakarta Sans', sans-serif";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillText(count > 9 ? "9+" : String(count), 16, 17);
+      const rgba = Array.from(g.getImageData(0, 0, size, size).data);
+      return invoke("taskbar_badge", { rgba, size });
+    },
     configReset: () => invoke<Config>("config_reset"),
     reveal: (what) => invoke<string>("reveal", { what }),
     sessionLoad: () => invoke<Session>("session_load"),

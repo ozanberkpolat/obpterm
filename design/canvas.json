@@ -11,6 +11,10 @@
     {
       "id": "page-3",
       "name": "Tier 1 \u00b7 activity"
+    },
+    {
+      "id": "page-4",
+      "name": "Agent pane \u00b7 directions"
     }
   ],
   "artboards": [
@@ -94,6 +98,42 @@
       "w": 1320,
       "h": 560,
       "title": "Placement \u00b7 three options"
+    },
+    {
+      "file": "AgentDeck.dc.html",
+      "page": "page-4",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 860,
+      "title": "B \u00b7 The Deck (grid of live cards)"
+    },
+    {
+      "file": "AgentRail.dc.html",
+      "page": "page-4",
+      "x": 1560,
+      "y": 0,
+      "w": 1180,
+      "h": 820,
+      "title": "A \u00b7 Agent mode in the rail"
+    },
+    {
+      "file": "AgentTriage.dc.html",
+      "page": "page-4",
+      "x": 1560,
+      "y": 950,
+      "w": 1180,
+      "h": 780,
+      "title": "C \u00b7 Triage flow (Ctrl+J)"
+    },
+    {
+      "file": "AgentsEntry.dc.html",
+      "x": 0,
+      "y": 980,
+      "w": 980,
+      "h": 640,
+      "page": "page-4",
+      "title": "Agents entry \u00b7 rail badge"
     }
   ],
   "annotations": [
@@ -152,10 +192,26 @@
       "y": -150,
       "w": 620,
       "text": "The placement decision, with the two rejected options kept so the reasoning survives.\n\nA wins because the left edge of a rail row already carries two other meanings (the project rule, the focus bar) and the row background already carries two more (active, project colour). The right end is the only unclaimed real estate, and it is where the pane badge and capture dot already sit."
+    },
+    {
+      "id": "note-agent-q",
+      "page": "page-4",
+      "x": 0,
+      "y": -240,
+      "w": 660,
+      "text": "Should OBPTerm have an agent pane like NodeTerm?\n\nMy honest read: NodeTerm's canvas exists to make many agents visible at once \u2014 that is the part worth taking. The canvas itself (draggable nodes, ropes) would fight the rail and turn the terminal into an orchestrator, which the audit fenced off.\n\nThree directions, different in kind, all fed by the hook data v0.9.0 already collects (state, activity line, last message, pending permission, context %, session id):\n\nB \u2014 THE DECK (left, my pick): a special tab, Ctrl+G. A live card per Claude session: state, the tail of what it said, Allow/Deny and question options inline, context meter. Click = jump to the real tab. This is NodeTerm's overview without the canvas. Cost: M \u2014 the card tails come straight from the host's ring, no second terminal needed.\n\nA \u2014 AGENT MODE IN THE RAIL: no new surface at all. One toggle widens the rail to ~336px and swaps tab rows for supervision cards; the pane area is untouched. Cheapest, always visible, but competes with the tab list and caps out around 8 agents.\n\nC \u2014 TRIAGE FLOW: not a place, a motion. Ctrl+J walks everything that needs you, loudest first \u2014 full-width card, A/D/Enter/Space, then the next. Best keystrokes-per-decision of the three; useless for ambient awareness, so it pairs with A or B rather than replacing them."
+    },
+    {
+      "id": "note-agent-pick",
+      "page": "page-4",
+      "x": 1560,
+      "y": -130,
+      "w": 520,
+      "text": "They compose: B is the home, C is the motion (Ctrl+J works from anywhere), A is the glanceable summary that stays when the Deck tab is not open.\n\nIf you want one: build B, add C in the same release (it is the same data with a different frame), skip A."
     }
   ],
   "launch": {
     "view": "canvas",
-    "page": "page-3"
+    "page": "page-4"
   }
 }

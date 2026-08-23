@@ -1,6 +1,6 @@
 // Tabs, panes and projects. A tab owns a pane tree; a project groups tabs, gives them a colour
 // and can save/restore its own set of tabs.
-import { tick as agentTick } from "./agent";
+import { isClaudePane, tick as agentTick } from "./agent";
 import { withDefaults, type Account, type Config, type Host, type Profile, type Project, type Transport } from "./transport";
 import { ACTIVE_MS, Pane, type PaneHost } from "./pane";
 import * as L from "./layout";
@@ -63,6 +63,7 @@ export class App implements PaneHost {
   toolbar!: { paint(): void };
   palette!: import("./palette").Palette;
   settings!: import("./settings-panel").Settings;
+  deck!: import("./deck").Deck;
   private panesEl = $("#panes");
   private sessionTimer = 0;
   /** Most recently used first. Only ever read through `recent()`. */
@@ -877,9 +878,40 @@ export class App implements PaneHost {
     this.persistConfig();
   }
 
+
+  /** What the Agents entry, the Deck header and the taskbar badge all count. */
+  agentCounts() {
+    let needsYou = 0, working = 0, done = 0, doneUnread = 0, sleeping = 0, total = 0;
+    let loudest: string | null = null;
+    for (const tab of this.tabs) {
+      for (const p of this.panesOf(tab)) {
+        if (!isClaudePane(p)) continue;
+        total++;
+        if (p.eco || p.asleep) { sleeping++; continue; }
+        const s = p.agent.state;
+        if (s === "blocked" || s === "waiting") {
+          needsYou++;
+          loudest ??= `${this.title(tab)} · ${p.agent.detail ?? "needs you"}`;
+        } else if (s === "working") working++;
+        else if (s === "done") { done++; if (p.agent.unread) doneUnread++; }
+      }
+    }
+    return { total, needsYou, working, done, doneUnread, sleeping, loudest };
+  }
+
+  /** The taskbar overlay mirrors the rail badge; only redrawn when the number changes. */
+  private lastBadge = -1;
+  private syncBadge(needsYou: number) {
+    if (needsYou === this.lastBadge) return;
+    this.lastBadge = needsYou;
+    void this.tp.badge(needsYou).catch(() => {});
+  }
+
   /** Repaint the rail. Cheap: the rail is the only derived view. */
   paint() {
     renderRail(this);
+    this.deck?.paint();
+    this.syncBadge(this.agentCounts().needsYou);
     this.status?.paint();
     this.toolbar?.paint();
     // Scoped to the workbench: the settings sheet is app chrome and keeps the configured

@@ -43,6 +43,24 @@ export function renderRail(app: App) {
     if (project) patchGroup(app, project, tabs);
   }
   patchHeader(app);
+  patchAgents(app);
+}
+
+/** The pinned Agents row: hidden until a Claude session exists, loud only when one waits. */
+function patchAgents(app: App) {
+  const el = document.querySelector<HTMLElement>("#rail-agents")!;
+  const c = app.agentCounts();
+  el.hidden = c.total === 0;
+  if (el.hidden) return;
+  el.classList.toggle("alert", c.needsYou > 0);
+  const badge = el.querySelector<HTMLElement>(".abadge")!;
+  const n = c.needsYou || c.doneUnread;
+  badge.hidden = n === 0;
+  set(badge, n ? String(n) : "");
+  badge.classList.toggle("quietly", !c.needsYou && c.doneUnread > 0);
+  set(el.querySelector<HTMLElement>(".asub")!, c.needsYou ? (c.loudest ?? "") : "");
+  set(el.querySelector<HTMLElement>(".awork")!, c.working ? `${c.working} working` : c.sleeping ? `${c.sleeping} sleeping` : "");
+  el.onclick = () => app.deck.toggle();
 }
 
 function patchHeader(app: App) {

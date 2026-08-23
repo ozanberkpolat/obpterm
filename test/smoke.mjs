@@ -500,6 +500,71 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   await evaluate(`(() => { const t = window.obpterm.tabs.find(t => window.obpterm.panesOf(t).some(p => p.id === ${blockedPane})); if (t && window.obpterm.tabs.length > 1) window.obpterm.closeTab(t); })()`);
 }
 
+
+// ---- the Agent Deck + the rail's Agents badge ---------------------------------------------
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const injectDev = (update) =>
+    new Promise((r) => {
+      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
+      setTimeout(r, 150);
+    });
+  // The earlier block leaves its auto-passed pane blocked (nobody typed the in-pane answer);
+  // start this one from silence so the counts are its own.
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; }), window.obpterm.paint()");
+  // A blocked session on a tab the user is not looking at: the badge must say so.
+  await evaluate("void window.obpterm.newTab()");
+  await until("window.obpterm.tabs.length >= 2", "a second tab for the deck case");
+  const deckPane = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+  await injectDev({ pane: deckPane, state: "blocked", session_id: "sess-9", detail: "Running git push --tags", pending_id: "p-99", options: ["Yes", "No, ask again"] });
+  await until("!document.querySelector('#rail-agents').hidden", "the Agents entry appearing");
+  await until("document.querySelector('#rail-agents .abadge').textContent === '1'", "the waiting badge");
+  assert.ok(await evaluate("document.querySelector('#rail-agents').classList.contains('alert')"), "the entry is loud");
+  assert.ok(
+    (await evaluate("document.querySelector('#rail-agents .asub').textContent")).includes("git push"),
+    "the subtitle names the loudest hold",
+  );
+
+  // Ctrl+G at the terminal's own textarea opens the deck (ownsKey must claim it there too).
+  await evaluate(
+    "(document.querySelector('.tab-panes.active .xterm-helper-textarea') || document.querySelector('.xterm-helper-textarea')).dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyG', key: 'g', ctrlKey: true, bubbles: true, cancelable: true }))",
+  );
+  await until("window.obpterm.deck.isOpen", "the deck open on Ctrl+G");
+  await until("document.querySelector('.dcard[data-state=blocked]') !== null", "the blocked card");
+  assert.ok(
+    (await evaluate("document.querySelector('.dcard[data-state=blocked] .dask .q').textContent")).includes("git push"),
+    "the card carries the question",
+  );
+  assert.equal(await evaluate("document.querySelectorAll('.dcard[data-state=blocked] .opts li').length"), 2, "its options render");
+  assert.ok((await evaluate("document.querySelector('#deck .dsummary .hot').textContent")).startsWith("1 need"), "the summary counts it");
+
+  // Allow from the card: the verdict reaches the host and the card quiets down.
+  await evaluate("document.querySelector('.dcard[data-state=blocked] .allow').click()");
+  const deckAnswers = await new Promise((resolve) => {
+    devWs.send(JSON.stringify({ t: "agent_answers", reqId: 1002 }));
+    devWs.on("message", function once(d) {
+      const m = JSON.parse(d);
+      if (m.reqId === 1002) { devWs.off("message", once); resolve(m.answered); }
+    });
+  });
+  assert.deepEqual(deckAnswers.at(-1), { pending: "p-99", allow: true }, "the deck's Allow reached the host");
+  await until("document.querySelector('#rail-agents .abadge').hidden", "the badge cleared");
+
+  // Clicking a card jumps to its pane; Escape closes the deck.
+  await evaluate("window.obpterm.deck.open()");
+  await evaluate("document.querySelector('.dcard').click()");
+  await until("!window.obpterm.deck.isOpen", "the deck closed by the jump");
+  assert.equal(await evaluate(`window.obpterm.panesOf(window.obpterm.tab)[0].id`), deckPane, "the jump landed on the card's tab");
+  await evaluate("window.obpterm.deck.open()");
+  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true, cancelable: true }))");
+  await until("!window.obpterm.deck.isOpen", "the deck closed by Escape");
+
+  devWs.close();
+  await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
+}
+
 // ---- settings, as a sheet in this same window ------------------------------------------------
 await evaluate("window.obpterm.settings.open('hosts')");
 await until("!document.querySelector('#settings').hidden", "the settings sheet");
