@@ -356,3 +356,42 @@ fn expand(path: &str) -> String {
         None => path.to_string(),
     }
 }
+
+/// Claude's own name for a session — the `/rename` name if one was given, else the title
+/// Claude wrote for itself — from the tail of the session's transcript.
+#[tauri::command]
+pub async fn session_title(dir: String, session_id: String) -> Option<String> {
+    let projects = PathBuf::from(expand(&dir)).join("projects");
+    let file = std::fs::read_dir(&projects)
+        .ok()?
+        .flatten()
+        .map(|d| d.path().join(format!("{session_id}.jsonl")))
+        .find(|p| p.exists())?;
+    let text = tail(&file, 128 * 1024)?;
+    let mut ai = None;
+    let mut custom = None;
+    for line in text.lines() {
+        if line.contains("customTitle") {
+            if let Some(v) = serde_json::from_str::<serde_json::Value>(line).ok().and_then(|v| v.get("customTitle").and_then(|t| t.as_str()).map(str::to_string)) {
+                custom = Some(v);
+            }
+        } else if line.contains("aiTitle") {
+            if let Some(v) = serde_json::from_str::<serde_json::Value>(line).ok().and_then(|v| v.get("aiTitle").and_then(|t| t.as_str()).map(str::to_string)) {
+                ai = Some(v);
+            }
+        }
+    }
+    custom.or(ai)
+}
+
+fn tail(path: &Path, max: u64) -> Option<String> {
+    use std::io::{Seek, SeekFrom};
+    let mut f = std::fs::File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    if len > max {
+        f.seek(SeekFrom::Start(len - max)).ok()?;
+    }
+    let mut buf = String::new();
+    std::io::Read::read_to_string(&mut f, &mut buf).ok()?;
+    Some(buf)
+}

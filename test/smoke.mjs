@@ -44,6 +44,9 @@ ws.on("message", (raw) => {
 await new Promise((r) => ws.on("open", r));
 await send("Runtime.enable");
 await send("Page.enable");
+// Headless has no real focus; without this, document.hasFocus() is false and every
+// "focused pane" behaviour (read-on-watch, auto-pass) looks broken when it is not.
+await send("Emulation.setFocusEmulationEnabled", { enabled: true });
 await send("Page.navigate", { url });
 
 const evaluate = async (expression) =>
@@ -432,6 +435,70 @@ await until(`window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].asleep =
 await until(`${bufferText(`window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0]`)}.includes('before-sleep')`, "the replay after waking");
 await evaluate(`window.obpterm.closeTab(window.obpterm.tabs[${sleeper}])`);
 await evaluate("window.obpterm.config.sleep_after_minutes = 10");
+
+// ---- agent supervision: hook events drive the states, and answers travel back -------------
+const agentPaneId = await evaluate("window.obpterm.tab.active.id");
+// Drive the loop through the dev server's inject path with a raw ws from the test runner.
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const injectDev = (update) =>
+    new Promise((r) => {
+      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
+      setTimeout(r, 150);
+    });
+
+  await injectDev({ pane: agentPaneId, state: "working", session_id: "sess-1", detail: "Editing pty.rs", pending_id: null, options: [] });
+  await until(`window.obpterm.tab.active.agent.state === 'working'`, "the working state landing");
+  assert.equal(await evaluate("window.obpterm.tab.active.claudeSessionId"), "sess-1", "the session id was learned");
+  await until("document.querySelector('.tab.active .sub').textContent === 'Editing pty.rs'", "the activity line in the rail");
+
+  // done while focused: not unread
+  await injectDev({ pane: agentPaneId, state: "done", session_id: "sess-1", detail: "All tests pass.", pending_id: null, options: [] });
+  await until(`window.obpterm.tab.active.agent.state === 'done'`, "the done state");
+  assert.equal(await evaluate("window.obpterm.tab.active.agent.unread"), false, "watched it finish = read");
+
+  // blocked while focused: auto-pass, so the in-pane prompt is not delayed
+  await injectDev({ pane: agentPaneId, state: "blocked", session_id: "sess-1", detail: "Running rm -rf build", pending_id: "p-77", options: [] });
+  await new Promise((r) => setTimeout(r, 300));
+  const answers = await new Promise((resolve) => {
+    devWs.send(JSON.stringify({ t: "agent_answers", reqId: 1000 }));
+    devWs.on("message", function once(d) {
+      const m = JSON.parse(d);
+      if (m.reqId === 1000) { devWs.off("message", once); resolve(m.answered); }
+    });
+  });
+  assert.deepEqual(answers[0], { pending: "p-77", allow: null }, "a focused pane's request is passed straight through");
+
+  // blocked on ANOTHER tab: stays blocked, counts as waiting, and Deny travels back
+  await evaluate("void window.obpterm.newTab()");
+  await until("window.obpterm.tabs.length >= 2", "a second tab for the blocked case");
+  const otherPane = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[0])[0].id");
+  const blockedPane = agentPaneId === otherPane
+    ? await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id")
+    : otherPane;
+  const focusTab = await evaluate(`window.obpterm.tabs.findIndex(t => window.obpterm.panesOf(t).some(p => p.id !== ${blockedPane}))`);
+  await evaluate(`window.obpterm.activate(window.obpterm.tabs[${focusTab}])`);
+  await injectDev({ pane: blockedPane, state: "blocked", session_id: "sess-2", detail: "Running cargo publish", pending_id: "p-88", options: [] });
+  await until(
+    `window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${blockedPane})?.agent.state === 'blocked'`,
+    "the unfocused pane blocked",
+  );
+  await evaluate(
+    `void window.obpterm.answerAgent(window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${blockedPane}), false)`,
+  );
+  const answers2 = await new Promise((resolve) => {
+    devWs.send(JSON.stringify({ t: "agent_answers", reqId: 1001 }));
+    devWs.on("message", function once(d) {
+      const m = JSON.parse(d);
+      if (m.reqId === 1001) { devWs.off("message", once); resolve(m.answered); }
+    });
+  });
+  assert.deepEqual(answers2[1], { pending: "p-88", allow: false }, "the deny reached the host");
+  devWs.close();
+  // close the extra tab
+  await evaluate(`(() => { const t = window.obpterm.tabs.find(t => window.obpterm.panesOf(t).some(p => p.id === ${blockedPane})); if (t && window.obpterm.tabs.length > 1) window.obpterm.closeTab(t); })()`);
+}
 
 // ---- settings, as a sheet in this same window ------------------------------------------------
 await evaluate("window.obpterm.settings.open('hosts')");

@@ -48,6 +48,7 @@ pub fn run() {
             claude::claude_account_names,
             claude::claude_usage,
             claude::claude_limits,
+            claude::session_title,
             logins::logins_list,
             logins::logins_save,
             logins::logins_switch,

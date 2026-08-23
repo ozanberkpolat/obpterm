@@ -7,6 +7,7 @@ import { installToolbar } from "./toolbar";
 import { installHeader } from "./header";
 import { installPalette } from "./palette";
 import { installSettings } from "./settings-panel";
+import { installAgentEvents } from "./agent";
 import "./settings.css";
 import { toast } from "./ui";
 
@@ -37,6 +38,18 @@ async function main() {
   // rows in place, so this is a handful of attribute writes, not a rebuild.
   window.setInterval(() => app.onPaneActivity(), 1000);
   window.setInterval(() => void app.sleepIdleTabs(), 30_000);
+  window.setInterval(() => app.ecoSweep(), 60_000);
+  window.setInterval(() => void app.refreshAgentTitles(), 5_000);
+  installAgentEvents(app);
+  // Hooks go in automatically (the user chose that): the default login's dir plus every
+  // account's. A marked block; Settings can remove it.
+  const hookDirs = [...new Set(["~/.claude", ...config.accounts.map((a) => a.claude_dir).filter((d): d is string => !!d)])];
+  void tp
+    .hooksEnsure(hookDirs)
+    .then((changed) => {
+      if (changed.length) toast(`Claude Code hooks installed (${changed.length} settings file${changed.length > 1 ? "s" : ""}) — agent states are live`);
+    })
+    .catch(() => {});
   window.setInterval(() => void app.refreshHeld(), 3_000);
   window.addEventListener("focus", () => app.clearAttention());
   const { restored, crashed, updatedTo } = await app.restoreSession();

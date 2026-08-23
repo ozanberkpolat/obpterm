@@ -12,6 +12,7 @@ export function wsTransport(): Transport {
     ws.onerror = () => rej(new Error("dev-server :1421 not reachable — run `npm run devserver`"));
   });
   const pending = new Map<number, (m: Msg) => void>();
+  const agentListeners: ((u: import("./agent").AgentUpdate) => void)[] = [];
   const data = new Map<number, (b: Uint8Array) => void>();
   const exits = new Map<number, (code: number | null) => void>();
   let reqSeq = 0;
@@ -26,6 +27,8 @@ export function wsTransport(): Transport {
     if (m.reqId !== undefined) {
       pending.get(m.reqId)?.(m);
       pending.delete(m.reqId);
+    } else if (m.t === "agent") {
+      for (const l of agentListeners) l(m.update as import("./agent").AgentUpdate);
     } else if (m.t === "config:changed") {
       // one window now: nothing to reconcile
     } else if (m.t === "exit" && m.id !== undefined) {
@@ -54,6 +57,11 @@ export function wsTransport(): Transport {
       data.set(id, onData);
       exits.set(id, onExit);
     },
+    onAgent: (handler) => agentListeners.push(handler),
+    agentAnswer: async (pending, allow) => void (await call("agent_answer", { pending, allow })),
+    hooksEnsure: async () => [],
+    hooksRemove: async () => 0,
+    sessionTitle: async () => null,
     detach: async (id) => {
       data.delete(id);
       exits.delete(id);

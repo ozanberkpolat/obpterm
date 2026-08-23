@@ -23,6 +23,11 @@ export function tauriTransport(): Transport {
       exits.set(id, onExit);
     },
     detach: (id) => invoke("pty_detach", { id }),
+    onAgent: (handler) => void listen("agent", (e) => handler(e.payload as import("./agent").AgentUpdate)),
+    agentAnswer: (pending, allow) => invoke("agent_answer", { pending, allow }),
+    hooksEnsure: (dirs) => invoke<string[]>("hooks_ensure", { dirs }),
+    hooksRemove: (dirs) => invoke<number>("hooks_remove", { dirs }),
+    sessionTitle: (dir, sessionId) => invoke<string | null>("session_title", { dir, sessionId }),
     hostShutdown: () => invoke("host_shutdown"),
     async spawn(profile: Profile, cols, rows, onData, onExit) {
       // Rust sends `Response::new(bytes)` → arrives as an ArrayBuffer, no JSON in between.

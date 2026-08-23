@@ -1,5 +1,6 @@
 // Tabs, panes and projects. A tab owns a pane tree; a project groups tabs, gives them a colour
 // and can save/restore its own set of tabs.
+import { tick as agentTick } from "./agent";
 import { withDefaults, type Account, type Config, type Host, type Profile, type Project, type Transport } from "./transport";
 import { ACTIVE_MS, Pane, type PaneHost } from "./pane";
 import * as L from "./layout";
@@ -12,8 +13,8 @@ import type { Status } from "./status";
 import type { Preset } from "./toolbar";
 
 /** Loudest first: this order is what a tab with several panes reports. */
-export type Activity = "bell" | "exited" | "running" | "idle";
-const LOUDNESS: Activity[] = ["bell", "exited", "running", "idle"];
+export type Activity = "bell" | "exited" | "unread" | "running" | "idle";
+const LOUDNESS: Activity[] = ["bell", "exited", "unread", "running", "idle"];
 
 export interface Tab {
   /** Stable across repaints, so the rail can patch a row instead of rebuilding it. */
@@ -138,8 +139,83 @@ export class App implements PaneHost {
   /** Environment a shell starts with: the profile's own, then the account's on top. */
   private withAccount(profile: Profile, accountId: string | null): Profile {
     const account = this.account(accountId);
-    if (!account) return profile;
-    return { ...profile, env: { ...(profile.env ?? {}), ...account.env } };
+    const merged = account ? { ...profile, env: { ...(profile.env ?? {}), ...account.env } } : { ...profile };
+    // A Claude profile gets a session id we minted: hooks then track it through /clear and
+    // /compact, and a reboot costs one --resume instead of a blank session.
+    const hay = `${merged.exe} ${merged.args.join(" ")}`.toLowerCase();
+    if (hay.includes("claude") && !merged.args.some((a) => a === "--session-id" || a === "--resume" || a === "-r" || a === "--continue" || a === "-c")) {
+      merged.args = [...merged.args, "--session-id", crypto.randomUUID()];
+    }
+    return merged;
+  }
+
+  /**
+   * Claude names every session; `/rename` never reaches the terminal title. Poll the
+   * transcript's tail for the focused tab's Claude panes and let that name the tab, unless
+   * the user has named it themselves.
+   */
+  async refreshAgentTitles() {
+    const tab = this.tab;
+    if (!tab || tab.name) return;
+    const account = this.account(tab.accountId);
+    const dir = account?.claude_dir ?? "~/.claude";
+    for (const pane of L.panes(tab.root)) {
+      if (!pane.claudeSessionId) continue;
+      const title = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
+      if (title && title !== pane.title) {
+        pane.title = title;
+        this.paint();
+      }
+    }
+  }
+
+  /** The rail's verdict on a pane's held permission request. */
+  async answerAgent(pane: Pane, allow: boolean) {
+    const pending = pane.agent.pendingId;
+    if (!pending) return;
+    pane.agent.pendingId = null;
+    pane.agent.state = allow ? "working" : "waiting";
+    await this.tp.agentAnswer(pending, allow).catch(() => {});
+    this.paint();
+  }
+
+  /** A pane whose Claude was put to sleep: run it again where it left off. */
+  async resumeEco(pane: Pane) {
+    if (!pane.eco) return;
+    pane.eco = false;
+    const sessionId = pane.claudeSessionId;
+    const profile = { ...pane.profile };
+    if (sessionId) {
+      const args = [];
+      for (let i = 0; i < profile.args.length; i++) {
+        if (profile.args[i] === "--session-id") { i++; continue; }
+        args.push(profile.args[i]!);
+      }
+      profile.args = [...args, "--resume", sessionId];
+    }
+    pane.profile = profile;
+    await this.respawnPane(pane);
+  }
+
+  /**
+   * Eco: a finished Claude session holds ~335 MB whether or not anyone reads its answer.
+   * After a while unfocused and done, /exit it; the tab stays, marked, and focusing it
+   * resumes the same conversation. Nothing is exited mid-turn, mid-question, or on screen.
+   */
+  ecoSweep() {
+    const minutes = this.config.eco_after_minutes;
+    if (!minutes) return;
+    const cutoff = Date.now() - minutes * 60_000;
+    for (const tab of this.tabs) {
+      if (tab === this.tab) continue;
+      for (const pane of L.panes(tab.root)) {
+        if (pane.eco || pane.exited || pane.asleep) continue;
+        if (pane.agent.state !== "done" || !pane.claudeSessionId) continue;
+        if (pane.lastOutput > cutoff || pane.lastVisited > cutoff) continue;
+        pane.eco = true;
+        void this.tp.write(pane.id, "/exit\r").catch(() => {});
+      }
+    }
   }
 
   /**
@@ -304,7 +380,9 @@ export class App implements PaneHost {
     this.tab = tab;
     for (const p of L.panes(tab.root)) {
       p.lastVisited = Date.now();
+      p.agent.unread = false;
       if (p.asleep) void p.wake().then(() => this.paint());
+      if (p.eco) void this.resumeEco(p);
     }
     this.mru = [tab, ...this.mru.filter((t) => t !== tab && this.tabs.includes(t))];
     this.clearBells(tab);
@@ -558,6 +636,15 @@ export class App implements PaneHost {
   onPaneExit(pane: Pane, code: number | null) {
     const tab = this.tabOf(pane);
     if (!tab) return;
+    if (pane.eco) {
+      // The /exit we sent on purpose: hold the pane, say so, wake resumes.
+      pane.exited = true;
+      pane.exitAcknowledged = true;
+      pane.term.term.write("\r\n\x1b[38;2;118;135;156m[agent sleeping to save memory — click or press any key to resume]\x1b[0m\r\n");
+      this.paint();
+      void this.flushSession();
+      return;
+    }
     if (code === 0 || code === null || pane.exitAcknowledged) return this.closePane(pane, tab);
     // Non-zero: leave the output on screen, close on the next keypress.
     pane.exitAcknowledged = true;
@@ -587,6 +674,11 @@ export class App implements PaneHost {
     pane.bell = true;
     this.onPaneActivity();
     this.alert(title || pane.profile.name, body);
+  }
+
+  /** An agent asked for something, in its own words. */
+  agentAlert(title: string, body: string) {
+    this.alert(title, body);
   }
 
   /** One place for "tell the user something happened while they were elsewhere". */
@@ -630,6 +722,13 @@ export class App implements PaneHost {
   /** A pane started or stopped printing, or rang: the rail's dots are stale. */
   onPaneActivity() {
     this.checkSilence();
+    for (const tab of this.tabs) {
+      for (const pane of L.panes(tab.root)) {
+        if (agentTick(pane.agent)) {
+          // fell stale; nothing else to do — the repaint below shows it
+        }
+      }
+    }
     renderRail(this);
   }
 
@@ -690,8 +789,13 @@ export class App implements PaneHost {
     return this.tabs.flatMap((t) => L.panes(t.root)).filter((p) => p.asleep).length;
   }
 
-  /** What one pane is doing right now. */
+  /** What one pane is doing right now. Hook-derived truth outranks the byte heuristics. */
   paneActivity(pane: Pane): Activity {
+    if (pane.eco) return "idle";
+    const agent = pane.agent.state;
+    if (agent === "blocked" || agent === "waiting") return "bell";
+    if (agent === "done" && pane.agent.unread) return "unread";
+    if (agent === "working") return "running";
     if (pane.asleep) {
       // The host's word, refreshed every few seconds.
       const h = pane.heldState;
@@ -897,9 +1001,24 @@ export class App implements PaneHost {
     const host = hostId ? this.host(hostId) : null;
     const profile = host ? this.hostProfile(host) : this.config.profiles.find((p) => p.id === wanted);
     if (profile) {
-      const pane = new Pane(this, this.withAccount(profile, saved.account ?? null), node.cwd ?? null);
+      let effective = this.withAccount(profile, saved.account ?? null);
       const held = this.reattachable && node.pty ? this.held.get(node.pty) : undefined;
-      if (held && held.exited === null) pane.attachTo = held.id;
+      if (!held && node.claude) {
+        // The host (and the shell) are gone — a reboot. The conversation is not: strip the
+        // minted --session-id and resume the saved one instead.
+        const args: string[] = [];
+        for (let i = 0; i < effective.args.length; i++) {
+          if (effective.args[i] === "--session-id") { i++; continue; }
+          args.push(effective.args[i]!);
+        }
+        effective = { ...effective, args: [...args, "--resume", node.claude] };
+      }
+      const pane = new Pane(this, effective, node.cwd ?? null);
+      pane.claudeSessionId = node.claude ?? null;
+      if (held && held.exited === null) {
+        pane.attachTo = held.id;
+        pane.claudeSessionId = held.claude_session_id ?? pane.claudeSessionId;
+      }
       return pane;
     }
     const missing = hostId

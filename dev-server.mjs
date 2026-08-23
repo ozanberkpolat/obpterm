@@ -17,7 +17,8 @@ let nextId = 1;
 // what each printed, so the browser loop can prove reattach the way the real host does.
 const INSTANCE = Math.random().toString(36).slice(2, 10);
 const RING = 1024 * 1024;
-const held = new Map(); // id -> { p, exe, cwd, ring: Buffer[], ringBytes, exited, startedAt, watcher }
+const held = new Map();
+const answered = []; // id -> { p, exe, cwd, ring: Buffer[], ringBytes, exited, startedAt, watcher }
 
 const broadcast = (msg) => {
   for (const client of wss.clients) if (client.readyState === 1) client.send(JSON.stringify(msg));
@@ -129,6 +130,17 @@ wss.on("connection", (ws) => {
           writeFileSync(SESSION, JSON.stringify({ clean_exit: false, saved_at: Date.now(), tabs: m.tabs, active: m.active ?? 0, host: m.host ?? null, updated_to: null }));
           return reply(m.reqId);
         case "logins": return reply(m.reqId, { logins: devLogins(m.action, m.name) });
+        case "agent_inject": {
+          // Test-only: pretend a hook fired. The real path is Claude Code -> host HTTP.
+          broadcast({ t: "agent", update: m.update });
+          return reply(m.reqId);
+        }
+        case "agent_answer": {
+          answered.push({ pending: m.pending, allow: m.allow });
+          broadcast({ t: "agent_answered", pending: m.pending, allow: m.allow });
+          return reply(m.reqId);
+        }
+        case "agent_answers": return reply(m.reqId, { answered });
         case "claude_account": return reply(m.reqId, { account: claudeAccount(m.dir) });
         case "claude_account_names": {
           try {

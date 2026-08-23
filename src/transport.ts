@@ -150,6 +150,8 @@ export interface Config {
   update_check_on_launch: boolean;
   /** Minutes a tab can go unvisited before its terminal is put to sleep. 0 = never. */
   sleep_after_minutes: number;
+  /** Minutes a finished, unfocused Claude session sits before /exit frees its memory. 0 = never. */
+  eco_after_minutes: number;
   notify_bell: boolean;
   notify_silence: boolean;
   silence_seconds: number;
@@ -188,6 +190,9 @@ export interface HostSession {
   started_at: number;
   last_output: number;
   bell: boolean;
+  agent_state: string | null;
+  agent_detail: string | null;
+  claude_session_id: string | null;
 }
 
 export interface Transport {
@@ -207,6 +212,15 @@ export interface Transport {
   detach(id: number): Promise<void>;
   /** Ends every shell and the host. The one way out that means it. */
   hostShutdown(): Promise<void>;
+  /** Hook-derived agent updates (Claude Code's own events), for the supervision states. */
+  onAgent(handler: (u: import("./agent").AgentUpdate) => void): void;
+  /** The rail's verdict on a held permission request; null passes it to the in-pane prompt. */
+  agentAnswer(pendingId: string, allow: boolean | null): Promise<void>;
+  /** Install (or refresh) the Claude Code hook block in these config dirs' settings.json. */
+  hooksEnsure(dirs: string[]): Promise<string[]>;
+  hooksRemove(dirs: string[]): Promise<number>;
+  /** Claude's own name for a session, read from its transcript. */
+  sessionTitle(dir: string, sessionId: string): Promise<string | null>;
   spawn(
     profile: Profile,
     cols: number,
@@ -279,6 +293,7 @@ export function withDefaults(config: Partial<Config>): Config {
     capture_max_mb: config.capture_max_mb ?? 512,
     update_check_on_launch: config.update_check_on_launch ?? true,
     sleep_after_minutes: config.sleep_after_minutes ?? 10,
+    eco_after_minutes: config.eco_after_minutes ?? 30,
     notify_bell: config.notify_bell ?? true,
     notify_silence: config.notify_silence ?? false,
     silence_seconds: config.silence_seconds ?? 20,

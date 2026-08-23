@@ -35,6 +35,7 @@
   "capture_max_mb": 512,
   "update_check_on_launch": false,
   "sleep_after_minutes": 10,
+  "eco_after_minutes": 30,
   "notify_bell": true,
   "notify_silence": false,
   "silence_seconds": 20,
@@ -79,7 +80,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt66ktz9",
+      "id": "hmt680n99",
       "name": "New host",
       "host": "",
       "user": null,
@@ -761,6 +762,42 @@
     },
     {
       "id": "pmt66kpw4",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt67z3k1",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt67zjxd",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt6808qz",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt680fyn",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,

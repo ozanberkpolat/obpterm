@@ -133,6 +133,31 @@ header counts what is waiting. Focusing a tab answers its bell. Nothing blinks.
 Claude Code rings the bell only when `preferredNotifChannel` is set to `terminal_bell` — its
 default, `auto`, stays silent in a terminal it does not recognise.
 
+## Supervising agents
+
+Every Claude Code session reports what it is doing through Claude's own hooks — a marked,
+removable block OBPTerm installs into `settings.json` automatically (Settings → Files & reset
+takes it out). No output parsing, nothing configured per shell, and a plain terminal ignores
+it. What that buys, per pane:
+
+- **True states in the rail.** ▲ now means *needs you* — a permission prompt or a question —
+  not just a bell; a filled dot means *finished while you were elsewhere, unread*; running
+  means the agent is actually mid-turn. The subtitle shows what it is doing ("Editing
+  pty.rs", "Running cargo check…") and, when it finishes, what it said.
+- **Answer a permission prompt from the rail.** Right-click the tab: Allow / Deny, without
+  focusing it. The verdict rides the hook's own reply; if you do nothing for 40 seconds the
+  normal in-pane prompt appears, exactly as without OBPTerm. A prompt on the pane you are
+  already looking at is passed straight through — no delay.
+- **Reboots stop costing conversations.** A Claude profile is launched with a session id
+  OBPTerm mints; after a reboot (which no session host survives) the restored pane runs
+  `claude --resume` on it and the conversation continues. `/clear` and `/compact` are
+  tracked through the hooks.
+- **Tabs name themselves.** Claude titles every session; the tab uses that name (or your
+  `/rename`) until you name it yourself with F2.
+- **Eco.** A session that finished and sat unread for half an hour (configurable) is
+  `/exit`ed — each idle Claude process holds ~335 MB — and the tab stays, marked; clicking
+  it resumes the same conversation.
+
 ## Being told
 
 A pane that asks for you while you are looking at something else raises a desktop notification

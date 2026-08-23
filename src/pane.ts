@@ -1,5 +1,6 @@
 // One pane = one pty + one xterm. Panes own their DOM node and keep it across re-layouts,
 // so splitting or moving a pane never loses scrollback.
+import { blank, type AgentState } from "./agent";
 import { createTerm, type Term } from "./term";
 import { ownsKey } from "./keys";
 import type { Config, Profile, Transport } from "./transport";
@@ -56,6 +57,12 @@ export class Pane {
   deadReason: string | null = null;
   /** A shell the host is already holding: `start()` attaches to it instead of spawning. */
   attachTo: number | null = null;
+  /** What the Claude session in this pane is doing, from its own hooks. */
+  agent: AgentState = blank();
+  /** Claude's session id — what `--resume` needs after a reboot or an eco sleep. */
+  claudeSessionId: string | null = null;
+  /** The shell was `/exit`ed on purpose to free the agent's memory; wake resumes it. */
+  eco = false;
   logPath: string | null = null;
 
   constructor(

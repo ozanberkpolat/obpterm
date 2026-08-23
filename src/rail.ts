@@ -147,10 +147,14 @@ function patchRow(app: App, tab: Tab) {
   const panes = L.panes(tab.root);
   const title = app.title(tab);
   const state = app.activity(tab);
-  const exited = panes.find((p) => p.exitCode);
+  const exited = panes.find((p) => p.exitCode && !p.eco);
+  const agentDetail = panes.map((p) => (p.agent.state ? p.agent.detail : null)).find(Boolean);
+  const eco = panes.some((p) => p.eco);
   const sub = exited
     ? `exited · code ${exited.exitCode}`
-    : (tab.active.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? tab.active.profile.name);
+    : eco
+      ? "agent sleeping — click to resume"
+      : (agentDetail ?? tab.active.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? tab.active.profile.name);
 
   row.li.classList.toggle("active", tab === app.tab);
   row.li.classList.toggle("dead", state === "exited");
@@ -173,7 +177,8 @@ function patchRow(app: App, tab: Tab) {
 const STATE_TITLE: Record<Activity, string> = {
   running: "printing output right now",
   idle: "quiet — at a prompt",
-  bell: "rang while you were elsewhere",
+  bell: "needs you — a permission prompt or a question",
+  unread: "finished while you were elsewhere",
   exited: "the shell ended with a non-zero code",
 };
 
@@ -195,7 +200,17 @@ export function renameTab(app: App, tab: Tab, row?: HTMLElement) {
 
 function tabMenu(app: App, tab: Tab, x: number, y: number) {
   const capturing = tab.active.logPath;
+  const blocked = L.panes(tab.root).find((p) => p.agent.state === "blocked" && p.agent.pendingId);
   openMenu(x, y, [
+    ...(blocked
+      ? [
+          {
+            label: `Allow: ${blocked.agent.detail ?? "the request"}`,
+            onPick: () => void app.answerAgent(blocked, true),
+          },
+          { label: "Deny it", danger: true, onPick: () => void app.answerAgent(blocked, false) },
+        ]
+      : []),
     { label: "Rename tab", hint: "F2", onPick: () => renameTab(app, tab) },
     { label: "Split right", hint: "Alt+Shift+=", onPick: () => void app.splitPane("row") },
     { label: "Split down", hint: "Alt+Shift+-", onPick: () => void app.splitPane("col") },

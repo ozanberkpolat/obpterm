@@ -353,6 +353,10 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
         row("Put idle tabs to sleep after", "A tab nobody has looked at loses its terminal; the shell keeps running in the session host and the tab wakes on click. The rail still shows what a sleeping shell is doing. Zero keeps every terminal alive.",
           slider(c.sleep_after_minutes, 0, 120, 5, " min", (v) => { c.sleep_after_minutes = v; ctx.save(); })),
       ),
+      card(
+        row("Sleep a finished agent after", "A Claude session that finished and sat unread is /exited to free its memory (~335 MB each); the tab stays and clicking it resumes the same conversation. Zero never does.",
+          slider(c.eco_after_minutes, 0, 240, 10, " min", (v) => { c.eco_after_minutes = v; ctx.save(); })),
+      ),
       cap("Being told"),
       card(
         row("Notify when a pane asks for you", "A desktop notification carrying what the program said, and the taskbar flashes until you come back.",
@@ -559,6 +563,11 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
     wrap.append(
       head("Files & reset", "Where OBPTerm keeps things, and the way back to defaults."),
       card(
+        row("Claude Code hooks", "A marked block in settings.json that tells OBPTerm what each session is doing. Installed automatically; this takes it back out.",
+          button("Remove hooks", () => {
+            const dirs = [...new Set(["~/.claude", ...ctx.config.accounts.map((a) => a.claude_dir).filter((d): d is string => !!d)])];
+            void ctx.tp.hooksRemove(dirs).then((n) => toast(n ? `Hooks removed from ${n} settings file${n > 1 ? "s" : ""}` : "No hooks were installed"));
+          })),
         row("Config and session", "config.json holds these settings; session.json holds the open tabs.",
           button("Show folder", () => void ctx.tp.reveal("config"))),
         captureRow(ctx),

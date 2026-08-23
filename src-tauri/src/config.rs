@@ -121,6 +121,9 @@ pub struct Config {
     /// Minutes a tab can go unvisited before its terminal is torn down to save memory; the
     /// shell keeps running in the host and the tab wakes on click. 0 = never.
     pub sleep_after_minutes: u32,
+    /// Minutes a finished, unfocused Claude session sits before /exit frees its ~335 MB.
+    /// The tab stays; clicking it runs `claude --resume`. 0 = never.
+    pub eco_after_minutes: u32,
     /// Desktop notification when an unfocused pane rings or asks for something.
     pub notify_bell: bool,
     /// Desktop notification when a busy pane goes quiet — a build or an agent finishing.
@@ -176,6 +179,7 @@ impl Default for Config {
             capture_max_mb: 512,
             update_check_on_launch: true,
             sleep_after_minutes: 10,
+            eco_after_minutes: 30,
             notify_bell: true,
             notify_silence: false,
             silence_seconds: 20,
