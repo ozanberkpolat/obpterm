@@ -275,6 +275,21 @@ await evaluate(
 await until("!document.querySelector('#palette').hidden", "Ctrl+K opening the palette from a pane");
 await evaluate("window.obpterm.palette.close()");
 
+// Collapsed, every row is the same 30px circle and idle rows show no glyph.
+await evaluate("(() => { window.obpterm.config.rail_collapsed = false; window.obpterm.toggleRail(); })()");
+await until("document.querySelector('#rail').classList.contains('collapsed')", "the collapsed rail");
+const box = JSON.parse(
+  await evaluate("(() => { const r = document.querySelector('.tab').getBoundingClientRect(); return JSON.stringify([r.width, r.height]); })()"),
+);
+assert.deepEqual(box, [30, 30], "a collapsed row is a 30px circle");
+assert.equal(
+  await evaluate("getComputedStyle(document.querySelector('.tab .st.idle') ?? document.createElement('i')).display"),
+  "none",
+  "an idle glyph is hidden when collapsed",
+);
+await evaluate("window.obpterm.toggleRail()");
+await until("!document.querySelector('#rail').classList.contains('collapsed')", "the rail expanded again");
+
 // App shortcuts must not fire while a text field has focus.
 await evaluate("window.obpterm.settings.open('updates')");
 await until("!document.querySelector('#settings').hidden", "settings for the field test");

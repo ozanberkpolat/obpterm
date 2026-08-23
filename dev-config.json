@@ -20,7 +20,7 @@
     }
   ],
   "font_family": "JetBrains Mono, Cascadia Mono, Consolas, monospace",
-  "font_size": 38,
+  "font_size": 39,
   "scrollback": 10000,
   "rail_collapsed": false,
   "rail_width": 300,
@@ -78,7 +78,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt5vphjw",
+      "id": "hmt5yaieu",
       "name": "New host",
       "host": "",
       "user": null,
@@ -625,6 +625,15 @@
     },
     {
       "id": "pmt5vpei6",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5yaf9s",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,

@@ -1,6 +1,6 @@
 [package]
 name = "obpterm"
-version = "0.8.1"
+version = "0.8.2"
 description = "Vertical-tab terminal for Windows: pwsh / PowerShell / cmd over ConPTY"
 edition = "2021"
 rust-version = "1.77"

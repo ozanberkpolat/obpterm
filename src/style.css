@@ -132,9 +132,26 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .gadd { width: 20px; height: 20px; border-radius: 999px; font-size: 14px; line-height: 1; color: var(--faint); }
 .gadd:hover { background: var(--border-2); color: var(--ink); }
 .group .glist { border-left: 2px solid color-mix(in srgb, var(--group) 40%, transparent); margin-left: 13px; padding-left: 6px; }
-#rail.collapsed .group-head { justify-content: center; padding: 4px 0; }
+#rail.collapsed .group-head { justify-content: center; padding: 4px 0; gap: 4px; }
+#rail.collapsed .chev { display: none; }
 #rail.collapsed .gname, #rail.collapsed .gcount, #rail.collapsed .gadd { display: none; }
-#rail.collapsed .group .glist { border-left: 0; margin-left: 0; padding-left: 0; }
+#rail.collapsed .group .glist { border-left: 0; margin-left: 0; padding-left: 0; align-items: center; }
+
+/* Collapsed, a row is one 30px circle carrying its number, with the state as a corner dot.
+   Letting the full row shape survive into a 52px lane stretched the active pill into a blob
+   and stood the number and the glyph side by side. */
+#rail.collapsed .tab {
+  width: 30px; height: 30px; min-height: 0;
+  padding: 0; gap: 0; justify-content: center;
+  position: relative; flex: none;
+}
+#rail.collapsed .num { width: auto; text-align: center; font-size: 11px; opacity: 1; }
+#rail.collapsed .badge, #rail.collapsed .rec { display: none; }
+#rail.collapsed .st { position: absolute; top: -1px; right: -2px; width: 9px; height: 9px; }
+#rail.collapsed .st::before { transform: scale(.66); }
+/* Only news is worth 9px in a 52px lane: an idle pane is the resting state. */
+#rail.collapsed .st.idle { display: none; }
+#rail.collapsed .gstates { gap: 2px; }
 
 .glist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
 .tab {
