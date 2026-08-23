@@ -7,6 +7,7 @@ import { createWriteStream, mkdirSync, readFileSync, readdirSync, statSync, writ
 import os from "node:os";
 
 const CONFIG = new URL("./dev-config.json", import.meta.url);
+const SESSION = new URL("./dev-session.json", import.meta.url);
 const wss = new WebSocketServer({ port: 1421 });
 let nextId = 1;
 
@@ -25,7 +26,7 @@ wss.on("connection", (ws) => {
             name: "xterm-256color",
             cols, rows,
             cwd: profile.cwd ?? os.homedir(),
-            env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", WINTERM: "dev" },
+            env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", OBPTERM: "dev" },
           });
           const id = nextId++;
           sessions.set(id, p);
@@ -53,6 +54,13 @@ wss.on("connection", (ws) => {
           return reply(m.reqId, { path });
         }
         case "log_stop": logs.get(m.id)?.end(); logs.delete(m.id); return reply(m.reqId);
+        case "session_load": {
+          try { return reply(m.reqId, { session: JSON.parse(readFileSync(SESSION, "utf8")) }); }
+          catch { return reply(m.reqId, { session: { clean_exit: true, saved_at: 0, tabs: null } }); }
+        }
+        case "session_save":
+          writeFileSync(SESSION, JSON.stringify({ clean_exit: false, saved_at: Date.now(), tabs: m.tabs }));
+          return reply(m.reqId);
         case "claude_account": return reply(m.reqId, { account: claudeAccount(m.dir) });
         case "claude_usage": return reply(m.reqId, { usage: claudeUsage(m.dir) });
         case "config_load": return reply(m.reqId, { config: JSON.parse(readFileSync(CONFIG, "utf8")) });
@@ -121,4 +129,4 @@ function claudeUsage(dir) {
   return usage;
 }
 
-console.log("winterm dev-server: ws://0.0.0.0:1421 (config: dev-config.json)");
+console.log("OBPTerm dev-server: ws://0.0.0.0:1421 (config: dev-config.json)");

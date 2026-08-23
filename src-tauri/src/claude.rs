@@ -1,9 +1,9 @@
 //! Reads Claude Code's own files under a config dir (`~/.claude`, or whatever `CLAUDE_CONFIG_DIR`
 //! points at): who is logged in, and how many tokens that account has spent lately.
 //!
-//! Nothing here talks to the network and nothing here writes: winterm never holds a token and
+//! Nothing here talks to the network and nothing here writes: obpterm never holds a token and
 //! never touches the credential files. Switching accounts means launching a shell with
-//! `CLAUDE_CONFIG_DIR` set, which is why an account in winterm is just an env preset.
+//! `CLAUDE_CONFIG_DIR` set, which is why an account in obpterm is just an env preset.
 
 use serde::Serialize;
 use std::collections::HashMap;

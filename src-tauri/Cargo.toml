@@ -1,12 +1,12 @@
 [package]
-name = "winterm"
-version = "0.2.0"
+name = "obpterm"
+version = "0.3.0"
 description = "Vertical-tab terminal for Windows: pwsh / PowerShell / cmd over ConPTY"
 edition = "2021"
 rust-version = "1.77"
 
 [lib]
-name = "winterm_lib"
+name = "obpterm_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

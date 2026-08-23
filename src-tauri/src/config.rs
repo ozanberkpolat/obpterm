@@ -1,10 +1,10 @@
-//! `config.json` in the app config dir (`%APPDATA%\tr.com.obp.winterm\` on Windows).
+//! `config.json` in the app config dir (`%APPDATA%\tr.com.obp.obpterm\` on Windows).
 //! Missing fields fall back to defaults, unknown fields are ignored, so adding a field later
 //! needs no migration. A corrupt file is an error, not a silent reset.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -23,7 +23,7 @@ pub struct Profile {
 }
 
 /// An account is an environment preset: `CLAUDE_CONFIG_DIR` for a Claude Code login,
-/// `AZURE_CONFIG_DIR` / `AWS_PROFILE` / `KUBECONFIG` for a cloud CLI. winterm never touches
+/// `AZURE_CONFIG_DIR` / `AWS_PROFILE` / `KUBECONFIG` for a cloud CLI. obpterm never touches
 /// credentials itself — it only launches shells pointed at the right directory.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Account {
@@ -195,15 +195,45 @@ fn sentinel_theme() -> BTreeMap<String, String> {
     .collect()
 }
 
-fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
-    Ok(dir.join("config.json"))
+    Ok(dir)
+}
+
+fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(config_dir(app)?.join("config.json"))
+}
+
+fn session_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(config_dir(app)?.join("session.json"))
+}
+
+/// The app was called `winterm` until 0.3.0; carry that config over on first run.
+fn migrate_from_winterm(app: &AppHandle, target: &Path) {
+    let Some(old) = target
+        .parent()
+        .and_then(|d| d.parent())
+        .map(|p| p.join("tr.com.obp.winterm").join("config.json"))
+    else {
+        return;
+    };
+    if !old.exists() {
+        return;
+    }
+    match std::fs::copy(&old, target) {
+        Ok(_) => eprintln!("OBPTerm: carried over {} from the old winterm config", old.display()),
+        Err(e) => eprintln!("OBPTerm: could not copy {}: {e}", old.display()),
+    }
+    let _ = app; // kept for symmetry with the other helpers
 }
 
 #[tauri::command]
 pub fn config_load(app: AppHandle) -> Result<Config, String> {
     let path = config_path(&app)?;
+    if !path.exists() {
+        migrate_from_winterm(&app, &path);
+    }
     if !path.exists() {
         let cfg = Config::default();
         write(&path, &cfg)?;
@@ -231,9 +261,65 @@ pub fn config_path_string(app: AppHandle) -> Result<String, String> {
     Ok(config_path(&app)?.display().to_string())
 }
 
-fn write(path: &PathBuf, cfg: &Config) -> Result<(), String> {
-    let text = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
-    std::fs::write(path, text).map_err(|e| format!("write {}: {e}", path.display()))
+fn write(path: &Path, cfg: &Config) -> Result<(), String> {
+    write_atomic(path, &serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?)
+}
+
+/// Write to a sibling temp file and rename over the target: a crash mid-write can then only
+/// lose the newest state, never leave a half-written file where the old one was.
+fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, text).map_err(|e| format!("write {}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("replace {}: {e}", path.display()))
+}
+
+/// The open tabs. Kept out of config.json because it is written constantly and config.json is
+/// a file the user edits by hand.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct Session {
+    /// False while the app is running; set true when the window closes normally. A session that
+    /// loads with `clean_exit: false` is one the app never got to close — a crash, or a kill.
+    pub clean_exit: bool,
+    pub saved_at: i64,
+    /// Shape owned by the frontend (SavedTab[] from src/app.ts).
+    pub tabs: serde_json::Value,
+}
+
+#[tauri::command]
+pub fn session_load(app: AppHandle) -> Result<Session, String> {
+    let path = session_path(&app)?;
+    if let Ok(text) = std::fs::read_to_string(&path) {
+        // A truncated session is not worth failing the launch over.
+        return Ok(serde_json::from_str(&text).unwrap_or_default());
+    }
+    // Before 0.3.0 the tabs lived in config.json.
+    let legacy = config_load(app)?.session.unwrap_or(serde_json::Value::Null);
+    Ok(Session { clean_exit: true, saved_at: 0, tabs: legacy })
+}
+
+#[tauri::command]
+pub fn session_save(app: AppHandle, tabs: serde_json::Value) -> Result<(), String> {
+    let session = Session { clean_exit: false, saved_at: now_ms(), tabs };
+    write_atomic(&session_path(&app)?, &serde_json::to_string(&session).map_err(|e| e.to_string())?)
+}
+
+/// Called when the window closes normally, so the next launch knows this was not a crash.
+pub fn mark_clean_exit(app: &AppHandle) {
+    let Ok(path) = session_path(app) else { return };
+    let Ok(text) = std::fs::read_to_string(&path) else { return };
+    let Ok(mut session) = serde_json::from_str::<Session>(&text) else { return };
+    session.clean_exit = true;
+    if let Ok(text) = serde_json::to_string(&session) {
+        let _ = write_atomic(&path, &text);
+    }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -250,6 +336,19 @@ mod tests {
         assert_eq!(partial.font_size, 11);
         assert_eq!(partial.profiles, cfg.profiles);
         assert!(cfg.profiles.iter().any(|p| p.id == cfg.default_profile));
+    }
+
+    #[test]
+    fn a_session_file_survives_a_round_trip_and_a_truncated_one_does_not_panic() {
+        let session = Session {
+            clean_exit: false,
+            saved_at: 1_787_463_711_904,
+            tabs: serde_json::json!([{ "root": { "kind": "leaf", "profile": "pwsh" } }]),
+        };
+        let text = serde_json::to_string(&session).unwrap();
+        assert_eq!(serde_json::from_str::<Session>(&text).unwrap(), session);
+        assert_eq!(serde_json::from_str::<Session>("{\"clean_exit\":true}").unwrap().tabs, serde_json::Value::Null);
+        assert!(serde_json::from_str::<Session>("{\"clean_exi").is_err(), "the caller falls back to default");
     }
 
     #[test]

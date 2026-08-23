@@ -1,6 +1,6 @@
 // The bottom bar: which account new shells get, what this machine has spent lately, and where
 // the focused pane is running. Usage comes from Claude Code's transcripts on disk — it is what
-// winterm can see locally, not Anthropic's own accounting of the plan window.
+// obpterm can see locally, not Anthropic's own accounting of the plan window.
 import type { App } from "./app";
 import { openMenu } from "./menu";
 import type { Account, ClaudeAccount, ClaudeUsage } from "./transport";

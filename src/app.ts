@@ -39,7 +39,8 @@ export class App implements PaneHost {
   find!: Find; // set by main.ts once the DOM handlers are installed
   status!: Status;
   private panesEl = $("#panes");
-  private saveTimer = 0;
+  private sessionTimer = 0;
+  private configTimer = 0;
 
   constructor(
     public tp: Transport,
@@ -93,7 +94,7 @@ export class App implements PaneHost {
     if (tab) {
       tab.hostId = host.id;
       this.paint();
-      this.persist();
+      this.persistSession();
     }
     return tab;
   }
@@ -171,6 +172,7 @@ export class App implements PaneHost {
     this.tabs.push(tab);
     this.activate(tab);
     await this.startPane(tab, pane);
+    void this.flushSession();
     return tab;
   }
 
@@ -200,6 +202,7 @@ export class App implements PaneHost {
       if (next) this.activate(next);
     }
     this.paint();
+    void this.flushSession();
     if (!this.tabs.length) {
       if (this.tp.native) void import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().close());
       else void this.newTab();
@@ -230,13 +233,13 @@ export class App implements PaneHost {
   moveTabToProject(tab: Tab, projectId: string | null) {
     tab.projectId = projectId;
     this.paint();
-    this.persist();
+    this.persistSession();
   }
 
   setTabColor(tab: Tab, color: string | null) {
     tab.color = color;
     this.paint();
-    this.persist();
+    this.persistSession();
   }
 
   title(tab: Tab): string {
@@ -269,7 +272,7 @@ export class App implements PaneHost {
     this.layout(tab);
     tab.active.focus();
     this.paint();
-    this.persist();
+    this.persistSession();
   }
 
   focusPane(pane: Pane) {
@@ -298,7 +301,7 @@ export class App implements PaneHost {
     const delta = dir === "left" || dir === "up" ? -0.03 : 0.03;
     if (L.nudge(tab.root, tab.active, axis, delta)) {
       this.layout(tab);
-      this.persist();
+      this.persistSession();
     }
   }
 
@@ -319,7 +322,7 @@ export class App implements PaneHost {
   }
 
   private layout(tab: Tab) {
-    L.render(tab.root, tab.el, () => this.persist());
+    L.render(tab.root, tab.el, () => this.persistSession());
     this.paintFocus(tab);
     for (const p of L.panes(tab.root)) p.term.fit();
   }
@@ -336,7 +339,7 @@ export class App implements PaneHost {
 
   onPaneTitle() {
     this.paint();
-    this.persist();
+    this.persistSession();
   }
 
   onPaneExit(pane: Pane, code: number | null) {
@@ -369,12 +372,12 @@ export class App implements PaneHost {
   zoom(delta: number) {
     this.config.font_size = delta === 0 ? 14 : Math.min(40, Math.max(8, this.config.font_size + delta));
     this.applyConfig();
-    this.persist();
+    this.persistConfig();
   }
 
   toggleRail() {
     this.config.rail_collapsed = $("#rail").classList.toggle("collapsed");
-    this.persist();
+    this.persistConfig();
     for (const t of this.tabs) for (const p of L.panes(t.root)) p.term.fit();
   }
 
@@ -399,22 +402,47 @@ export class App implements PaneHost {
     return L.panes(tab.root).length;
   }
 
-  /** Debounced: a crash should still leave a usable session behind. */
+  /** Both stores, for the call sites that change something in each. */
   persist() {
-    clearTimeout(this.saveTimer);
-    this.saveTimer = window.setTimeout(() => {
-      this.config.session = this.tabs.map((t) => this.snapshot(t));
-      void this.tp.saveConfig(this.config).catch((e) => toast(`Config not saved: ${e}`));
-    }, 400);
+    this.persistSession();
+    this.persistConfig();
   }
 
-  async restoreSession(): Promise<boolean> {
-    const saved = (this.config.restore_session ? (this.config.session as SavedTab[] | null) : null) ?? [];
+  /**
+   * The open tabs, written to their own small file. Debounced hard (250 ms) and flushed by
+   * `installCrashGuard`, because this is what a crash has to leave behind.
+   */
+  persistSession() {
+    clearTimeout(this.sessionTimer);
+    this.sessionTimer = window.setTimeout(() => void this.flushSession(), 250);
+  }
+
+  /** Writes the tabs now. Always writes: a caller asking for a flush is about to lose the process. */
+  async flushSession() {
+    clearTimeout(this.sessionTimer);
+    await this.tp
+      .sessionSave(this.tabs.map((t) => this.snapshot(t)))
+      .catch((e) => console.warn("session not saved", e));
+  }
+
+  /** config.json — projects, accounts, fonts. Changes rarely; the user edits this file too. */
+  persistConfig() {
+    clearTimeout(this.configTimer);
+    this.configTimer = window.setTimeout(() => {
+      void this.tp.saveConfig(this.config).catch((e) => toast(`Config not saved: ${e}`));
+    }, 600);
+  }
+
+  /** Returns how the last run ended, so main.ts can say so when it was not a clean exit. */
+  async restoreSession(): Promise<{ restored: number; crashed: boolean }> {
+    if (!this.config.restore_session) return { restored: 0, crashed: false };
+    const session = await this.tp.sessionLoad().catch(() => null);
+    const saved = (session?.tabs as SavedTab[] | null) ?? [];
     let restored = 0;
-    for (const tab of saved) {
+    for (const tab of Array.isArray(saved) ? saved : []) {
       if (await this.restoreTab(tab)) restored++;
     }
-    return restored > 0;
+    return { restored, crashed: restored > 0 && session?.clean_exit === false };
   }
 
   private async restoreTab(saved: SavedTab): Promise<boolean> {

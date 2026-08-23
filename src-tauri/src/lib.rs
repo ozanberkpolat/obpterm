@@ -22,6 +22,8 @@ pub fn run() {
             config::config_save,
             config::config_path_string,
             config::log_dir,
+            config::session_load,
+            config::session_save,
             claude::claude_account,
             claude::claude_account_names,
             claude::claude_usage,
@@ -33,11 +35,12 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
+                config::mark_clean_exit(window.app_handle());
                 pty::kill_all(&window.state::<pty::Sessions>());
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running winterm");
+        .expect("error while running OBPTerm");
 }
 
 /// F5 / Ctrl+R / Ctrl+F / Ctrl+P / F12 … belong to the shell, not to WebView2. Without this the
@@ -54,11 +57,11 @@ fn disable_browser_accelerators(window: &tauri::WebviewWindow) {
             settings.SetAreBrowserAcceleratorKeysEnabled(false)
         };
         if let Err(e) = apply() {
-            eprintln!("winterm: could not disable WebView2 accelerator keys: {e}");
+            eprintln!("OBPTerm: could not disable WebView2 accelerator keys: {e}");
         }
     });
     if let Err(e) = result {
-        eprintln!("winterm: with_webview failed: {e}");
+        eprintln!("OBPTerm: with_webview failed: {e}");
     }
 }
 

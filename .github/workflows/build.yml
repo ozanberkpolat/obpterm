@@ -35,20 +35,59 @@ jobs:
       - name: cargo test
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
+      # Smart App Control blocks anything unsigned, and there is no per-app bypass. Add either
+      # WINDOWS_SIGN_COMMAND (any signing CLI, `%1` = the file) or WINDOWS_PFX_BASE64 +
+      # WINDOWS_PFX_PASSWORD as repository secrets and every binary in the bundle gets signed.
+      # With neither, the build is unsigned exactly as before.
+      - name: Set up code signing
+        id: sign
+        shell: pwsh
+        env:
+          SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
+          PFX: ${{ secrets.WINDOWS_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+        run: |
+          $conf = $null
+          if ($env:SIGN_COMMAND) {
+            $parts = $env:SIGN_COMMAND.Split(" ")
+            $conf = @{ bundle = @{ windows = @{ signCommand = @{ cmd = $parts[0]; args = @($parts[1..($parts.Length - 1)]) } } } }
+            Write-Host "signing with: $($parts[0])"
+          } elseif ($env:PFX) {
+            $pfx = Join-Path $env:RUNNER_TEMP "code-signing.pfx"
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX))
+            $password = ConvertTo-SecureString -String $env:PFX_PASSWORD -Force -AsPlainText
+            $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+            Remove-Item $pfx
+            $conf = @{ bundle = @{ windows = @{
+              certificateThumbprint = $cert.Thumbprint
+              digestAlgorithm = "sha256"
+              timestampUrl = "http://timestamp.digicert.com"
+            } } }
+            Write-Host "signing with certificate $($cert.Thumbprint)"
+          }
+          if ($conf) {
+            $conf | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 signing.conf.json
+            "args=--config signing.conf.json" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          } else {
+            "args=" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+            Write-Warning "No signing secrets set: this build is UNSIGNED and Smart App Control will block it."
+          }
+
       - name: Build MSI + NSIS (and release on tags)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('winterm {0}', github.ref_name) || '' }}
-          releaseBody: "Unsigned build: SmartScreen will show 'More info → Run anyway' once per download. The .exe (NSIS) installs per-user without admin; the .msi installs per-machine."
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('obpterm {0}', github.ref_name) || '' }}
+          args: ${{ steps.sign.outputs.args }}
+          releaseBody: "The .exe (NSIS) installs per-user without admin; the .msi installs per-machine. If the build is unsigned, SmartScreen shows 'More info → Run anyway' and Smart App Control blocks it outright — see the README."
           releaseDraft: false
           prerelease: false
 
       - uses: actions/upload-artifact@v4
         with:
-          name: winterm-windows-x64
+          name: obpterm-windows-x64
           path: |
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe

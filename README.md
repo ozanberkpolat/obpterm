@@ -1,4 +1,4 @@
-# winterm
+# OBPTerm
 
 A terminal for Windows with the things Windows Terminal does not have: a vertical tab rail,
 split panes with saved layouts, a command palette with snippets and an SSH host book, scrollback
@@ -7,9 +7,41 @@ over ConPTY; the emulator is xterm.js inside a Tauri v2 (WebView2) window.
 
 ## Install
 
-Download `winterm_<version>_x64-setup.exe` (per-user, no admin) or `winterm_<version>_x64_en-US.msi`
-(per-machine) from the latest GitHub release. The build is unsigned: SmartScreen shows
-"More info → Run anyway" once per download. Needs Windows 10 1809 or newer (ConPTY).
+Download `OBPTerm_<version>_x64-setup.exe` (per-user, no admin) or `OBPTerm_<version>_x64_en-US.msi`
+(per-machine) from the latest GitHub release. Needs Windows 10 1809 or newer (ConPTY).
+
+### Smart App Control
+
+Unsigned builds are **blocked outright by Smart App Control** (SAC), not merely warned about, and
+[there is no way to allow a single app](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions):
+either the file is signed with a certificate from a CA in the Microsoft Trusted Root Program, or
+Microsoft's cloud intelligence already knows the binary is safe. SmartScreen's "More info → Run
+anyway" does not apply — that is a different feature. The signature must also be
+[RSA; SAC does not accept ECC](https://learn.microsoft.com/en-us/windows/apps/develop/smart-app-control/code-signing-for-smart-app-control).
+
+Three ways out, in the order they cost:
+
+1. **Turn Smart App Control off** — Windows Security → App & browser control → Smart App Control
+   → Off. Microsoft's FAQ says recent Windows updates let you turn it back on without a clean
+   install; on older builds it could only be re-enabled by reinstalling Windows, so check your
+   build before flipping it. Everything else on the machine loses that layer of protection.
+2. **Sign the build** with an OV/EV code-signing certificate from a public CA (Sectigo, DigiCert,
+   GlobalSign, Certum…). Since 2023 the private key must live on a hardware token or a cloud HSM,
+   so pick a provider with a CLI that CI can call.
+3. **Microsoft Trusted Signing** (~USD 10/month, the smoothest path) — but the Public Trust
+   certificates are geofenced: organizations in the US, Canada, EU, UK, Australia, New Zealand,
+   Japan, South Korea, Singapore, Switzerland, Norway or Israel, and **individual developers only
+   in the US or Canada**. Turkey is not on either list, so this needs an entity in an eligible
+   country.
+
+The workflow already signs whenever the credentials exist. Add repository secrets:
+
+| Secret | What it does |
+| --- | --- |
+| `WINDOWS_SIGN_COMMAND` | Any signing CLI with `%1` where the file goes, e.g. `trusted-signing-cli -e https://weu.codesigning.azure.net -a myaccount -c myprofile %1`. Passed to Tauri as `bundle.windows.signCommand`, so it signs the app, the MSI and the NSIS installer. |
+| `WINDOWS_PFX_BASE64` + `WINDOWS_PFX_PASSWORD` | A PFX (base64) to import on the runner; the build then uses `signtool` with that thumbprint and a SHA-256 timestamp. |
+
+With neither set, the build is unsigned and says so in the log.
 
 ## Keys
 
@@ -64,7 +96,7 @@ function prompt {
 ```
 
 `Ctrl+Shift+L` tees the focused pane's raw output (escape codes and all) to
-`%APPDATA%\tr.com.obp.winterm\logs\<title>-<timestamp>.log`; the tab shows a red dot while it
+`%APPDATA%\tr.com.obp.obpterm\logs\<title>-<timestamp>.log`; the tab shows a red dot while it
 is capturing.
 
 ## Status bar: account, quota, target
@@ -75,7 +107,7 @@ directory, capture state and pane count. Click the account chip to open a tab un
 account or to change the default; click the meters for the breakdown; click the target chip for
 the host book.
 
-**Accounts are environment presets** — winterm never reads, writes or holds a credential. An
+**Accounts are environment presets** — obpterm never reads, writes or holds a credential. An
 account is a name plus the environment its shells start with, so switching Claude Code logins
 means pointing `CLAUDE_CONFIG_DIR` at another config directory, and the same mechanism covers
 `AZURE_CONFIG_DIR`, `AWS_PROFILE` or `KUBECONFIG`:
@@ -112,9 +144,21 @@ budget instead of raw totals.
 with the right arguments); the host book also offers to split the current tab with one. A host
 tab remembers its target across restarts, and `project` drops it straight into that project.
 
+## Sessions and crashes
+
+The open tabs — pane tree, project, colour, account, host, each pane's reported directory — are
+written to `session.json` next to `config.json` on every change (250 ms debounce, flushed on
+blur, on close and once a minute) and reopened on the next launch. The file is written to a temp
+file and renamed over the old one, so a crash mid-write cannot leave a half-written session.
+
+`session.json` also carries `clean_exit`: false while OBPTerm is running, true once the window
+closes normally. A launch that finds `clean_exit: false` reopens the tabs and says the app did
+not shut down cleanly. Set `restore_session: false` in `config.json` to always start fresh.
+
 ## Config
 
-`%APPDATA%\tr.com.obp.winterm\config.json`, created with defaults on first start. Profiles
+`%APPDATA%\tr.com.obp.obpterm\config.json`, created with defaults on first start (a
+`tr.com.obp.winterm` config from before the rename is carried over automatically). Profiles
 (`id`, `name`, `exe`, `args`, `cwd`, `env`), projects, accounts, hosts, font, scrollback, the
 saved session and the xterm.js theme. A file that does
 not parse is reported on screen, not replaced.
@@ -134,7 +178,7 @@ in headless Chromium over CDP (splits panes, makes a project, searches, starts a
 fails on any console error —
 
 ```sh
-docker run -d --rm --name winterm-chrome --network host -u 0 --entrypoint chromium \
+docker run -d --rm --name obpterm-chrome --network host -u 0 --entrypoint chromium \
   gotenberg/gotenberg:8 --headless --no-sandbox --remote-debugging-port=9222 --remote-allow-origins=* about:blank
 npm run devserver & npx vite preview --port 1420 --host &
 node test/smoke.mjs

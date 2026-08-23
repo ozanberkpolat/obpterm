@@ -57,6 +57,13 @@ export interface ClaudeUsage {
   files_scanned: number;
 }
 
+/** The tabs that were open, and whether the app got to close normally last time. */
+export interface Session {
+  clean_exit: boolean;
+  saved_at: number;
+  tabs: unknown;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -100,6 +107,8 @@ export interface Transport {
   /** Starts teeing this session to a file; returns the path. */
   logStart(id: number, name: string, stamp: string): Promise<string>;
   logStop(id: number): Promise<void>;
+  sessionLoad(): Promise<Session>;
+  sessionSave(tabs: unknown): Promise<void>;
   claudeAccount(dir: string): Promise<ClaudeAccount>;
   claudeUsage(dir: string): Promise<ClaudeUsage>;
   loadConfig(): Promise<Config>;

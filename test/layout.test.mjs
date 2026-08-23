@@ -1,4 +1,4 @@
-// Pane-tree maths, the one piece of winterm with logic worth breaking.
+// Pane-tree maths, the one piece of obpterm with logic worth breaking.
 // Run: npm test  (esbuild strips the types, node:test runs it — no DOM needed)
 import { test } from "node:test";
 import assert from "node:assert/strict";

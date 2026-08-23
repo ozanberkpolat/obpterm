@@ -20,8 +20,24 @@ async function main() {
   app.status = new Status(app);
   app.applyConfig();
   installKeys(app);
-  (window as unknown as { winterm: App }).winterm = app; // devtools handle
-  if (!(await app.restoreSession())) await app.newTab();
+  (window as unknown as { obpterm: App }).obpterm = app; // devtools handle
+  installCrashGuard(app);
+  const { restored, crashed } = await app.restoreSession();
+  if (!restored) await app.newTab();
+  else if (crashed) toast(`Reopened ${restored} tab${restored > 1 ? "s" : ""} — OBPTerm did not shut down cleanly`);
+}
+
+/**
+ * The session file is written on every change, but a debounce can still be in flight when the
+ * process dies. Flush on anything that precedes a close, and once a minute regardless.
+ */
+function installCrashGuard(app: App) {
+  const flush = () => void app.flushSession();
+  window.addEventListener("beforeunload", flush);
+  window.addEventListener("pagehide", flush);
+  window.addEventListener("blur", flush);
+  document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && flush());
+  window.setInterval(flush, 60_000);
 }
 
 main().catch((e) => {
