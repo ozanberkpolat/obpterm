@@ -33,14 +33,27 @@ async fn drain_log(rx: &mut mpsc::UnboundedReceiver<Delivery>, until: Duration) 
     log
 }
 
-async fn collect(rx: &mut mpsc::UnboundedReceiver<Delivery>, until: Duration) -> (Vec<u8>, bool, Option<Option<u32>>) {
+/// Collects deliveries, answering ConPTY's cursor-position query the way any real terminal
+/// (xterm.js included) does — without an answer, conhost stalls all further output.
+async fn collect(
+    rx: &mut mpsc::UnboundedReceiver<Delivery>,
+    until: Duration,
+    dsr: Option<(&Client, u32)>,
+) -> (Vec<u8>, bool, Option<Option<u32>>) {
     let mut bytes = Vec::new();
     let mut live = false;
     let mut exit = None;
     let deadline = tokio::time::Instant::now() + until;
     while let Ok(Some(d)) = tokio::time::timeout_at(deadline, rx.recv()).await {
         match d {
-            Delivery::Output(b) => bytes.extend(b),
+            Delivery::Output(b) => {
+                if let Some((client, id)) = dsr {
+                    if b.windows(4).any(|w| w == b"\x1b[6n") {
+                        client.write(id, b"\x1b[1;1R");
+                    }
+                }
+                bytes.extend(b);
+            }
             Delivery::Live => live = true,
             Delivery::Exit(code) => {
                 exit = Some(code);
@@ -70,7 +83,7 @@ async fn a_shell_outlives_the_connection_that_started_it() {
             .expect("spawn");
         let (tx, mut rx) = mpsc::unbounded_channel();
         c1.attach(id, 80, 24, tx).await.expect("attach");
-        let (bytes, live, _) = collect(&mut rx, Duration::from_secs(5)).await;
+        let (bytes, live, _) = collect(&mut rx, Duration::from_secs(5), Some((&c1, id))).await;
         let seen = String::from_utf8_lossy(&bytes).into_owned();
         let tail = drain_log(&mut rx, Duration::from_millis(200)).await;
         assert!(live, "attach never reached Live; got {} bytes {seen:?}, then {tail:?}", bytes.len());
@@ -90,7 +103,7 @@ async fn a_shell_outlives_the_connection_that_started_it() {
 
     let (tx, mut rx) = mpsc::unbounded_channel();
     c2.attach(id, 100, 30, tx).await.expect("reattach");
-    let (bytes, live, _) = collect(&mut rx, Duration::from_millis(800)).await;
+    let (bytes, live, _) = collect(&mut rx, Duration::from_millis(800), Some((&c2, id))).await;
     assert!(live);
     assert!(
         String::from_utf8_lossy(&bytes).contains("marker-from-the-shell"),
@@ -124,7 +137,7 @@ async fn a_finished_shell_is_reported_on_attach_not_lost() {
     // Nobody was attached when it exited. Attaching now must still deliver the exit.
     let (tx, mut rx) = mpsc::unbounded_channel();
     c.attach(id, 80, 24, tx).await.unwrap();
-    let (bytes, live, exit) = collect(&mut rx, Duration::from_secs(5)).await;
+    let (bytes, live, exit) = collect(&mut rx, Duration::from_secs(5), Some((&c, id))).await;
     assert_eq!(
         exit,
         Some(Some(3)),

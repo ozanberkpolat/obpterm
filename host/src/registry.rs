@@ -23,9 +23,12 @@ pub const RING_BYTES: usize = 1024 * 1024;
 
 struct Session {
     info: SessionInfo,
-    master: Box<dyn MasterPty + Send>,
+    /// Taken (and dropped) by the waiter thread when the child exits: on Windows the reader
+    /// only unblocks when the master goes away, and dropping it is also what closes the
+    /// pseudoconsole.
+    master: Option<Box<dyn MasterPty + Send>>,
     writer: Box<dyn Write + Send>,
-    child: Box<dyn Child + Send + Sync>,
+    killer: Box<dyn portable_pty::ChildKiller + Send + Sync>,
     ring: Ring,
     modes: Modes,
     /// The connection currently looking at this session, if any.
@@ -72,7 +75,8 @@ impl Registry {
         for (k, v) in &spawn.env {
             cmd.env(k, v);
         }
-        let child = pair.slave.spawn_command(cmd).map_err(|e| format!("spawn {}: {e}", spawn.exe))?;
+        let mut child = pair.slave.spawn_command(cmd).map_err(|e| format!("spawn {}: {e}", spawn.exe))?;
+        let killer = child.clone_killer();
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().map_err(|e| format!("reader: {e}"))?;
         let writer = pair.master.take_writer().map_err(|e| format!("writer: {e}"))?;
@@ -94,9 +98,9 @@ impl Registry {
                         last_output: now_ms(),
                         bell: false,
                     },
-                    master: pair.master,
+                    master: Some(pair.master),
                     writer,
-                    child,
+                    killer,
                     ring: Ring::new(RING_BYTES),
                     modes: Modes::default(),
                     attached: None,
@@ -105,6 +109,22 @@ impl Registry {
             );
             id
         };
+
+        // The waiter owns exit detection: on Windows the pty read does NOT end when the child
+        // exits — it blocks until the master is dropped, so waiting on the reader alone would
+        // never notice. wait(), report, then drop the master to unblock the reader.
+        let waiter_shared = Arc::clone(shared);
+        std::thread::spawn(move || {
+            let code = child.wait().ok().map(|st| st.exit_code());
+            let mut reg = waiter_shared.lock().unwrap();
+            if let Some(s) = reg.sessions.get_mut(&id) {
+                s.info.exited = Some(code.unwrap_or(0));
+                if let Some(tx) = &s.attached {
+                    let _ = tx.send(Event::Exit { id, code });
+                }
+                drop(s.master.take());
+            }
+        });
 
         let shared = Arc::clone(shared);
         std::thread::spawn(move || {
@@ -118,6 +138,13 @@ impl Registry {
                         s.ring.push(&buf[..n]);
                         s.modes.track(&buf[..n]);
                         s.info.last_output = now_ms();
+                        // ConPTY stalls all output until its cursor-position query is answered.
+                        // An attached terminal answers it; a detached session has nobody to,
+                        // and would otherwise freeze until the next attach.
+                        if s.attached.is_none() && buf[..n].windows(4).any(|w| w == b"\x1b[6n") {
+                            let _ = s.writer.write_all(b"\x1b[1;1R");
+                            let _ = s.writer.flush();
+                        }
                         // A window that is not looking still wants to know the shell asked for it.
                         if s.attached.is_none() && buf[..n].contains(&0x07) {
                             s.info.bell = true;
@@ -139,16 +166,9 @@ impl Registry {
                     }
                 }
             }
-            // The pty closed: collect the exit code, tell the watcher, and keep the session
-            // around (exited) so a window that reconnects can still see what it printed.
-            let mut reg = shared.lock().unwrap();
-            if let Some(s) = reg.sessions.get_mut(&id) {
-                let code = s.child.wait().ok().map(|st| st.exit_code());
-                s.info.exited = Some(code.unwrap_or(0));
-                if let Some(tx) = &s.attached {
-                    let _ = tx.send(Event::Exit { id, code });
-                }
-            }
+            // The reader ends when the waiter drops the master (or the pty errors). The waiter
+            // owns exit reporting; the session stays in the map, exited, so a window that
+            // reconnects can still see what it printed.
         });
         Ok(id)
     }
@@ -162,7 +182,9 @@ impl Registry {
         s.info.bell = false;
         // A full-screen program repaints on a size change; this is what turns the replay
         // into a live screen instead of a stale one.
-        let _ = s.master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 });
+        if let Some(master) = s.master.as_ref() {
+            let _ = master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 });
+        }
         // Clear whatever the new terminal shows, re-assert the modes the ring no longer holds,
         // then the history. The resize above makes a full-screen program repaint after it.
         let mut replay = b"\x1b[3J\x1b[2J\x1b[H".to_vec();
@@ -195,17 +217,22 @@ impl Registry {
 
     pub fn resize(&mut self, id: u32, cols: u16, rows: u16) -> Result<(), String> {
         let s = self.sessions.get(&id).ok_or_else(|| format!("no session {id}"))?;
-        s.master
-            .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
-            .map_err(|e| format!("resize: {e}"))
+        match s.master.as_ref() {
+            Some(master) => master
+                .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
+                .map_err(|e| format!("resize: {e}")),
+            None => Ok(()), // already exited; nothing to resize
+        }
     }
 
     /// Ends the shell and forgets the session. An already-exited session is simply forgotten.
     pub fn kill(&mut self, id: u32) -> Result<(), String> {
         let mut s = self.sessions.remove(&id).ok_or_else(|| format!("no session {id}"))?;
         if s.info.exited.is_none() {
-            s.child.kill().map_err(|e| format!("kill: {e}"))?;
+            s.killer.kill().map_err(|e| format!("kill: {e}"))?;
         }
+        // The waiter also drops its copy, but this session left the map before it could.
+        drop(s.master.take());
         Ok(())
     }
 

@@ -1,5 +1,6 @@
 mod claude;
 mod logins;
+mod agent;
 mod chrome;
 mod config;
 mod metrics;
