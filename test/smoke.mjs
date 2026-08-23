@@ -174,24 +174,25 @@ assert.equal(
   "the rail never scrolls sideways",
 );
 
-// Settings: every list can add, edit and delete — hosts is the representative one.
-await evaluate("window.obpterm.settings.open('hosts')");
-await until("!document.querySelector('#settings').hidden", "the settings sheet");
-const hostsBefore = await evaluate("window.obpterm.config.hosts.length");
-await evaluate("document.querySelectorAll('#settings .add')[0].click()");
-assert.equal(await evaluate("window.obpterm.config.hosts.length"), hostsBefore + 1, "a host can be added");
+// Title bar: the menus are built from the config, not hardcoded.
+assert.equal(await evaluate("document.querySelectorAll('#titlebar .hmenu').length"), 4, "Shell / Panes / Project / View");
+await evaluate("document.querySelectorAll('#titlebar .hmenu')[1].click()");
+await until("!document.querySelector('#menu').hidden", "the Panes menu");
+assert.match(await evaluate("document.querySelector('#menu').textContent"), /Split right/);
+await evaluate("document.querySelector('#menu').hidden = true");
+
+// Command palette: Ctrl+K, fuzzy match, Enter runs the entry.
+await evaluate("window.obpterm.palette.open()");
+await until("!document.querySelector('#palette').hidden", "the palette");
+assert.ok(await evaluate("document.querySelectorAll('#palette .presult').length > 3"), "it lists commands");
 await evaluate(
-  "(() => { const i = document.querySelectorAll('#settings .row')[1].querySelector('input'); i.value = 'Edited'; i.dispatchEvent(new Event('change')); })()",
+  "(() => { const i = document.querySelector('#palette input'); i.value = 'split right'; i.dispatchEvent(new Event('input')); })()",
 );
-assert.equal(await evaluate("window.obpterm.config.hosts[1].name"), "Edited", "a host can be edited");
-await evaluate("document.querySelectorAll('#settings .row')[1].querySelector('.del').click()");
-assert.equal(await evaluate("window.obpterm.config.hosts.length"), hostsBefore, "a host can be deleted");
-assert.equal(
-  await evaluate("document.querySelectorAll('#settings .row')[0].querySelector('.del').disabled"),
-  false,
-  "the remaining host is still deletable",
-);
-await evaluate("window.obpterm.settings.close()");
+assert.match(await evaluate("document.querySelector('#palette .presult .plabel').textContent"), /Split right/);
+const panesBefore = await evaluate("document.querySelectorAll('.pane').length");
+await evaluate("document.querySelector('#palette .presult').click()");
+await until(`document.querySelectorAll('.pane').length === ${panesBefore + 1}`, "the palette ran the command");
+await evaluate("window.obpterm.palette.close()");
 
 // A second Claude Code account is an env preset with its own CLAUDE_CONFIG_DIR — never a
 // credential copy — and it can be signed into from its settings row.
@@ -203,21 +204,95 @@ assert.match(
   /CLAUDE_CONFIG_DIR/,
   "the new account points at its own config dir",
 );
-await until("!document.querySelector('#settings').hidden", "settings open on accounts");
-assert.ok(
-  await evaluate("[...document.querySelectorAll('#settings .act')].some(b => b.textContent === 'Sign in')"),
-  "each account row offers Sign in",
-);
-await evaluate("document.querySelectorAll('#settings .row')[document.querySelectorAll('#settings .row').length - 1].querySelector('.del').click()");
-assert.equal(await evaluate("window.obpterm.config.accounts.length"), accountsBefore, "and it can be deleted again");
-await evaluate("window.obpterm.settings.close()");
+await evaluate("window.obpterm.config.accounts.pop(), window.obpterm.persistConfig()");
+assert.equal(await evaluate("window.obpterm.config.accounts.length"), accountsBefore, "and it can be dropped again");
 
 // Ctrl+wheel zooms.
 const size = await evaluate("window.obpterm.config.font_size");
 await evaluate("document.querySelector('#panes').dispatchEvent(new WheelEvent('wheel', {deltaY: -120, ctrlKey: true, bubbles: true, cancelable: true}))");
 assert.equal(await evaluate("window.obpterm.config.font_size"), size + 1, "ctrl+wheel up grows the font");
 
+// ---- the settings window, in its own page --------------------------------------------------
+const settings = await attach(url.replace(/\/?$/, "/") + "settings.html#hosts");
+await settings.until("document.querySelectorAll('#sw-nav button').length >= 11", "the settings sections");
+assert.equal(
+  await settings.evaluate("document.querySelector('#sw-head .crumb').textContent"),
+  "SSH hosts",
+  "the window opens on the section it was asked for",
+);
+
+const hostRows = await settings.evaluate("document.querySelectorAll('.sw-item').length");
+await settings.evaluate("document.querySelector('.sw-add').click()");
+await settings.until(`document.querySelectorAll('.sw-item').length === ${hostRows + 1}`, "an added host");
+await settings.evaluate(
+  "(() => { const i = document.querySelector('.sw-detail input'); i.value = 'Smoke host'; i.dispatchEvent(new Event('change')); })()",
+);
+await settings.until("document.querySelector('.sw-item.on b').textContent === 'Smoke host'", "the rename landing in the list");
+await settings.evaluate("[...document.querySelectorAll('.sw-btn')].find(b => b.textContent === 'Delete').click()");
+await settings.until(`document.querySelectorAll('.sw-item').length === ${hostRows}`, "the host deleted again");
+
+// Every section renders without throwing — the cheapest guard against a broken section.
+for (const section of ["terminal", "appearance", "rail", "startup", "profiles", "accounts", "projects", "keyboard", "updates", "files"]) {
+  await settings.evaluate(`[...document.querySelectorAll('#sw-nav button')].find(b => b.textContent.startsWith(${JSON.stringify(sectionTitle(section))}))?.click()`);
+  await settings.until("!!document.querySelector('#sw-main').firstElementChild", `the ${section} section`);
+}
+const settingsBad = settings.logs.filter((l) => /^(error|exception)/.test(l));
+assert.deepEqual(settingsBad, [], `settings console was not clean:\n${settingsBad.join("\n")}`);
+
 const bad = logs.filter((l) => /^(error|exception)/.test(l));
 assert.deepEqual(bad, [], `console was not clean:\n${bad.join("\n")}`);
-console.log(`smoke OK — ${logs.length} console messages, none of them errors`);
+console.log(`smoke OK — ${logs.length + settings.logs.length} console messages, none of them errors`);
 process.exit(0);
+
+function sectionTitle(id) {
+  return {
+    terminal: "Terminal", appearance: "Appearance", rail: "Rail", startup: "Startup",
+    profiles: "Profiles", accounts: "Accounts", hosts: "SSH", projects: "Projects",
+    keyboard: "Keyboard", updates: "Updates", files: "Files",
+  }[id];
+}
+
+/** A second page under CDP, with the same helpers as the main one. */
+async function attach(target) {
+  const t = await (await fetch(`http://127.0.0.1:9222/json/new?about:blank`, { method: "PUT" })).json();
+  const socket = new WebSocket(t.webSocketDebuggerUrl);
+  const waiting = new Map();
+  const seen = [];
+  let n = 0;
+  socket.on("message", (raw) => {
+    const m = JSON.parse(raw);
+    if (m.id && waiting.has(m.id)) {
+      const { res, rej } = waiting.get(m.id);
+      waiting.delete(m.id);
+      return m.error ? rej(new Error(m.error.message)) : res(m.result);
+    }
+    if (m.method === "Runtime.consoleAPICalled")
+      seen.push(`${m.params.type}: ${m.params.args.map((a) => a.value ?? a.description).join(" ")}`);
+    if (m.method === "Runtime.exceptionThrown")
+      seen.push(`exception: ${m.params.exceptionDetails.exception?.description ?? m.params.exceptionDetails.text}`);
+  });
+  const call = (method, params = {}) =>
+    new Promise((res, rej) => {
+      const i = ++n;
+      waiting.set(i, { res, rej });
+      socket.send(JSON.stringify({ id: i, method, params }));
+    });
+  await new Promise((r) => socket.on("open", r));
+  await call("Runtime.enable");
+  await call("Page.enable");
+  await call("Page.navigate", { url: target });
+  const ev = async (expression) =>
+    (await call("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result.value;
+  return {
+    evaluate: ev,
+    logs: seen,
+    async until(expr, what, ms = 15000) {
+      const deadline = Date.now() + ms;
+      for (;;) {
+        if (await ev(expr).catch(() => false)) return;
+        if (Date.now() > deadline) throw new Error(`timed out waiting for ${what} (settings)\n${seen.join("\n")}`);
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    },
+  };
+}

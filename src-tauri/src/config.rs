@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Profile {
@@ -85,6 +85,19 @@ pub struct Config {
     pub rail_collapsed: bool,
     /// Rail width in pixels, set by dragging its edge.
     pub rail_width: u32,
+    /// "bar" | "block" | "underline" — passed straight to xterm.
+    pub cursor_style: String,
+    pub cursor_blink: bool,
+    /// Right-click copies a selection and pastes when there is none.
+    pub right_click_paste: bool,
+    /// The UI accent. The terminal's own cursor colour lives in `theme`.
+    pub accent: String,
+    /// Fade panes that are not focused.
+    pub dim_inactive_panes: bool,
+    /// Where Ctrl+Shift+L writes; `None` = the app's own logs folder.
+    pub capture_dir: Option<String>,
+    /// Ask GitHub for a newer release once, a few seconds after launch.
+    pub update_check_on_launch: bool,
     /// Where shells start when nothing more specific applies.
     pub default_cwd: Option<String>,
     /// `owner/repo` the "check for updates" button asks GitHub about.
@@ -117,6 +130,13 @@ impl Default for Config {
             scrollback: 10_000,
             rail_collapsed: false,
             rail_width: 232,
+            cursor_style: "bar".into(),
+            cursor_blink: true,
+            right_click_paste: true,
+            accent: "#ff8a1e".into(),
+            dim_inactive_panes: true,
+            capture_dir: None,
+            update_check_on_launch: true,
             default_cwd: default_cwd(),
             update_repo: Some("ozanberkpolat/obpterm".into()),
             github_token: None,
@@ -270,7 +290,37 @@ pub fn config_load(app: AppHandle) -> Result<Config, String> {
 
 #[tauri::command]
 pub fn config_save(app: AppHandle, config: Config) -> Result<(), String> {
-    write(&config_path(&app)?, &config)
+    write(&config_path(&app)?, &config)?;
+    // The other window is showing the same config; tell it to reload rather than letting the
+    // two drift apart.
+    let _ = app.emit("config:changed", ());
+    Ok(())
+}
+
+/// Puts the defaults back, keeping the open tabs.
+#[tauri::command]
+pub fn config_reset(app: AppHandle) -> Result<Config, String> {
+    let cfg = Config::default();
+    write(&config_path(&app)?, &cfg)?;
+    let _ = app.emit("config:changed", ());
+    Ok(cfg)
+}
+
+/// Opens a folder in the OS file manager: "config" | "logs".
+#[tauri::command]
+pub fn reveal(app: AppHandle, what: String) -> Result<String, String> {
+    let dir = match what.as_str() {
+        "logs" => PathBuf::from(log_dir(app)?),
+        _ => config_dir(&app)?,
+    };
+    let opener = if cfg!(windows) { "explorer" } else { "xdg-open" };
+    std::process::Command::new(opener)
+        .arg(&dir)
+        // explorer.exe returns a non-zero exit code even when it worked, so the status is
+        // deliberately not checked.
+        .spawn()
+        .map_err(|e| format!("open {}: {e}", dir.display()))?;
+    Ok(dir.display().to_string())
 }
 
 /// Where `pty_log_start` puts capture files, unless the caller passes its own directory.

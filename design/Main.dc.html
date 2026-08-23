@@ -1,0 +1,234 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .pill { border-radius: 999px; }
+    .tab { display: flex; align-items: center; gap: 8px; min-height: 40px;
+      padding: 6px 8px 6px 10px; border-radius: 999px; color: #8b97a8; }
+    .tab .num { font: 600 11px "JetBrains Mono", monospace; width: 16px; text-align: center; opacity: .8; }
+    .tab .label { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; flex: 1; }
+    .tab .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tab .sub { font-size: 11px; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tab .badge { font: 600 10px "JetBrains Mono", monospace; padding: 1px 6px; border-radius: 999px;
+      background: rgba(140,160,190,.22); }
+    .ghead { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 10px; border-radius: 999px;
+      color: #8b97a8; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    .dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+    .glist { display: flex; flex-direction: column; gap: 3px; margin-left: 13px; padding-left: 6px; }
+    .chip { display: flex; align-items: center; gap: 6px; height: 20px; padding: 0 9px;
+      border-radius: 999px; color: #8b97a8; font-size: 11px; white-space: nowrap; }
+    .gauge { display: flex; align-items: center; gap: 5px; }
+    .gauge .k { font: 600 9.5px "Plus Jakarta Sans", sans-serif; text-transform: uppercase;
+      letter-spacing: .06em; color: #5b6878; }
+    .gauge .bar { display: block; width: 34px; height: 4px; border-radius: 999px;
+      background: rgba(140,160,190,.22); overflow: hidden; }
+    .gauge .bar i { display: block; height: 100%; border-radius: 999px; }
+    .gauge .v { font: 600 10px "JetBrains Mono", monospace; min-width: 30px; }
+    .tb { width: 26px; height: 26px; border-radius: 999px; display: inline-flex;
+      align-items: center; justify-content: center; color: #8b97a8; }
+    .tb svg { width: 14px; height: 14px; }
+    .term { font: 12.5px/1.55 "JetBrains Mono", monospace; white-space: pre; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #0a0e14; overflow: hidden">
+
+  <!-- Window header: the one place menus hang from, so nothing is hidden behind a right-click -->
+  <div style="flex: none; height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 14px; background: linear-gradient(180deg, #141a24, #0e131c); border-bottom: 1px solid rgba(140,160,190,.12)">
+    <div style="display: flex; align-items: center; gap: 9px">
+      <div style="width: 16px; height: 16px; border-radius: 5px; background: #141a24; border: 1.5px solid #ff8a1e; display: flex; align-items: center; justify-content: center">
+        <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="#ff8a1e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 6 14 12 8 18"/></svg>
+      </div>
+      <span style="font-weight: 800; font-size: 12px; letter-spacing: .04em; color: #8b97a8">OBPTERM</span>
+    </div>
+    <div style="width: 1px; height: 16px; background: rgba(140,160,190,.12)"></div>
+    <div style="display: flex; align-items: center; gap: 2px">
+      <button class="chip" style="height: 24px; background: none; border: 0; font: 600 12px inherit; color: #8b97a8; cursor: pointer">Shell</button>
+      <button class="chip" style="height: 24px; background: none; border: 0; font: 600 12px inherit; color: #8b97a8; cursor: pointer">Panes</button>
+      <button class="chip" style="height: 24px; background: rgba(140,160,190,.12); border: 0; font: 600 12px inherit; color: #eaf0f7; cursor: pointer">Project</button>
+      <button class="chip" style="height: 24px; background: none; border: 0; font: 600 12px inherit; color: #8b97a8; cursor: pointer">View</button>
+    </div>
+    <div style="flex: 1"></div>
+    <div class="chip" style="border: 1px solid rgba(140,160,190,.22); font: 500 11px 'JetBrains Mono', monospace; color: #5b6878">Ctrl+K  search</div>
+    <div class="tb" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9.1A1.7 1.7 0 0 0 10.13 3V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.04a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/></svg></div>
+    <div style="display: flex; align-items: center; gap: 0; margin-left: 6px">
+      <div class="tb" style="width: 30px; border-radius: 6px"><svg viewBox="0 0 12 12" width="11" height="11" stroke="currentColor" stroke-width="1.2"><line x1="2" y1="6" x2="10" y2="6"/></svg></div>
+      <div class="tb" style="width: 30px; border-radius: 6px"><svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2.5" y="2.5" width="7" height="7"/></svg></div>
+      <div class="tb" style="width: 30px; border-radius: 6px"><svg viewBox="0 0 12 12" width="10" height="10" stroke="currentColor" stroke-width="1.2"><line x1="3" y1="3" x2="9" y2="9"/><line x1="9" y1="3" x2="3" y2="9"/></svg></div>
+    </div>
+  </div>
+
+  <div style="flex: 1; display: flex; min-height: 0">
+
+    <!-- Rail -->
+    <div style="width: 232px; flex: none; display: flex; flex-direction: column; background: linear-gradient(180deg, #141a24, #0e131c); border-right: 1px solid rgba(140,160,190,.12)">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 8px 14px">
+        <span style="font-weight: 700; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #5b6878">Sessions</span>
+        <div class="tb" style="width: 24px; height: 24px"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="10 3 5 8 10 13"/></svg></div>
+      </div>
+
+      <div style="flex: 1; overflow: hidden; padding: 4px 8px 8px; display: flex; flex-direction: column; gap: 10px">
+
+        <div style="display: flex; flex-direction: column; gap: 3px">
+          <div class="tab" style="background: rgba(140,160,190,.12)">
+            <span class="num">1</span>
+            <span class="label"><span class="title" style="color: #eaf0f7">pwsh</span><span class="sub">OBP</span></span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 3px">
+          <div class="ghead">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="transform: rotate(90deg); color: #5b6878"><polyline points="6 3 11 8 6 13"/></svg>
+            <span class="dot" style="background: #4c8dff; box-shadow: 0 0 0 3px rgba(76,141,255,.22)"></span>
+            <span style="flex: 1">homelab</span>
+            <span style="font: 600 10px 'JetBrains Mono', monospace; color: #5b6878">3</span>
+            <span style="color: #5b6878; font-size: 14px; line-height: 1">+</span>
+          </div>
+          <div class="glist" style="border-left: 2px solid rgba(76,141,255,.4)">
+            <div class="tab" style="background: linear-gradient(135deg, color-mix(in srgb, #4c8dff 88%, white), #4c8dff); color: #04101f; box-shadow: 0 6px 18px rgba(76,141,255,.25)">
+              <span class="num">2</span>
+              <span class="label"><span class="title">claude</span><span class="sub">iot-stack</span></span>
+              <span class="badge" style="background: rgba(0,0,0,.22)">2</span>
+            </div>
+            <div class="tab">
+              <span class="num">3</span>
+              <span class="label"><span class="title" style="color: #eaf0f7">ssh · vps</span><span class="sub">obp@vps</span></span>
+              <span style="color: #ff6b73; font-size: 9px">●</span>
+            </div>
+            <div class="tab">
+              <span class="num">4</span>
+              <span class="label"><span class="title" style="color: #eaf0f7">docker</span><span class="sub">compose</span></span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 3px">
+          <div class="ghead">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 3 11 8 6 13"/></svg>
+            <span class="dot" style="background: #2fd6a3; box-shadow: 0 0 0 3px rgba(47,214,163,.22)"></span>
+            <span style="flex: 1">azure</span>
+            <span style="font: 600 10px 'JetBrains Mono', monospace; color: #5b6878">2</span>
+            <span style="color: #5b6878; font-size: 14px; line-height: 1">+</span>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="padding: 8px; border-top: 1px solid rgba(140,160,190,.12); display: flex; gap: 6px">
+        <div style="flex: 1; height: 34px; border-radius: 999px; border: 1px dashed rgba(140,160,190,.22); color: #8b97a8; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">+ Tab</div>
+        <div style="flex: 1; height: 34px; border-radius: 999px; border: 1px dashed rgba(140,160,190,.22); color: #8b97a8; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">+ Project</div>
+      </div>
+    </div>
+
+    <!-- Panes -->
+    <div style="flex: 1; position: relative; min-width: 0; background: #0a0e14; display: flex">
+      <div style="flex: 1.35; min-width: 0; padding: 6px 0 4px 8px; position: relative">
+        <div style="position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; border-radius: 999px; background: #4c8dff"></div>
+        <div class="term" style="color: #c9d3e0">
+<span style="color: #2fd6a3">obp@vps</span> <span style="color: #4c8dff">~/iot-stack</span> <span style="color: #ff8a1e">❯</span> claude
+
+<span style="color: #8b97a8">╭──────────────────────────────────────────────────────────╮</span>
+<span style="color: #8b97a8">│</span>  <span style="color: #ff8a1e">✻</span> Claude Code <span style="color: #5b6878">v2.1.241</span>                                <span style="color: #8b97a8">│</span>
+<span style="color: #8b97a8">│</span>    <span style="color: #5b6878">ozanberkplt@gmail.com · max 5x</span>                        <span style="color: #8b97a8">│</span>
+<span style="color: #8b97a8">╰──────────────────────────────────────────────────────────╯</span>
+
+<span style="color: #ff8a1e">❯</span> read the monitoring backend and tell me what the
+  freshness timer actually checks
+
+<span style="color: #b48cff">⏺</span> Reading <span style="color: #22d3ee">monitoring/backend/main.py</span>…
+  <span style="color: #5b6878">└─ 412 lines, 3 timers registered</span>
+
+<span style="color: #b48cff">⏺</span> The timer watches the <span style="color: #eaf0f7">scheduler tick stamp</span>, not the
+  container health: a loop that dies leaves the container
+  healthy and the stamp stale, which is the case it catches.
+
+<span style="color: #ff8a1e">❯</span> <span style="background: #ff8a1e; color: #1a1205"> </span>
+        </div>
+      </div>
+
+      <div style="width: 1px; background: rgba(140,160,190,.12)"></div>
+
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+        <div style="flex: 1; min-height: 0; padding: 6px 0 4px 8px">
+          <div class="term" style="color: #8b97a8">
+<span style="color: #2fd6a3">obp@vps</span> <span style="color: #4c8dff">~</span> <span style="color: #ff8a1e">❯</span> docker compose ps
+
+<span style="color: #5b6878">NAME              STATUS            PORTS</span>
+portal            <span style="color: #2fd6a3">Up 6 days</span>         3000
+brain             <span style="color: #2fd6a3">Up 6 days</span>         8080
+monitoring        <span style="color: #2fd6a3">Up 2 hours</span>        8300
+ntfy              <span style="color: #2fd6a3">Up 6 days</span>           80
+cloudflared       <span style="color: #2fd6a3">Up 6 days</span>            -
+crowdsec          <span style="color: #ffb454">Restarting</span>          -
+
+<span style="color: #ff8a1e">❯</span> <span style="background: #ff8a1e; color: #1a1205"> </span>
+          </div>
+        </div>
+        <div style="height: 1px; background: rgba(140,160,190,.12)"></div>
+        <div style="flex: 1; min-height: 0; padding: 6px 0 4px 8px">
+          <div class="term" style="color: #8b97a8">
+<span style="color: #2fd6a3">obp@vps</span> <span style="color: #4c8dff">~</span> <span style="color: #ff8a1e">❯</span> journalctl -fu obpterm-export
+
+<span style="color: #5b6878">08:20:01</span> claude-export: 214 files → vault
+<span style="color: #5b6878">08:20:04</span> heartbeat ok
+<span style="color: #5b6878">09:15:00</span> finance-freshness: <span style="color: #2fd6a3">all cards current</span>
+<span style="color: #5b6878">09:20:01</span> claude-export: 3 files → vault
+          </div>
+        </div>
+      </div>
+
+      <!-- Pane toolbar -->
+      <div style="position: absolute; top: 8px; right: 14px; display: flex; align-items: center; gap: 2px; padding: 3px; background: rgba(20,26,36,.82); border: 1px solid rgba(140,160,190,.12); border-radius: 999px">
+        <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></div>
+        <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg></div>
+        <div class="tb" style="color: #ff6b73"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
+        <div class="tb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></div>
+        <div style="display: flex; gap: 2px; margin-left: 4px; padding-left: 5px; border-left: 1px solid rgba(140,160,190,.22)">
+          <div class="tb"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="1.5" width="13" height="13" rx="2"/></svg></div>
+          <div class="tb" style="background: rgba(255,138,30,.22); color: #ff8a1e"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="1.5" width="13" height="13" rx="2"/><line x1="8" y1="1.5" x2="8" y2="14.5"/></svg></div>
+          <div class="tb"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="1.5" width="13" height="13" rx="2"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg></div>
+          <div class="tb"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="1.5" width="13" height="13" rx="2"/><line x1="8" y1="1.5" x2="8" y2="14.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div style="flex: none; height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 10px; background: linear-gradient(180deg, #0e131c, #141a24); border-top: 1px solid rgba(140,160,190,.12); font-size: 11px; color: #8b97a8">
+    <div class="chip" style="background: rgba(140,160,190,.12); color: #eaf0f7">
+      <span class="dot" style="width: 7px; height: 7px; background: #ff8a1e"></span>
+      <span>ozanberkplt@gmail.com</span>
+      <svg viewBox="0 0 16 16" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="opacity: .6"><polyline points="4 6 8 10 12 6"/></svg>
+    </div>
+    <div class="chip" style="gap: 10px">
+      <span class="gauge"><span class="bar"><i style="width: 76%; background: #ff8a1e"></i></span><span class="v">5h 76%</span></span>
+      <span class="gauge"><span class="bar"><i style="width: 75%; background: #ff8a1e"></i></span><span class="v">7d 75%</span></span>
+    </div>
+    <span style="flex: 1"></span>
+    <span style="display: flex; align-items: center; gap: 10px">
+      <span class="gauge"><span class="k">cpu</span><span class="bar"><i style="width: 23%; background: #4c8dff"></i></span><span class="v">23%</span></span>
+      <span class="gauge"><span class="k">ram</span><span class="bar"><i style="width: 58%; background: #2fd6a3"></i></span><span class="v">58%</span></span>
+      <span class="gauge"><span class="k">swap</span><span class="bar"><i style="width: 8%; background: #b48cff"></i></span><span class="v">8%</span></span>
+      <span class="gauge"><span class="k">disk</span><span class="bar"><i style="width: 71%; background: #ffb454"></i></span><span class="v">71%</span></span>
+    </span>
+    <div class="chip" style="border: 1px solid rgba(140,160,190,.22)">Check for updates</div>
+    <div class="chip">ssh · vps</div>
+    <span style="font: 10.5px 'JetBrains Mono', monospace; color: #5b6878">C:\OBP\iot-stack</span>
+    <div class="chip" style="color: #ff6b73">● capturing</div>
+    <div class="chip">3 panes</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -8,7 +8,8 @@
       "args": [
         "-l"
       ],
-      "cwd": null
+      "cwd": null,
+      "env": {}
     },
     {
       "id": "sh",
@@ -23,6 +24,13 @@
   "scrollback": 10000,
   "rail_collapsed": false,
   "rail_width": 300,
+  "cursor_style": "bar",
+  "cursor_blink": true,
+  "right_click_paste": true,
+  "accent": "#ff8a1e",
+  "dim_inactive_panes": true,
+  "capture_dir": null,
+  "update_check_on_launch": true,
   "default_cwd": "~",
   "update_repo": "ozanberkpolat/obpterm",
   "github_token": null,
@@ -42,13 +50,31 @@
       },
       "claude_dir": "~/.claude-work",
       "color": "#4c8dff"
+    },
+    {
+      "id": "amt5mwcem",
+      "name": "Account 3",
+      "env": {
+        "CLAUDE_CONFIG_DIR": "~\\.claude-3"
+      },
+      "claude_dir": "~\\.claude-3",
+      "color": "#b48cff"
+    },
+    {
+      "id": "amt5mwxa9",
+      "name": "Account 4",
+      "env": {
+        "CLAUDE_CONFIG_DIR": "~\\.claude-4"
+      },
+      "claude_dir": "~\\.claude-4",
+      "color": "#22d3ee"
     }
   ],
   "hosts": [
     {
-      "id": "local",
-      "name": "Localhost",
-      "host": "127.0.0.1",
+      "id": "hmt5myg5e",
+      "name": "New host",
+      "host": "",
       "user": null,
       "port": null,
       "identity": null,
@@ -340,6 +366,33 @@
     },
     {
       "id": "pmt5ljbbj",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5mwac5",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5mwv7i",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5mydsh",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,

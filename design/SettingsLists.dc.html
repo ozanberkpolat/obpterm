@@ -1,0 +1,143 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.45 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; color: #8b97a8; }
+    .item.on { background: rgba(140,160,190,.12); color: #eaf0f7; }
+    .dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field > span { font: 700 10px "Plus Jakarta Sans", sans-serif; text-transform: uppercase;
+      letter-spacing: .06em; color: #5b6878; }
+    .inp { padding: 8px 13px; border-radius: 999px; background: #0a0e14;
+      border: 1px solid rgba(140,160,190,.22); color: #eaf0f7;
+      font: 12px "JetBrains Mono", monospace; }
+    .inp.ph { color: #5b6878; }
+    .btn { padding: 8px 16px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .kv { display: flex; align-items: center; gap: 8px; padding: 7px 10px 7px 13px; border-radius: 999px;
+      background: #0a0e14; border: 1px solid rgba(140,160,190,.22); font: 12px "JetBrains Mono", monospace; }
+    .card { border: 1px solid rgba(140,160,190,.12); border-radius: 16px;
+      background: linear-gradient(180deg, #141a24, #171e29); }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 880px; display: flex; flex-direction: column; background: #0a0e14; border: 1px solid rgba(140,160,190,.22); overflow: hidden">
+
+  <div style="flex: none; height: 46px; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: linear-gradient(180deg, #141a24, #0e131c); border-bottom: 1px solid rgba(140,160,190,.12)">
+    <span style="font-weight: 700; font-size: 14px">Settings</span>
+    <span style="color: #5b6878">›</span>
+    <span style="font-weight: 600; font-size: 13px; color: #8b97a8">Accounts</span>
+    <span style="flex: 1"></span>
+    <div style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; color: #8b97a8; font-size: 17px">×</div>
+  </div>
+
+  <div style="flex: 1; display: flex; min-height: 0">
+
+    <!-- The list -->
+    <div style="width: 292px; flex: none; display: flex; flex-direction: column; padding: 12px; gap: 4px; background: linear-gradient(180deg, #0e131c, #0a0e14); border-right: 1px solid rgba(140,160,190,.12)">
+      <div style="font: 700 10.5px 'Plus Jakarta Sans'; text-transform: uppercase; letter-spacing: .07em; color: #5b6878; padding: 4px 12px 8px">2 accounts</div>
+
+      <div class="item on">
+        <span class="dot" style="background: #ff8a1e"></span>
+        <span style="flex: 1; min-width: 0">
+          <b style="display: block; font-weight: 600; font-size: 13px">Personal</b>
+          <span style="display: block; font: 11px 'JetBrains Mono', monospace; color: #5b6878; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">ozanberkplt@gmail.com</span>
+        </span>
+        <span style="font: 600 9.5px 'Plus Jakarta Sans'; text-transform: uppercase; letter-spacing: .05em; color: #1a1205; background: #ff8a1e; padding: 2px 7px; border-radius: 999px">default</span>
+      </div>
+
+      <div class="item">
+        <span class="dot" style="background: #4c8dff"></span>
+        <span style="flex: 1; min-width: 0">
+          <b style="display: block; font-weight: 600; font-size: 13px">Work</b>
+          <span style="display: block; font: 11px 'JetBrains Mono', monospace; color: #5b6878">not signed in</span>
+        </span>
+      </div>
+
+      <span style="flex: 1"></span>
+      <div class="btn" style="border: 1px dashed rgba(140,160,190,.22); color: #8b97a8; text-align: center">+ Add account</div>
+    </div>
+
+    <!-- The detail -->
+    <div style="flex: 1; min-width: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+
+      <div style="display: flex; align-items: flex-start; gap: 16px">
+        <div style="flex: 1">
+          <div style="font-size: 17px; font-weight: 700">Personal</div>
+          <div style="margin-top: 3px; font-size: 12px; color: #8b97a8; max-width: 62ch">An account is the environment new shells start with. OBPTerm never reads or writes a credential — it points Claude Code, Azure or AWS at the right folder and lets them do that.</div>
+        </div>
+        <div style="display: flex; gap: 8px">
+          <div class="btn" style="border: 1px solid rgba(140,160,190,.22); color: #8b97a8">Duplicate</div>
+          <div class="btn" style="color: #ff6b73; border: 1px solid rgba(255,107,115,.28)">Delete</div>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+        <div class="field"><span>Name</span><div class="inp">Personal</div></div>
+        <div class="field"><span>Colour</span>
+          <div style="display: flex; gap: 6px; align-items: center; height: 35px">
+            <span style="width: 22px; height: 22px; border-radius: 999px; background: #ff8a1e; box-shadow: 0 0 0 2px #eaf0f7"></span>
+            <span style="width: 22px; height: 22px; border-radius: 999px; background: #4c8dff"></span>
+            <span style="width: 22px; height: 22px; border-radius: 999px; background: #2fd6a3"></span>
+            <span style="width: 22px; height: 22px; border-radius: 999px; background: #b48cff"></span>
+            <span style="width: 22px; height: 22px; border-radius: 999px; background: #22d3ee"></span>
+            <span style="width: 22px; height: 22px; border-radius: 999px; background: #ffb454"></span>
+            <span style="width: 22px; height: 22px; border-radius: 999px; background: #ff6b73"></span>
+            <span style="width: 22px; height: 22px; border-radius: 999px; background: #8b97a8"></span>
+          </div>
+        </div>
+        <div class="field"><span>Default for new shells</span>
+          <div style="display: flex; align-items: center; gap: 10px; height: 35px">
+            <span style="width: 40px; height: 22px; border-radius: 999px; background: linear-gradient(135deg, #ffa23e, #ff8410); position: relative"><i style="position: absolute; top: 3px; left: 21px; width: 16px; height: 16px; border-radius: 999px; background: #1a1205; display: block"></i></span>
+            <span style="font-size: 11.5px; color: #8b97a8">Ctrl+Shift+T opens this one</span>
+          </div>
+        </div>
+        <div class="field" style="grid-column: span 2"><span>Claude config folder — read for the login and the token meters</span>
+          <div style="display: flex; gap: 8px"><div class="inp" style="flex: 1">%USERPROFILE%\.claude</div><div class="btn" style="border: 1px solid rgba(140,160,190,.22); color: #8b97a8">Browse</div></div>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 18px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span style="font: 700 10px 'Plus Jakarta Sans'; text-transform: uppercase; letter-spacing: .06em; color: #5b6878">Environment for new shells</span>
+          <span style="flex: 1; height: 1px; background: rgba(140,160,190,.12)"></span>
+          <span style="font-size: 11px; color: #5b6878">applies to new tabs, never a running one</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <div class="kv"><span style="color: #ffb454">CLAUDE_CONFIG_DIR</span><span style="color: #5b6878">=</span><span style="flex: 1; color: #eaf0f7">%USERPROFILE%\.claude</span><span style="color: #5b6878; font-size: 14px">×</span></div>
+          <div class="kv"><span style="color: #ffb454">AZURE_CONFIG_DIR</span><span style="color: #5b6878">=</span><span style="flex: 1; color: #eaf0f7">%USERPROFILE%\.azure</span><span style="color: #5b6878; font-size: 14px">×</span></div>
+          <div class="kv" style="border-style: dashed"><span class="inp" style="border: 0; background: none; padding: 0; color: #5b6878">KEY</span><span style="color: #5b6878">=</span><span style="flex: 1; color: #5b6878">value</span></div>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 16px 18px; display: flex; align-items: center; gap: 16px">
+        <div style="flex: 1">
+          <b style="font-weight: 600">Signed in as ozanberkplt@gmail.com</b>
+          <div style="margin-top: 3px; font-size: 11.5px; color: #8b97a8">max 5x · this folder also holds the logins <span style="font-family: 'JetBrains Mono', monospace">personal</span> and <span style="font-family: 'JetBrains Mono', monospace">is</span>, which only Claude Code's own /login can switch between.</div>
+        </div>
+        <div class="btn" style="border: 1px solid rgba(140,160,190,.22); color: #8b97a8">Open a tab</div>
+        <div class="btn" style="border: 1px solid rgba(140,160,190,.22); color: #8b97a8">Sign in again</div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 12px; margin-top: auto; padding: 11px 16px; border-radius: 999px; background: rgba(20,26,36,.9); border: 1px solid rgba(140,160,190,.22); font-size: 12px; color: #8b97a8">
+        Deleted “Old tenant”
+        <span style="flex: 1"></span>
+        <span style="padding: 3px 12px; border-radius: 999px; background: #ff8a1e; color: #1a1205; font-weight: 600; font-size: 11px">Undo</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -83,7 +83,7 @@ function tabMenu(app: App, tab: Tab, x: number, y: number) {
   openMenu(x, y, [
     { label: "Split right", hint: "Alt+Shift+=", onPick: () => void app.splitPane("row") },
     { label: "Split down", hint: "Alt+Shift+-", onPick: () => void app.splitPane("col") },
-    { label: "Settings…", hint: "Ctrl+Shift+,", onPick: () => app.settings.open() },
+    { label: "Settings…", hint: "Ctrl+Shift+,", onPick: () => void app.tp.openSettings() },
     { label: capturing ? "Stop capture" : "Start capture", hint: "Ctrl+Shift+L", onPick: () => void app.toggleLog() },
     { label: "Move to project…", onPick: () => moveMenu(app, tab, x, y) },
     { label: "Tab colour…", onPick: () => colorMenu(x, y, tab.color, (c) => app.setTabColor(tab, c)) },
@@ -126,7 +126,7 @@ function projectMenu(app: App, project: Project, x: number, y: number, nameEl: H
           app.persist();
         }),
     },
-    { label: "Edit in settings…", onPick: () => app.settings.open("projects") },
+    { label: "Edit in settings…", onPick: () => void app.tp.openSettings("projects") },
     { label: "Delete project", danger: true, onPick: () => app.deleteProject(project) },
   ]);
 }

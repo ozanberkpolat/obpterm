@@ -1,6 +1,6 @@
 // Tabs, panes and projects. A tab owns a pane tree; a project groups tabs, gives them a colour
 // and can save/restore its own set of tabs.
-import type { Account, Config, Host, Profile, Project, Transport } from "./transport";
+import { withDefaults, type Account, type Config, type Host, type Profile, type Project, type Transport } from "./transport";
 import { Pane, type PaneHost } from "./pane";
 import * as L from "./layout";
 import { applyTermConfig } from "./term";
@@ -49,7 +49,7 @@ export class App implements PaneHost {
   find!: Find; // set by main.ts once the DOM handlers are installed
   status!: Status;
   toolbar!: { paint(): void };
-  settings!: import("./settings").Settings;
+  palette!: import("./palette").Palette;
   private panesEl = $("#panes");
   private sessionTimer = 0;
   private configTimer = 0;
@@ -136,14 +136,13 @@ export class App implements PaneHost {
     this.config.accounts.push(account);
     this.persistConfig();
     this.paint();
-    this.settings.open("accounts");
-    toast("Set the folder for this account, then press “Sign in” on its row");
+    void this.tp.openSettings("accounts");
+    toast("Set the folder for this account, then open a tab under it and run `claude auth login`");
     return account;
   }
 
   /** Opens a tab under `account` and runs the Claude Code login in it. */
   async signIn(account: Account) {
-    this.settings.close();
     const tab = await this.newTab(undefined, this.tab?.projectId ?? null, null, account.id);
     // Give the shell a moment to draw its prompt before typing into it.
     window.setTimeout(() => tab && this.sendKey("claude auth login\r"), 700);
@@ -465,8 +464,16 @@ export class App implements PaneHost {
   // ---- config & session -------------------------------------------------------------------
 
   applyConfig() {
-    document.documentElement.style.setProperty("--term-bg", this.config.theme.background ?? "#0a0e14");
-    document.documentElement.style.setProperty("--mono", this.config.font_family);
+    const root = document.documentElement.style;
+    root.setProperty("--term-bg", this.config.theme.background ?? "#0a0e14");
+    root.setProperty("--mono", this.config.font_family);
+    root.setProperty("--accent", this.config.accent);
+    // Keep the fill in step with the accent, or a re-coloured app keeps orange buttons.
+    root.setProperty(
+      "--accent-fill",
+      `linear-gradient(135deg, color-mix(in srgb, ${this.config.accent} 78%, white), ${this.config.accent})`,
+    );
+    document.body.classList.toggle("dim-inactive", this.config.dim_inactive_panes);
     for (const t of this.tabs) {
       for (const p of L.panes(t.root)) applyTermConfig(p.term.term, this.config);
       this.layout(t);
@@ -508,6 +515,17 @@ export class App implements PaneHost {
     this.status?.paint();
     this.toolbar?.paint();
     document.documentElement.style.setProperty("--accent", this.accent());
+  }
+
+  /** The settings window saved something: take its copy without dropping any shells. */
+  async reloadConfig() {
+    const fresh = withDefaults(await this.tp.loadConfig());
+    // The session lives in session.json; everything else comes from the file.
+    Object.assign(this.config, fresh);
+    this.applyConfig();
+    this.applyRailWidth();
+    document.querySelector("#rail")!.classList.toggle("collapsed", this.config.rail_collapsed);
+    this.paint();
   }
 
   snapshot(tab: Tab): SavedTab {

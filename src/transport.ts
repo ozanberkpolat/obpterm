@@ -104,6 +104,13 @@ export interface Config {
   scrollback: number;
   rail_collapsed: boolean;
   rail_width: number;
+  cursor_style: "bar" | "block" | "underline";
+  cursor_blink: boolean;
+  right_click_paste: boolean;
+  accent: string;
+  dim_inactive_panes: boolean;
+  capture_dir: string | null;
+  update_check_on_launch: boolean;
   default_cwd: string | null;
   update_repo: string | null;
   github_token: string | null;
@@ -131,7 +138,7 @@ export interface Transport {
   resize(id: number, cols: number, rows: number): Promise<void>;
   kill(id: number): Promise<void>;
   /** Starts teeing this session to a file; returns the path. */
-  logStart(id: number, name: string, stamp: string): Promise<string>;
+  logStart(id: number, name: string, stamp: string, dir: string | null): Promise<string>;
   logStop(id: number): Promise<void>;
   hostMetrics(cwd: string | null): Promise<HostMetrics>;
   appVersion(): Promise<string>;
@@ -142,6 +149,14 @@ export interface Transport {
   updateInstall(release: ReleaseInfo, token: string | null): Promise<string>;
   /** Logins Claude Code has stored in a config dir. */
   claudeAccountNames(dir: string): Promise<string[]>;
+  /** Opens (or focuses) the settings window on a section. */
+  openSettings(section?: string): Promise<void>;
+  /** minimize | maximize | close, for our own title bar. */
+  windowAction(label: string, action: "minimize" | "maximize" | "close"): Promise<void>;
+  configReset(): Promise<Config>;
+  reveal(what: "config" | "logs"): Promise<string>;
+  /** Fires when the other window saved the config. */
+  onConfigChanged(handler: () => void): void;
   sessionLoad(): Promise<Session>;
   sessionSave(tabs: unknown): Promise<void>;
   claudeAccount(dir: string): Promise<ClaudeAccount>;
@@ -165,6 +180,13 @@ export function withDefaults(config: Partial<Config>): Config {
     scrollback: config.scrollback ?? 10_000,
     rail_collapsed: config.rail_collapsed ?? false,
     rail_width: config.rail_width ?? 232,
+    cursor_style: config.cursor_style ?? "bar",
+    cursor_blink: config.cursor_blink ?? true,
+    right_click_paste: config.right_click_paste ?? true,
+    accent: config.accent ?? "#ff8a1e",
+    dim_inactive_panes: config.dim_inactive_panes ?? true,
+    capture_dir: config.capture_dir ?? null,
+    update_check_on_launch: config.update_check_on_launch ?? true,
     default_cwd: config.default_cwd ?? null,
     update_repo: config.update_repo ?? "ozanberkpolat/obpterm",
     github_token: config.github_token ?? null,

@@ -1,0 +1,166 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.45 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .card { border: 1px solid rgba(140,160,190,.12); border-radius: 16px;
+      background: linear-gradient(180deg, #141a24, #171e29); }
+    .row { display: flex; align-items: center; gap: 20px; padding: 14px 18px;
+      border-bottom: 1px solid rgba(140,160,190,.12); }
+    .row:last-child { border-bottom: 0; }
+    .rl { flex: 1; min-width: 0; }
+    .rl b { display: block; font-weight: 600; font-size: 13px; }
+    .rl span { display: block; margin-top: 2px; font-size: 11.5px; color: #8b97a8; }
+    .inp { padding: 8px 13px; border-radius: 999px; background: #0a0e14;
+      border: 1px solid rgba(140,160,190,.22); color: #eaf0f7;
+      font: 12px "JetBrains Mono", monospace; }
+    .sw { width: 40px; height: 22px; border-radius: 999px; background: rgba(140,160,190,.22); position: relative; flex: none; }
+    .sw i { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 999px; background: #8b97a8; }
+    .sw.on { background: linear-gradient(135deg, #ffa23e, #ff8410); }
+    .sw.on i { left: 21px; background: #1a1205; }
+    .ansi { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .ansi i { width: 100%; height: 26px; border-radius: 7px; display: block; }
+    .ansi span { font: 500 9px "JetBrains Mono", monospace; color: #5b6878; }
+    .theme { border-radius: 12px; padding: 9px 11px; border: 1px solid rgba(140,160,190,.12);
+      display: flex; flex-direction: column; gap: 7px; }
+    .theme b { font-size: 11.5px; font-weight: 600; }
+    .swatches { display: flex; gap: 3px; }
+    .swatches i { width: 13px; height: 13px; border-radius: 4px; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 880px; display: flex; flex-direction: column; background: #0a0e14; border: 1px solid rgba(140,160,190,.22); overflow: hidden">
+
+  <div style="flex: none; height: 46px; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: linear-gradient(180deg, #141a24, #0e131c); border-bottom: 1px solid rgba(140,160,190,.12)">
+    <span style="font-weight: 700; font-size: 14px">Settings</span>
+    <span style="color: #5b6878">›</span>
+    <span style="font-weight: 600; font-size: 13px; color: #8b97a8">Appearance</span>
+    <span style="flex: 1"></span>
+    <div style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; color: #8b97a8; font-size: 17px">×</div>
+  </div>
+
+  <div style="flex: 1; display: flex; min-height: 0">
+    <div style="width: 226px; flex: none; border-right: 1px solid rgba(140,160,190,.12); background: linear-gradient(180deg, #0e131c, #0a0e14)"></div>
+
+    <div style="flex: 1; min-width: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+
+      <div>
+        <div style="font-size: 17px; font-weight: 700">Appearance</div>
+        <div style="margin-top: 3px; font-size: 12px; color: #8b97a8">The window's colours, and the 16 the shell paints with.</div>
+      </div>
+
+      <!-- Live preview: the thing being edited, shown as it will look -->
+      <div class="card" style="padding: 0; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-bottom: 1px solid rgba(140,160,190,.12)">
+          <span style="font: 700 10px 'Plus Jakarta Sans'; text-transform: uppercase; letter-spacing: .06em; color: #5b6878">Preview</span>
+          <span style="flex: 1"></span>
+          <span style="font: 11px 'JetBrains Mono', monospace; color: #5b6878">Sentinel · unsaved changes</span>
+        </div>
+        <div style="display: flex; background: #0a0e14">
+          <div style="width: 120px; padding: 10px 8px; background: linear-gradient(180deg, #141a24, #0e131c); border-right: 1px solid rgba(140,160,190,.12); display: flex; flex-direction: column; gap: 4px">
+            <div style="height: 26px; border-radius: 999px; background: linear-gradient(135deg, #ffa23e, #ff8410)"></div>
+            <div style="height: 26px; border-radius: 999px; background: rgba(140,160,190,.12)"></div>
+            <div style="height: 26px; border-radius: 999px; background: rgba(140,160,190,.12)"></div>
+          </div>
+          <div style="flex: 1; padding: 12px 14px; font: 12.5px/1.6 'JetBrains Mono', monospace; white-space: pre">
+<span style="color: #2fd6a3">obp@vps</span> <span style="color: #4c8dff">~/iot-stack</span> <span style="color: #ff8a1e">❯</span> git status --short
+<span style="color: #ffb454"> M</span> src/style.css   <span style="color: #ff6b73"> D</span> old.ts   <span style="color: #b48cff">??</span> design/
+<span style="color: #22d3ee">→</span> 2 files changed, <span style="color: #eaf0f7">1 deletion</span>  <span style="background: #ff8a1e; color: #1a1205"> </span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div class="rl"><b>Accent</b><span>One orange marks the active thing. A project or tab colour overrides it locally.</span></div>
+          <div style="display: flex; gap: 6px; align-items: center">
+            <span style="width: 24px; height: 24px; border-radius: 999px; background: #ff8a1e; box-shadow: 0 0 0 2px #eaf0f7"></span>
+            <span style="width: 24px; height: 24px; border-radius: 999px; background: #4c8dff"></span>
+            <span style="width: 24px; height: 24px; border-radius: 999px; background: #2fd6a3"></span>
+            <span style="width: 24px; height: 24px; border-radius: 999px; background: #b48cff"></span>
+            <span style="width: 24px; height: 24px; border-radius: 999px; background: #22d3ee"></span>
+            <div class="inp" style="width: 96px; margin-left: 6px">#ff8a1e</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="rl"><b>Window transparency<span style="font: 700 8.5px 'Plus Jakarta Sans'; text-transform: uppercase; letter-spacing: .07em; color: #ffb454; border: 1px solid rgba(255,180,84,.4); border-radius: 999px; padding: 2px 7px; margin-left: 8px">new setting</span></b><span>Acrylic behind the rail and status bar. Windows 11 only.</span></div>
+          <div style="display: flex; align-items: center; gap: 12px">
+            <div style="width: 150px; height: 4px; border-radius: 999px; background: rgba(140,160,190,.22); position: relative">
+              <div style="position: absolute; inset: 0 82% 0 0; border-radius: 999px; background: linear-gradient(135deg, #ffa23e, #ff8410)"></div>
+              <div style="position: absolute; left: 18%; top: -6px; width: 16px; height: 16px; border-radius: 999px; background: #ff8a1e"></div>
+            </div>
+            <div class="sw on"><i></i></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="rl"><b>Dim inactive panes<span style="font: 700 8.5px 'Plus Jakarta Sans'; text-transform: uppercase; letter-spacing: .07em; color: #ffb454; border: 1px solid rgba(255,180,84,.4); border-radius: 999px; padding: 2px 7px; margin-left: 8px">new setting</span></b><span>The focused pane keeps its accent edge; the others fade back.</span></div>
+          <div class="sw on"><i></i></div>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 18px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span style="font: 700 10px 'Plus Jakarta Sans'; text-transform: uppercase; letter-spacing: .06em; color: #5b6878">Terminal palette</span>
+          <span style="flex: 1; height: 1px; background: rgba(140,160,190,.12)"></span>
+          <span style="font-size: 11px; color: #8b97a8">Import from a .json theme</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px">
+          <div class="ansi"><i style="background: #141a24"></i><span>black</span></div>
+          <div class="ansi"><i style="background: #ff6b73"></i><span>red</span></div>
+          <div class="ansi"><i style="background: #2fd6a3"></i><span>green</span></div>
+          <div class="ansi"><i style="background: #ffb454"></i><span>yellow</span></div>
+          <div class="ansi"><i style="background: #4c8dff"></i><span>blue</span></div>
+          <div class="ansi"><i style="background: #b48cff"></i><span>magenta</span></div>
+          <div class="ansi"><i style="background: #22d3ee"></i><span>cyan</span></div>
+          <div class="ansi"><i style="background: #c9d3e0"></i><span>white</span></div>
+          <div class="ansi"><i style="background: #5b6878"></i><span>br black</span></div>
+          <div class="ansi"><i style="background: #ff7a85"></i><span>br red</span></div>
+          <div class="ansi"><i style="background: #5ee8bd"></i><span>br green</span></div>
+          <div class="ansi"><i style="background: #ffc97a"></i><span>br yellow</span></div>
+          <div class="ansi"><i style="background: #7aaaff"></i><span>br blue</span></div>
+          <div class="ansi"><i style="background: #cbb0ff"></i><span>br magenta</span></div>
+          <div class="ansi"><i style="background: #67e3f5"></i><span>br cyan</span></div>
+          <div class="ansi"><i style="background: #eaf0f7"></i><span>br white</span></div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px">
+          <div class="ansi" style="align-items: flex-start"><i style="background: #0a0e14; border: 1px solid rgba(140,160,190,.22)"></i><span>background</span></div>
+          <div class="ansi" style="align-items: flex-start"><i style="background: #eaf0f7"></i><span>foreground</span></div>
+          <div class="ansi" style="align-items: flex-start"><i style="background: #ff8a1e"></i><span>cursor</span></div>
+          <div class="ansi" style="align-items: flex-start"><i style="background: rgba(255,138,30,.28)"></i><span>selection</span></div>
+          <div class="ansi" style="align-items: flex-start"><i style="background: #0a0e14; border: 1px solid rgba(140,160,190,.22)"></i><span>cursor text</span></div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px">
+        <div class="theme" style="flex: 1; border-color: #ff8a1e; background: rgba(255,138,30,.06)">
+          <b>Sentinel <span style="color: #ff8a1e; font-weight: 500">· current</span></b>
+          <div class="swatches"><i style="background: #0a0e14; box-shadow: inset 0 0 0 1px rgba(140,160,190,.22)"></i><i style="background: #ff8a1e"></i><i style="background: #2fd6a3"></i><i style="background: #4c8dff"></i><i style="background: #b48cff"></i></div>
+        </div>
+        <div class="theme" style="flex: 1">
+          <b>Admiralty</b>
+          <div class="swatches"><i style="background: #071a1c"></i><i style="background: #e8d9b0"></i><i style="background: #d94f9c"></i><i style="background: #55c2c8"></i><i style="background: #e8d9b0"></i></div>
+        </div>
+        <div class="theme" style="flex: 1">
+          <b>Paper</b>
+          <div class="swatches"><i style="background: #f4f2ed"></i><i style="background: #8a5f18"></i><i style="background: #13120f"></i><i style="background: #b07c33"></i><i style="background: #302b24"></i></div>
+        </div>
+        <div class="theme" style="flex: 1; border-style: dashed; align-items: center; justify-content: center; color: #8b97a8; font-size: 12px">+ Save current as a theme</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #8b97a8;
+      font: 12.5px/1.45 "Plus Jakarta Sans", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .box { border: 1px dashed rgba(140,160,190,.22); border-radius: 10px; }
+    .line { height: 8px; border-radius: 999px; background: rgba(140,160,190,.12); }
+  </style>
+</helmet>
+
+<div style="width: 720px; height: 470px; background: #0a0e14; display: flex; flex-direction: column">
+  <div style="padding: 12px 16px 6px; display: flex; align-items: baseline; gap: 10px">
+    <span style="font-weight: 700; font-size: 13px; color: #eaf0f7">Alternative · settings as a tab</span>
+    <span style="font-size: 11px">sketch</span>
+  </div>
+  <div style="flex: 1; display: flex; gap: 10px; padding: 6px 16px 16px">
+    <div class="box" style="width: 150px; padding: 10px; display: flex; flex-direction: column; gap: 7px">
+      <div class="line" style="width: 60%"></div>
+      <div style="height: 26px; border-radius: 999px; background: rgba(255,138,30,.22); border: 1px solid rgba(255,138,30,.5); display: flex; align-items: center; padding: 0 10px; font-size: 11px; color: #ff8a1e">⚙ Settings</div>
+      <div style="height: 26px; border-radius: 999px; background: rgba(140,160,190,.12)"></div>
+      <div style="height: 26px; border-radius: 999px; background: rgba(140,160,190,.12)"></div>
+      <div style="height: 26px; border-radius: 999px; background: rgba(140,160,190,.12)"></div>
+      <div style="flex: 1"></div>
+      <div class="line" style="width: 80%"></div>
+    </div>
+    <div class="box" style="flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; gap: 8px">
+        <div style="padding: 4px 12px; border-radius: 999px; background: rgba(140,160,190,.12); font-size: 11px; color: #eaf0f7">Terminal</div>
+        <div style="padding: 4px 12px; border-radius: 999px; font-size: 11px">Appearance</div>
+        <div style="padding: 4px 12px; border-radius: 999px; font-size: 11px">Accounts</div>
+      </div>
+      <div class="line" style="width: 45%"></div>
+      <div class="line" style="width: 72%"></div>
+      <div class="line" style="width: 60%"></div>
+      <div class="line" style="width: 80%"></div>
+      <div style="flex: 1"></div>
+      <div style="font-size: 11px; line-height: 1.6">
+        <b style="color: #c9d3e0; font-weight: 600">Trade-off:</b> settings sit beside the shells, so a terminal stays visible while you change something and there is no second window to manage — but the rail gains a row that is not a session, and a wide settings form has to live in a 1000px pane.
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

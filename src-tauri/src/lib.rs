@@ -1,4 +1,5 @@
 mod claude;
+mod chrome;
 mod config;
 mod metrics;
 mod pty;
@@ -25,6 +26,10 @@ pub fn run() {
             config::config_save,
             config::config_path_string,
             config::log_dir,
+            config::config_reset,
+            config::reveal,
+            chrome::open_settings,
+            chrome::window_action,
             config::session_load,
             config::session_save,
             claude::claude_account,
@@ -39,6 +44,12 @@ pub fn run() {
             let main = app.get_webview_window("main").expect("main window");
             disable_browser_accelerators(&main);
             Ok(())
+        })
+        .on_page_load(|webview, _| {
+            // The settings window is created after startup, so F5 has to be taken off it too.
+            if let Some(window) = webview.app_handle().get_webview_window(webview.label()) {
+                disable_browser_accelerators(&window);
+            }
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {

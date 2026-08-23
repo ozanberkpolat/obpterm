@@ -4,7 +4,8 @@ import { installKeys } from "./keys";
 import { installFind } from "./find";
 import { Status } from "./status";
 import { installToolbar } from "./toolbar";
-import { installSettings } from "./settings";
+import { installHeader } from "./header";
+import { installPalette } from "./palette";
 import { toast } from "./ui";
 
 async function main() {
@@ -21,7 +22,9 @@ async function main() {
   app.find = installFind(app);
   app.status = new Status(app);
   app.toolbar = installToolbar(app);
-  app.settings = installSettings(app);
+  app.palette = installPalette(app);
+  installHeader(app);
+  tp.onConfigChanged(() => void app.reloadConfig());
   app.applyRailWidth();
   app.applyConfig();
   installKeys(app);
@@ -32,6 +35,10 @@ async function main() {
   if (!restored) await app.newTab();
   if (updatedTo) toast(`Updated to ${updatedTo} — reopened ${tabs}`);
   else if (crashed) toast(`Reopened ${tabs} — OBPTerm did not shut down cleanly`);
+  if (config.update_check_on_launch && !updatedTo) {
+    // Quietly, and never installing on its own.
+    window.setTimeout(() => void app.status.checkUpdates(), 4000);
+  }
 }
 
 /**

@@ -24,8 +24,8 @@ export function tauriTransport(): Transport {
     write: (id, data) => invoke("pty_write", { id, data }),
     resize: (id, cols, rows) => invoke("pty_resize", { id, cols, rows }),
     kill: (id) => invoke("pty_kill", { id }),
-    async logStart(id, name, stamp) {
-      return invoke<string>("pty_log_start", { id, dir: await invoke<string>("log_dir"), name, stamp });
+    async logStart(id, name, stamp, dir) {
+      return invoke<string>("pty_log_start", { id, dir: dir || (await invoke<string>("log_dir")), name, stamp });
     },
     logStop: (id) => invoke("pty_log_stop", { id }),
     hostMetrics: (cwd) => invoke<HostMetrics>("host_metrics", { cwd }),
@@ -33,6 +33,11 @@ export function tauriTransport(): Transport {
     updateCheck: (repo, token) => invoke<ReleaseInfo>("update_check", { repo, token }),
     updateInstall: (release, token) => invoke<string>("update_install", { release, token }),
     claudeAccountNames: (dir) => invoke<string[]>("claude_account_names", { dir }),
+    openSettings: (section) => invoke("open_settings", { section: section ?? null }),
+    windowAction: (label, action) => invoke("window_action", { label, action }),
+    configReset: () => invoke<Config>("config_reset"),
+    reveal: (what) => invoke<string>("reveal", { what }),
+    onConfigChanged: (handler) => void listen("config:changed", () => handler()),
     sessionLoad: () => invoke<Session>("session_load"),
     sessionSave: (tabs) => invoke("session_save", { tabs }),
     claudeAccount: (dir) => invoke<ClaudeAccount>("claude_account", { dir }),

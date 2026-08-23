@@ -31,6 +31,38 @@ html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); 
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 
 #app { display: flex; flex-direction: column; height: 100%; }
+
+/* ---- title bar ------------------------------------------------------------------------------ */
+#titlebar {
+  flex: none; height: 38px; display: flex; align-items: center; gap: 10px;
+  padding: 0 4px 0 14px;
+  background: linear-gradient(180deg, var(--panel), var(--bg2));
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.brandmark {
+  width: 16px; height: 16px; border-radius: 5px; flex: none;
+  background: var(--panel); border: 1.5px solid var(--accent); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+}
+.wordmark { font-weight: 800; font-size: 12px; letter-spacing: .04em; color: var(--muted); }
+#titlebar .rule { width: 1px; height: 16px; background: var(--border); }
+#titlebar .menus { display: flex; align-items: center; gap: 2px; }
+.hmenu { height: 24px; padding: 0 10px; border-radius: 999px; font: 600 12px var(--sans); color: var(--muted); }
+.hmenu:hover { background: var(--border); color: var(--ink); }
+#titlebar .grow { flex: 1; align-self: stretch; }
+#titlebar .search {
+  height: 20px; padding: 0 11px; border-radius: 999px;
+  border: 1px solid var(--border-2); color: var(--faint); font: 500 11px var(--mono);
+}
+#titlebar .search:hover { color: var(--ink); border-color: var(--ink); }
+#titlebar .gear { width: 26px; height: 26px; border-radius: 999px; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; }
+#titlebar .gear:hover { background: var(--border); color: var(--ink); }
+#titlebar .gear svg { width: 15px; height: 15px; }
+.wingroup { display: flex; margin-left: 4px; }
+.win { width: 34px; height: 30px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.win:hover { background: var(--border); color: var(--ink); }
+.win.close:hover { background: var(--bad); color: #1a0507; }
 #workbench { display: flex; flex: 1; min-height: 0; }
 
 /* ---- rail ------------------------------------------------------------------------------- */
@@ -143,6 +175,8 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .divider:hover, .divider.dragging { background: var(--accent); }
 
 .pane { position: relative; padding: 6px 0 4px 8px; min-width: 0; min-height: 0; overflow: hidden; }
+body.dim-inactive .pane { opacity: .74; transition: opacity 160ms ease; }
+body.dim-inactive .pane.focused, body.dim-inactive .tab-panes > .pane:only-child { opacity: 1; }
 .pane.focused::before {
   content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px;
   background: var(--pane-accent, var(--accent)); border-radius: 999px;
@@ -282,55 +316,38 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 #update-chip.has-update { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 #update-chip:disabled { opacity: 0.6; cursor: default; }
 
-/* ---- settings sheet -------------------------------------------------------------------------- */
-#settings {
-  position: fixed; inset: 0; z-index: 30;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(4, 7, 12, 0.62);
+
+/* ---- command palette ------------------------------------------------------------------------- */
+#palette {
+  position: fixed; inset: 0; z-index: 25;
+  display: flex; justify-content: center; align-items: flex-start;
+  padding-top: 12vh; background: rgba(4, 7, 12, .5);
 }
-#settings[hidden] { display: none; }
-#settings .sheet {
-  width: min(920px, 92vw); max-height: 84vh; display: flex; flex-direction: column;
+#palette[hidden] { display: none; }
+.pbox {
+  width: min(680px, 88vw); padding: 8px;
   background: linear-gradient(180deg, var(--panel), var(--panel2));
   border: 1px solid var(--border-2); border-radius: 18px;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
 }
-#settings header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 8px; }
-#settings h2 { margin: 0; font-size: 15px; }
-#settings header .close { width: 30px; height: 30px; border-radius: 999px; font-size: 18px; color: var(--muted); }
-#settings header .close:hover { background: var(--border); color: var(--ink); }
-#settings .tabs { display: flex; gap: 4px; padding: 0 18px 10px; border-bottom: 1px solid var(--border); }
-#settings .tabs button { padding: 6px 14px; border-radius: 999px; color: var(--muted); font-weight: 600; }
-#settings .tabs button:hover { background: var(--border); color: var(--ink); }
-#settings .tabs button.on { background: var(--accent); color: var(--accent-ink); }
-#settings .body { padding: 14px 18px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-#settings .hint { margin: 0 0 2px; color: var(--muted); font-size: 12px; }
-#settings .row {
-  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px;
-  padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: rgba(255, 255, 255, 0.015);
+.pfield {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; border-radius: 999px;
+  background: var(--bg); border: 1px solid var(--accent); color: var(--accent);
 }
-#settings .field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 150px; min-width: 0; }
-#settings .field > span { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); }
-#settings .field.kv, #settings .field.text:has(input[placeholder*="\\"]) { flex: 2 1 260px; }
-#settings input, #settings select {
-  width: 100%; padding: 7px 11px; border-radius: 999px;
-  background: var(--bg); border: 1px solid var(--border-2); color: var(--ink);
-  font: 12px var(--mono); outline: none;
+.pfield input {
+  flex: 1; background: none; border: 0; outline: none;
+  color: var(--ink); font: 13.5px var(--mono);
 }
-#settings input:focus, #settings select:focus { border-color: var(--accent); }
-#settings .swatches { display: flex; gap: 4px; }
-.swatch-btn { width: 18px; height: 18px; border-radius: 999px; border: 1px solid var(--border-2); }
-.swatch-btn.on { box-shadow: 0 0 0 2px var(--ink); }
-#settings .act {
-  padding: 7px 14px; border-radius: 999px; font-weight: 600;
-  color: var(--muted); border: 1px solid var(--border-2);
+.results { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; max-height: 46vh; overflow-y: auto; }
+.presult {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 14px; border-radius: 999px; text-align: left; color: var(--ink);
 }
-#settings .act:hover { color: var(--accent); border-color: var(--accent); }
-#settings .del { padding: 7px 14px; border-radius: 999px; color: var(--bad); border: 1px solid transparent; font-weight: 600; }
-#settings .del:hover:not(:disabled) { background: color-mix(in srgb, var(--bad) 18%, transparent); }
-#settings .del:disabled { color: var(--faint); cursor: not-allowed; }
-#settings .add {
-  align-self: flex-start; padding: 9px 18px; border-radius: 999px;
-  border: 1px dashed var(--border-2); color: var(--muted); font-weight: 600;
+.presult.on { background: var(--border); }
+.pgroup {
+  font: 700 9.5px var(--sans); text-transform: uppercase; letter-spacing: .06em;
+  color: var(--faint); width: 62px; flex: none;
 }
-#settings .add:hover { color: var(--accent); border-color: var(--accent); }
+.presult.on .pgroup { color: var(--accent); }
+.plabel { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

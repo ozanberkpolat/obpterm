@@ -17,7 +17,7 @@ export function ownsKey(e: KeyboardEvent): boolean {
   if (ctrlOnly(e) && e.code === "Tab") return true;
   if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV", "KeyF", "KeyL", "KeyP", "KeyN", "KeyH", "Comma"].includes(e.code)) return true;
   if ((ctrlShift(e) || ctrlOnly(e)) && /^Digit[1-9]$/.test(e.code)) return true;
-  if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract"].includes(e.code)) return true;
+  if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract", "KeyK"].includes(e.code)) return true;
   if ((altOnly(e) || altShift(e)) && e.code in ARROWS) return true;
   if (altShift(e) && ["Equal", "Minus", "NumpadAdd", "NumpadSubtract", "KeyD"].includes(e.code)) return true;
   return e.code === "F12"; // F5 is a real key for the shell (ESC[15~); only devtools is ours
@@ -32,8 +32,8 @@ export function installKeys(app: App) {
       if (e.code === "F5" && e.ctrlKey) return stop(e);
       if (e.code === "Escape") {
         closeMenu();
-        if (app.settings.isOpen) {
-          app.settings.close();
+        if (app.palette.isOpen) {
+          app.palette.close();
           return stop(e);
         }
       }
@@ -50,7 +50,8 @@ export function installKeys(app: App) {
       if (ctrlShift(e) && e.code === "KeyF") { app.find.open(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyL") { void app.toggleLog(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyH") { hostPicker(app); return stop(e); }
-      if (ctrlShift(e) && e.code === "Comma") { app.settings.open(); return stop(e); }
+      if (ctrlShift(e) && e.code === "Comma") { void app.tp.openSettings(); return stop(e); }
+      if (ctrlOnly(e) && e.code === "KeyK") { app.palette.open(); return stop(e); }
 
       // Panes: Alt+Shift splits and resizes, Alt alone moves focus (Windows Terminal's map).
       if (altShift(e) && ["Equal", "NumpadAdd"].includes(e.code)) { void app.splitPane("row"); return stop(e); }
@@ -114,6 +115,7 @@ export function installKeys(app: App) {
 
   // Right-click in a pane: copy the selection if there is one, otherwise paste (WT behaviour).
   document.querySelector("#panes")!.addEventListener("contextmenu", (e) => {
+    if (!app.config.right_click_paste) return;
     e.preventDefault();
     void app.copy().then((copied) => {
       if (!copied) void app.paste();
@@ -146,7 +148,7 @@ function profilePicker(app: App, e?: MouseEvent) {
 
 function hostPicker(app: App) {
   const anchor = document.querySelector("#target-chip")!.getBoundingClientRect();
-  if (!app.config.hosts.length) return app.settings.open("hosts");
+  if (!app.config.hosts.length) return void app.tp.openSettings("hosts");
   openMenu(
     anchor.left,
     anchor.top,

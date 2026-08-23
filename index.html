@@ -8,6 +8,24 @@
   </head>
   <body>
     <div id="app">
+      <header id="titlebar" data-tauri-drag-region>
+        <span class="brandmark" data-tauri-drag-region>
+          <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 6 14 12 8 18"/></svg>
+        </span>
+        <span class="wordmark" data-tauri-drag-region>OBPTERM</span>
+        <span class="rule" data-tauri-drag-region></span>
+        <span class="menus"></span>
+        <span class="grow" data-tauri-drag-region></span>
+        <button class="search" title="Command palette (Ctrl+K)">Ctrl+K&nbsp;&nbsp;search</button>
+        <button class="gear" title="Settings (Ctrl+Shift+,)" aria-label="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9.1A1.7 1.7 0 0 0 10.13 3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.04a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/></svg>
+        </button>
+        <span class="wingroup">
+          <button class="win" data-action="minimize" title="Minimize" aria-label="Minimize"><svg viewBox="0 0 12 12" width="11" height="11" stroke="currentColor" stroke-width="1.2"><line x1="2" y1="6" x2="10" y2="6"/></svg></button>
+          <button class="win" data-action="maximize" title="Maximize" aria-label="Maximize"><svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2.5" y="2.5" width="7" height="7"/></svg></button>
+          <button class="win close" data-action="close" title="Close" aria-label="Close"><svg viewBox="0 0 12 12" width="10" height="10" stroke="currentColor" stroke-width="1.2"><line x1="3" y1="3" x2="9" y2="9"/><line x1="9" y1="3" x2="3" y2="9"/></svg></button>
+        </span>
+      </header>
       <div id="workbench">
       <nav id="rail" aria-label="Tabs">
         <div id="rail-head"><span class="brand">OBPTerm</span><button id="rail-toggle" title="Toggle rail (Ctrl+Shift+B)">‹</button></div>
@@ -49,11 +67,13 @@
         <span id="panecount" class="chip"></span>
       </footer>
       <div id="menu" hidden></div>
-      <div id="settings" hidden>
-        <div class="sheet">
-          <header><h2>Settings</h2><button class="close" title="Close (Esc)">×</button></header>
-          <nav class="tabs"></nav>
-          <div class="body"></div>
+      <div id="palette" hidden>
+        <div class="pbox">
+          <div class="pfield">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.2" y2="16.2"/></svg>
+            <input type="text" placeholder="Type a shell, a host, a project or a command" spellcheck="false" aria-label="Command palette" />
+          </div>
+          <div class="results"></div>
         </div>
       </div>
       <div id="toast" hidden></div>

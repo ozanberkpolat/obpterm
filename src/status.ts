@@ -203,7 +203,7 @@ export class Status {
 
   private accountMenu(e: MouseEvent) {
     const accounts = this.app.config.accounts;
-    if (!accounts.length) return this.app.settings.open("accounts");
+    if (!accounts.length) return void this.app.tp.openSettings("accounts");
     const current = this.current();
     openMenu(e.clientX, e.clientY, [
       ...accounts.map((a) => ({
@@ -222,7 +222,7 @@ export class Status {
         },
       })),
       { label: "Add a Claude Code account…", onPick: () => this.app.addClaudeAccount() },
-      { label: "Manage accounts…", onPick: () => this.app.settings.open("accounts") },
+      { label: "Manage accounts…", onPick: () => void this.app.tp.openSettings("accounts") },
       ...(this.logins.length > 1
         ? [
             {
@@ -240,7 +240,7 @@ export class Status {
 
   private hostMenu(e: MouseEvent) {
     const hosts = this.app.config.hosts;
-    if (!hosts.length) return this.app.settings.open("hosts");
+    if (!hosts.length) return void this.app.tp.openSettings("hosts");
     openMenu(e.clientX, e.clientY, [
       ...hosts.map((h) => ({
         label: h.name,
@@ -248,7 +248,7 @@ export class Status {
         onPick: () => void this.app.newTabForHost(h),
       })),
       { label: "Split with this host…", onPick: () => this.hostSplitMenu(e) },
-      { label: "Manage hosts…", onPick: () => this.app.settings.open("hosts") },
+      { label: "Manage hosts…", onPick: () => void this.app.tp.openSettings("hosts") },
     ]);
   }
 

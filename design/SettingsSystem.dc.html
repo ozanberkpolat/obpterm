@@ -1,0 +1,128 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.45 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .card { border: 1px solid rgba(140,160,190,.12); border-radius: 16px;
+      background: linear-gradient(180deg, #141a24, #171e29); }
+    .row { display: flex; align-items: center; gap: 20px; padding: 13px 18px;
+      border-bottom: 1px solid rgba(140,160,190,.12); }
+    .row:last-child { border-bottom: 0; }
+    .rl { flex: 1; min-width: 0; }
+    .rl b { display: block; font-weight: 600; font-size: 13px; }
+    .rl span { display: block; margin-top: 2px; font-size: 11.5px; color: #8b97a8; }
+    .inp { padding: 8px 13px; border-radius: 999px; background: #0a0e14;
+      border: 1px solid rgba(140,160,190,.22); color: #eaf0f7;
+      font: 12px "JetBrains Mono", monospace; }
+    .sw { width: 40px; height: 22px; border-radius: 999px; background: rgba(140,160,190,.22); position: relative; flex: none; }
+    .sw i { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 999px; background: #8b97a8; }
+    .sw.on { background: linear-gradient(135deg, #ffa23e, #ff8410); }
+    .sw.on i { left: 21px; background: #1a1205; }
+    .cap { font: 700 10.5px "Plus Jakarta Sans", sans-serif; text-transform: uppercase;
+      letter-spacing: .07em; color: #5b6878; padding: 0 2px 8px; }
+    .kb { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-radius: 999px; }
+    .kb:nth-child(odd) { background: rgba(140,160,190,.12); }
+    .kb b { flex: 1; font-weight: 500; font-size: 12.5px; color: #c9d3e0; }
+    .keys { display: flex; gap: 4px; }
+    .keys span { font: 600 10.5px "JetBrains Mono", monospace; color: #8b97a8;
+      border: 1px solid rgba(140,160,190,.22); border-radius: 6px; padding: 2px 7px; background: #0a0e14; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 880px; display: flex; flex-direction: column; background: #0a0e14; border: 1px solid rgba(140,160,190,.22); overflow: hidden">
+
+  <div style="flex: none; height: 46px; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: linear-gradient(180deg, #141a24, #0e131c); border-bottom: 1px solid rgba(140,160,190,.12)">
+    <span style="font-weight: 700; font-size: 14px">Settings</span>
+    <span style="color: #5b6878">›</span>
+    <span style="font-weight: 600; font-size: 13px; color: #8b97a8">Startup &amp; updates</span>
+    <span style="flex: 1"></span>
+    <div style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; color: #8b97a8; font-size: 17px">×</div>
+  </div>
+
+  <div style="flex: 1; display: flex; min-height: 0">
+    <div style="width: 226px; flex: none; border-right: 1px solid rgba(140,160,190,.12); background: linear-gradient(180deg, #0e131c, #0a0e14)"></div>
+
+    <div style="flex: 1; min-width: 0; padding: 18px 24px; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+
+      <div class="cap" style="padding-top: 0">Startup &amp; session</div>
+      <div class="card">
+        <div class="row">
+          <div class="rl"><b>Reopen tabs on launch</b><span>Panes, project, colour and each pane's folder come back. Off = always start with one tab.</span></div>
+          <div class="sw on"><i></i></div>
+        </div>
+        <div class="row">
+          <div class="rl"><b>Rail width</b><span>Also set by dragging the rail's edge.</span></div>
+          <div style="display: flex; align-items: center; gap: 12px">
+            <div style="width: 160px; height: 4px; border-radius: 999px; background: rgba(140,160,190,.22); position: relative">
+              <div style="position: absolute; inset: 0 70% 0 0; border-radius: 999px; background: linear-gradient(135deg, #ffa23e, #ff8410)"></div>
+              <div style="position: absolute; left: 30%; top: -6px; width: 16px; height: 16px; border-radius: 999px; background: #ff8a1e"></div>
+            </div>
+            <div class="inp" style="width: 80px; text-align: center">232 px</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="rl"><b>Start with the rail collapsed</b><span></span></div>
+          <div class="sw"><i></i></div>
+        </div>
+      </div>
+
+      <div class="cap">Updates</div>
+      <div class="card">
+        <div class="row">
+          <div class="rl"><b>Release source</b><span>Public repository — no token needed.</span></div>
+          <div class="inp" style="width: 250px">ozanberkpolat/obpterm</div>
+        </div>
+        <div class="row">
+          <div class="rl"><b>Access token</b><span>Only for a private repository.</span></div>
+          <div class="inp" style="width: 250px; color: #5b6878">not set</div>
+        </div>
+        <div class="row">
+          <div class="rl"><b>Check on launch</b><span>Just checks; installing is always a button press.</span></div>
+          <div class="sw on"><i></i></div>
+        </div>
+        <div class="row" style="background: rgba(255,138,30,.06)">
+          <div class="rl"><b style="color: #ff8a1e">0.4.3 is available</b><span>You are on 0.4.2. Installing closes OBPTerm, replaces it and reopens your tabs.</span></div>
+          <div style="display: flex; gap: 8px">
+            <div class="inp" style="border-color: rgba(140,160,190,.22); color: #8b97a8; font-family: inherit; font-weight: 600">Release notes</div>
+            <div style="padding: 8px 18px; border-radius: 999px; background: linear-gradient(135deg, #ffa23e, #ff8410); color: #1a1205; font-weight: 700; font-size: 12px">Install and restart</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cap">Token meters</div>
+      <div class="card">
+        <div class="row">
+          <div class="rl"><b>Your budget</b><span>The status bar shows a percentage of these instead of raw totals. Left empty it shows totals — Anthropic's real limit is not readable from disk.</span></div>
+          <div style="display: flex; gap: 8px">
+            <div class="inp" style="width: 118px; text-align: right">5h  2.5M</div>
+            <div class="inp" style="width: 118px; text-align: right">7d  20M</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-top: auto">
+        <div style="flex: 1; display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-radius: 14px; border: 1px solid rgba(140,160,190,.12); font-size: 12px; color: #8b97a8">
+          <span style="flex: 1">config.json · session.json · logs</span>
+          <span style="padding: 5px 13px; border-radius: 999px; border: 1px solid rgba(140,160,190,.22)">Show folder</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-radius: 14px; border: 1px solid rgba(255,107,115,.28); font-size: 12px; color: #ff6b73">
+          Reset everything to defaults
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

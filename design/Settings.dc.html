@@ -1,0 +1,158 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.45 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .nav { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 999px;
+      color: #8b97a8; font-weight: 600; font-size: 12.5px; }
+    .nav svg { width: 15px; height: 15px; flex: none; }
+    .nav.on { background: linear-gradient(135deg, #ffa23e, #ff8410); color: #1a1205; }
+    .sect { font: 700 10.5px "Plus Jakarta Sans", sans-serif; text-transform: uppercase;
+      letter-spacing: .07em; color: #5b6878; padding: 14px 12px 6px; }
+    .card { border: 1px solid rgba(140,160,190,.12); border-radius: 16px;
+      background: linear-gradient(180deg, #141a24, #171e29); }
+    .row { display: flex; align-items: center; gap: 20px; padding: 14px 18px;
+      border-bottom: 1px solid rgba(140,160,190,.12); }
+    .row:last-child { border-bottom: 0; }
+    .rl { flex: 1; min-width: 0; }
+    .rl b { display: block; font-weight: 600; font-size: 13px; color: #eaf0f7; }
+    .rl span { display: block; margin-top: 2px; font-size: 11.5px; color: #8b97a8; }
+    .inp { padding: 8px 13px; border-radius: 999px; background: #0a0e14;
+      border: 1px solid rgba(140,160,190,.22); color: #eaf0f7;
+      font: 12px "JetBrains Mono", monospace; }
+    .key { font: 600 11px "JetBrains Mono", monospace; color: #5b6878;
+      border: 1px solid rgba(140,160,190,.22); border-radius: 6px; padding: 2px 6px; }
+    .sw { width: 40px; height: 22px; border-radius: 999px; background: rgba(140,160,190,.22);
+      position: relative; flex: none; }
+    .sw i { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+      border-radius: 999px; background: #8b97a8; }
+    .sw.on { background: linear-gradient(135deg, #ffa23e, #ff8410); }
+    .sw.on i { left: 21px; background: #1a1205; }
+    .new { font: 700 8.5px "Plus Jakarta Sans", sans-serif; text-transform: uppercase;
+      letter-spacing: .07em; color: #ffb454; border: 1px solid rgba(255,180,84,.4);
+      border-radius: 999px; padding: 2px 7px; margin-left: 8px; vertical-align: 1px; }
+    .seg { display: flex; padding: 3px; border-radius: 999px; background: #0a0e14;
+      border: 1px solid rgba(140,160,190,.22); }
+    .seg span { padding: 5px 13px; border-radius: 999px; font-size: 11.5px; font-weight: 600; color: #8b97a8; }
+    .seg span.on { background: rgba(255,138,30,.22); color: #ff8a1e; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 880px; display: flex; flex-direction: column; background: #0a0e14; border: 1px solid rgba(140,160,190,.22); overflow: hidden">
+
+  <div style="flex: none; height: 46px; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: linear-gradient(180deg, #141a24, #0e131c); border-bottom: 1px solid rgba(140,160,190,.12)">
+    <span style="font-weight: 700; font-size: 14px">Settings</span>
+    <span style="font: 11px 'JetBrains Mono', monospace; color: #5b6878">%APPDATA%\tr.com.obp.obpterm\config.json</span>
+    <span style="flex: 1"></span>
+    <div style="display: flex; align-items: center; gap: 7px; padding: 4px 11px; border-radius: 999px; color: #8b97a8; font-size: 11px; font-weight: 600">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      Saved
+    </div>
+    <div style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; color: #8b97a8; font-size: 17px">×</div>
+  </div>
+
+  <div style="flex: 1; display: flex; min-height: 0">
+
+    <div style="width: 226px; flex: none; padding: 8px; background: linear-gradient(180deg, #0e131c, #0a0e14); border-right: 1px solid rgba(140,160,190,.12); display: flex; flex-direction: column">
+      <div style="display: flex; align-items: center; gap: 8px; margin: 4px 6px 8px; padding: 7px 12px; border-radius: 999px; background: #0a0e14; border: 1px solid rgba(140,160,190,.22)">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#5b6878" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.2" y2="16.2"/></svg>
+        <span style="font-size: 12px; color: #5b6878">Search settings</span>
+      </div>
+      <div class="sect" style="padding-top: 6px">The app</div>
+      <div class="nav on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><polyline points="7 10 10 13 7 16"/><line x1="13" y1="16" x2="17" y2="16"/></svg>Terminal</div>
+      <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none" opacity=".45"/></svg>Appearance</div>
+      <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h10"/><path d="M4 19h7"/></svg>Rail &amp; layout</div>
+      <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6"/><path d="M6.5 6.5a8 8 0 1 0 11 0"/></svg>Startup &amp; session</div>
+      <div class="sect">Things you make</div>
+      <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7 9h4"/></svg>Profiles<span style="margin-left: auto; font: 600 10px 'JetBrains Mono', monospace; color: #5b6878">4</span></div>
+      <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>Accounts<span style="margin-left: auto; font: 600 10px 'JetBrains Mono', monospace; color: #5b6878">2</span></div>
+      <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="7" rx="2"/><rect x="2.5" y="13.5" width="19" height="6" rx="2"/><circle cx="6.5" cy="8" r="1"/><circle cx="6.5" cy="16.5" r="1"/></svg>SSH hosts<span style="margin-left: auto; font: 600 10px 'JetBrains Mono', monospace; color: #5b6878">4</span></div>
+      <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projects<span style="margin-left: auto; font: 600 10px 'JetBrains Mono', monospace; color: #5b6878">2</span></div>
+      <div class="sect">System</div>
+      <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>Keyboard</div>
+      <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><polyline points="8 10 12 14 16 10"/><path d="M4 18h16"/></svg>Updates<span style="margin-left: auto; width: 7px; height: 7px; border-radius: 999px; background: #ff8a1e"></span></div>
+      <div class="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="#0a0e14"/><circle cx="15" cy="12" r="2" fill="#0a0e14"/><circle cx="7" cy="18" r="2" fill="#0a0e14"/></svg>Files &amp; reset</div>
+      <span style="flex: 1"></span>
+      <div style="padding: 10px 12px; font-size: 11px; color: #5b6878; line-height: 1.5">
+        OBPTerm 0.4.2<br>
+        <span style="color: #8b97a8">Edit config.json directly →</span>
+      </div>
+    </div>
+
+    <div style="flex: 1; min-width: 0; overflow: hidden; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px">
+
+      <div>
+        <div style="font-size: 17px; font-weight: 700">Terminal</div>
+        <div style="margin-top: 3px; font-size: 12px; color: #8b97a8">How every shell looks and behaves. A profile can override the shell and the folder.</div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div class="rl"><b>Font</b><span>Bundled with the app, so it looks the same on a fresh machine.</span></div>
+          <div class="inp" style="width: 250px">JetBrains Mono</div>
+        </div>
+        <div class="row">
+          <div class="rl"><b>Font size</b><span>Ctrl+wheel and Ctrl +/− change this live.</span></div>
+          <div style="display: flex; align-items: center; gap: 12px">
+            <div style="width: 190px; height: 4px; border-radius: 999px; background: rgba(140,160,190,.22); position: relative">
+              <div style="position: absolute; inset: 0 60% 0 0; border-radius: 999px; background: linear-gradient(135deg, #ffa23e, #ff8410)"></div>
+              <div style="position: absolute; left: 40%; top: -6px; width: 16px; height: 16px; border-radius: 999px; background: #ff8a1e; box-shadow: 0 2px 8px rgba(0,0,0,.5)"></div>
+            </div>
+            <div class="inp" style="width: 62px; text-align: center">14</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="rl"><b>Scrollback</b><span>Lines kept per pane. Find searches all of them.</span></div>
+          <div class="inp" style="width: 130px; text-align: right">10 000</div>
+        </div>
+        <div class="row">
+          <div class="rl"><b>Cursor<span class="new">new setting</span></b><span>Hardcoded to a blinking bar today.</span></div>
+          <div class="seg"><span class="on">Bar</span><span>Block</span><span>Underline</span><span>Blink</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div class="rl"><b>Default folder</b><span>Created if it does not exist. %USERPROFILE% and ~ are expanded.</span></div>
+          <div class="inp" style="width: 250px">C:\OBP</div>
+        </div>
+        <div class="row">
+          <div class="rl"><b>Default profile</b><span>What Ctrl+Shift+T opens.</span></div>
+          <div class="inp" style="width: 250px; display: flex; align-items: center; justify-content: space-between">PowerShell 7
+            <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="#5b6878" stroke-width="2" stroke-linecap="round"><polyline points="4 6 8 10 12 6"/></svg>
+          </div>
+        </div>
+        <div class="row">
+          <div class="rl"><b>Right-click<span class="new">new setting</span></b><span>Copies the selection, pastes when there is none. Behaviour exists; the switch does not.</span></div>
+          <div class="sw on"><i></i></div>
+        </div>
+        <div class="row">
+          <div class="rl"><b>Capture folder</b><span>Where Ctrl+Shift+L writes a pane's raw output. Fixed today — this makes it settable.</span></div>
+          <div style="display: flex; gap: 8px; align-items: center">
+            <div class="inp" style="width: 250px; color: #8b97a8">…\obpterm\logs</div>
+            <div class="key" style="padding: 7px 12px; border-radius: 999px; color: #8b97a8">Open</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-radius: 16px; border: 1px dashed rgba(140,160,190,.22); color: #8b97a8; font-size: 12px">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#5b6878" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
+        Every change here is written straight to <span style="font-family: 'JetBrains Mono', monospace; color: #c9d3e0">config.json</span> — no Apply button, and the file stays hand-editable.
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

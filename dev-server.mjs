@@ -11,6 +11,10 @@ const SESSION = new URL("./dev-session.json", import.meta.url);
 const wss = new WebSocketServer({ port: 1421 });
 let nextId = 1;
 
+const broadcast = (msg) => {
+  for (const client of wss.clients) if (client.readyState === 1) client.send(JSON.stringify(msg));
+};
+
 wss.on("connection", (ws) => {
   const sessions = new Map();
   const logs = new Map();
@@ -76,7 +80,11 @@ wss.on("connection", (ws) => {
         }
         case "claude_usage": return reply(m.reqId, { usage: claudeUsage(m.dir) });
         case "config_load": return reply(m.reqId, { config: JSON.parse(readFileSync(CONFIG, "utf8")) });
-        case "config_save": writeFileSync(CONFIG, JSON.stringify(m.config, null, 2) + "\n"); return reply(m.reqId);
+        case "config_save":
+          writeFileSync(CONFIG, JSON.stringify(m.config, null, 2) + "\n");
+          broadcast({ t: "config:changed" });
+          return reply(m.reqId);
+        case "config_reset": return reply(m.reqId, { config: JSON.parse(readFileSync(CONFIG, "utf8")) });
         default: return reply(m.reqId, { error: `unknown message ${m.t}` });
       }
     } catch (e) {

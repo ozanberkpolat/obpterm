@@ -70,6 +70,16 @@ With neither set, the build is unsigned and says so in the log.
 Everything else, including `F5`, `Ctrl+R`, `Ctrl+F`, `Ctrl+W`, goes to the shell: WebView2's
 browser accelerator keys are switched off at startup (`src-tauri/src/lib.rs`).
 
+## The window
+
+OBPTerm draws its own title bar (the OS one is off): the wordmark, four menus — **Shell**,
+**Panes**, **Project**, **View** — the palette button and a settings gear, then minimize /
+maximize / close. Nothing is reachable only by right-click; every context menu's contents also
+live in one of those four menus.
+
+**Ctrl+K** opens the command palette over profiles, SSH hosts, projects, open tabs and the app's
+own commands, matched as a subsequence ("spr" finds "Split right").
+
 ## The toolbar
 
 Top-right of the terminal area, the same actions as the `/ssh/` terminal in iot-stack: **copy**,
@@ -80,10 +90,22 @@ directory.
 
 ## Settings
 
-`Ctrl+Shift+,` opens one sheet with four lists — **Profiles**, **Accounts**, **SSH hosts**,
-**Projects**. Everything the app can create is editable and deletable there, deletes come with an
-undo, and the only thing you cannot remove is the last profile (the app needs a shell to start).
-The same lists still live in `config.json` if you prefer editing it directly.
+`Ctrl+Shift+,` (or the gear) opens settings in **its own window**, with a sidebar of sections:
+
+| Section | What it holds |
+| --- | --- |
+| Terminal | Font, size, scrollback, cursor style and blink, default folder, default profile, right-click behaviour, capture folder |
+| Appearance | Accent, dim-inactive-panes, and all 20 terminal colours with a live preview |
+| Rail & layout | Rail width, start collapsed |
+| Startup & session | Reopen tabs, default account, token budgets |
+| Profiles / Accounts / SSH hosts / Projects | A list and a form: add, duplicate, edit, delete, with undo |
+| Keyboard | Every shortcut the app reserves (fixed for now) |
+| Updates | Release source, token, check-on-launch, and the update button |
+| Files & reset | Show the config / log folders, reset to defaults |
+
+Every control writes to `config.json` as you change it — no Apply button — and the terminal
+window picks the change up immediately. The file stays hand-editable; edit it and the settings
+window follows.
 
 ## Projects
 

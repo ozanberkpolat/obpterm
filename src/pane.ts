@@ -80,7 +80,7 @@ export class Pane {
       this.logPath = null;
     } else {
       const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
-      this.logPath = await this.host.tp.logStart(this.id, this.title || this.profile.id, stamp);
+      this.logPath = await this.host.tp.logStart(this.id, this.title || this.profile.id, stamp, this.host.config.capture_dir);
     }
     this.host.onPaneTitle(this);
     return this.logPath;

@@ -19,8 +19,8 @@ const isWindows = navigator.userAgent.includes("Windows");
 export function createTerm(container: HTMLElement, config: Config): Term {
   const term = new Terminal({
     allowProposedApi: true,
-    cursorBlink: true,
-    cursorStyle: "bar",
+    cursorBlink: config.cursor_blink,
+    cursorStyle: config.cursor_style,
     fontFamily: config.font_family,
     fontSize: config.font_size,
     scrollback: config.scrollback,
@@ -56,5 +56,7 @@ export function applyTermConfig(term: Terminal, config: Config) {
   term.options.fontFamily = config.font_family;
   term.options.fontSize = config.font_size;
   term.options.scrollback = config.scrollback;
+  term.options.cursorStyle = config.cursor_style;
+  term.options.cursorBlink = config.cursor_blink;
   term.options.theme = config.theme as ITheme;
 }
