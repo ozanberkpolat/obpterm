@@ -1,6 +1,7 @@
 //! The host's side of the socket: accept connections, check the token, serve requests, and
 //! exit on its own once nothing is running and nobody is looking.
 
+use crate::hooks::HookHub;
 use crate::protocol::{self, Reply, Request, KIND_INPUT, KIND_JSON, KIND_OUTPUT};
 use crate::registry::{Event, Registry, Shared};
 use crate::Advert;
@@ -14,6 +15,9 @@ use tokio::sync::mpsc;
 pub struct Host {
     pub advert: Advert,
     pub registry: Shared,
+    pub hooks: Arc<HookHub>,
+    /// OBPTERM_HOOK_ENV and friends, injected into every spawned shell.
+    hook_env: std::sync::Mutex<Vec<(String, String)>>,
     shutdown: tokio::sync::watch::Sender<bool>,
 }
 
@@ -32,8 +36,34 @@ impl Host {
                 version: version.to_string(),
             },
             registry: Arc::new(std::sync::Mutex::new(Registry::default())),
+            hooks: HookHub::new(crate::random_hex(12)),
+            hook_env: std::sync::Mutex::new(Vec::new()),
             shutdown,
         }
+    }
+
+    /// Starts the hook listener and writes the bash-sourceable env file the installed hooks
+    /// read. Sessions carry the FILE's path in their environment, not the port: the port
+    /// changes when the host restarts, the file's location never does.
+    pub async fn start_hooks(&self, config_dir: &std::path::Path) -> std::io::Result<()> {
+        let port = Arc::clone(&self.hooks).listen().await?;
+        let env_file = config_dir.join("hook-endpoint.env");
+        std::fs::write(
+            &env_file,
+            format!("OBPTERM_HOOK_PORT={port}
+OBPTERM_HOOK_TOKEN={}
+", self.hooks.token),
+        )?;
+        *self.hook_env.lock().unwrap() = vec![("OBPTERM_HOOK_ENV".into(), env_file.display().to_string())];
+        // Track states even while no window is connected, so `list` is truthful on reconnect.
+        let registry = Arc::clone(&self.registry);
+        let mut events = self.hooks.subscribe();
+        tokio::spawn(async move {
+            while let Ok(e) = events.recv().await {
+                registry.lock().unwrap().note_agent(e.pane, &e.state, e.detail.as_deref(), e.session_id.as_deref());
+            }
+        });
+        Ok(())
     }
 
     /// Serves until `Shutdown` arrives or the idle rule fires. Returns the reason.
@@ -89,6 +119,7 @@ impl Host {
 
         // Output for attached sessions arrives on this channel from the reader threads.
         let (tx, mut events) = mpsc::unbounded_channel::<Event>();
+        let mut agent_events = self.hooks.subscribe();
         // Two writers (request replies and streamed output) share the socket through one task.
         let (out_tx, mut out_rx) = mpsc::unbounded_channel::<(u8, Vec<u8>)>();
         let writer_task = tokio::spawn(async move {
@@ -128,7 +159,8 @@ impl Host {
                                     send_json(&out_tx, &Reply::Sessions { sessions });
                                 }
                                 Request::Spawn { req, spawn } => {
-                                    let reply = match Registry::spawn(&self.registry, spawn) {
+                                    let hook_env = self.hook_env.lock().unwrap().clone();
+                                    let reply = match Registry::spawn(&self.registry, spawn, &hook_env) {
                                         Ok(id) => Reply::Ok { req, id: Some(id), path: None },
                                         Err(error) => Reply::Err { req, error },
                                     };
@@ -152,6 +184,7 @@ impl Host {
                                         Err(error) => send_json(&out_tx, &Reply::Err { req, error }),
                                     }
                                 }
+                                Request::Answer { pending, allow } => self.hooks.answer(&pending, allow),
                                 Request::Detach { id } => self.registry.lock().unwrap().detach(id),
                                 Request::Resize { id, cols, rows } => {
                                     let _ = self.registry.lock().unwrap().resize(id, cols, rows);
@@ -181,6 +214,18 @@ impl Host {
                         Some(Event::Output { id, bytes }) => send_data(&out_tx, id, &bytes),
                         Some(Event::Exit { id, code }) => send_json(&out_tx, &Reply::Exit { id, code }),
                         None => break,
+                    }
+                }
+                agent = agent_events.recv() => {
+                    if let Ok(e) = agent {
+                        send_json(&out_tx, &Reply::Agent {
+                            pane: e.pane,
+                            state: e.state,
+                            session_id: e.session_id,
+                            detail: e.detail,
+                            pending_id: e.pending_id,
+                            options: e.options,
+                        });
                     }
                 }
             }

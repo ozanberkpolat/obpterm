@@ -60,8 +60,14 @@ impl Registry {
     }
 
     /// Starts a shell. The reader thread pumps its output into the ring and to whoever is
-    /// attached, and reports the exit when the pty closes.
-    pub fn spawn(shared: &Shared, spawn: Spawn) -> Result<u32, String> {
+    /// attached, and reports the exit when the pty closes. `hook_env` is the extra environment
+    /// that lets a Claude Code hook inside the shell find its way back to this session.
+    pub fn spawn(shared: &Shared, spawn: Spawn, hook_env: &[(String, String)]) -> Result<u32, String> {
+        let id = {
+            let mut reg = shared.lock().unwrap();
+            reg.next_id += 1;
+            reg.next_id
+        };
         let pair = native_pty_system()
             .openpty(PtySize { rows: spawn.rows, cols: spawn.cols, pixel_width: 0, pixel_height: 0 })
             .map_err(|e| format!("openpty: {e}"))?;
@@ -72,6 +78,10 @@ impl Registry {
         }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        cmd.env("OBPTERM_PANE_ID", id.to_string());
+        for (k, v) in hook_env {
+            cmd.env(k, v);
+        }
         for (k, v) in &spawn.env {
             cmd.env(k, v);
         }
@@ -81,10 +91,8 @@ impl Registry {
         let mut reader = pair.master.try_clone_reader().map_err(|e| format!("reader: {e}"))?;
         let writer = pair.master.take_writer().map_err(|e| format!("writer: {e}"))?;
 
-        let id = {
+        {
             let mut reg = shared.lock().unwrap();
-            reg.next_id += 1;
-            let id = reg.next_id;
             reg.sessions.insert(
                 id,
                 Session {
@@ -97,6 +105,9 @@ impl Registry {
                         started_at: now_ms(),
                         last_output: now_ms(),
                         bell: false,
+                        agent_state: None,
+                        agent_detail: None,
+                        claude_session_id: None,
                     },
                     master: Some(pair.master),
                     writer,
@@ -107,8 +118,7 @@ impl Registry {
                     log: None,
                 },
             );
-            id
-        };
+        }
 
         // The waiter owns exit detection: on Windows the pty read does NOT end when the child
         // exits — it blocks until the master is dropped, so waiting on the reader alone would
@@ -240,6 +250,17 @@ impl Registry {
         let ids: Vec<u32> = self.sessions.keys().copied().collect();
         for id in ids {
             let _ = self.kill(id);
+        }
+    }
+
+    /// The latest hook-derived facts, kept so a window that reconnects starts truthful.
+    pub fn note_agent(&mut self, pane: u32, state: &str, detail: Option<&str>, session_id: Option<&str>) {
+        if let Some(s) = self.sessions.get_mut(&pane) {
+            s.info.agent_state = Some(state.to_string());
+            s.info.agent_detail = detail.map(str::to_string);
+            if let Some(sid) = session_id {
+                s.info.claude_session_id = Some(sid.to_string());
+            }
         }
     }
 

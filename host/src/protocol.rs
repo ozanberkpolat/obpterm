@@ -41,6 +41,8 @@ pub enum Request {
     Kill { id: u32 },
     LogStart { req: u32, id: u32, path: String },
     LogStop { id: u32 },
+    /// The rail's verdict on a held permission request; None passes it to the normal prompt.
+    Answer { pending: String, allow: Option<bool> },
     /// End every shell and exit. Closing the window is a detach, never this.
     Shutdown,
 }
@@ -57,6 +59,14 @@ pub struct SessionInfo {
     pub last_output: i64,
     /// A BEL arrived while nobody was attached. Cleared by the next attach.
     pub bell: bool,
+    /// The latest hook-derived state, so a reconnecting window starts truthful.
+    #[serde(default)]
+    pub agent_state: Option<String>,
+    #[serde(default)]
+    pub agent_detail: Option<String>,
+    /// Claude's own session id, learned from hooks — what `claude --resume` needs.
+    #[serde(default)]
+    pub claude_session_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -71,6 +81,15 @@ pub enum Reply {
     /// Everything between this and `Live` is replayed history, not fresh output.
     Replaying { id: u32 },
     Live { id: u32 },
+    /// A Claude Code hook fired for this pane. The window's state machine takes it from here.
+    Agent {
+        pane: u32,
+        state: String,
+        session_id: Option<String>,
+        detail: Option<String>,
+        pending_id: Option<String>,
+        options: Vec<String>,
+    },
 }
 
 pub async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, kind: u8, payload: &[u8]) -> std::io::Result<()> {

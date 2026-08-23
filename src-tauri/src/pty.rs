@@ -72,6 +72,75 @@ async fn try_connect(advert: &PathBuf) -> Option<Arc<Client>> {
     Client::connect(&advert).await.ok()
 }
 
+/// Forwards hook-derived agent updates from the host to the webview, and installs the hook
+/// block into every Claude settings.json the config names. Returns which files were changed.
+#[tauri::command]
+pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>) -> Result<Vec<String>, String> {
+    let client = ensure(&app).await?;
+    // One watcher for the window's lifetime: agent updates become Tauri events.
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    client.watch_agents(tx);
+    let emitter = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(u) = rx.recv().await {
+            let _ = emitter.emit(
+                "agent",
+                serde_json::json!({
+                    "pane": u.pane, "state": u.state, "session_id": u.session_id,
+                    "detail": u.detail, "pending_id": u.pending_id, "options": u.options,
+                }),
+            );
+        }
+    });
+
+    let mut changed = Vec::new();
+    for dir in dirs {
+        let path = PathBuf::from(expand_vars(&dir)).join("settings.json");
+        let mut settings: serde_json::Value = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or(serde_json::json!({}));
+        if obpterm_host::install::installed(&settings) {
+            continue;
+        }
+        obpterm_host::install::install(&mut settings);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+        changed.push(path.display().to_string());
+    }
+    Ok(changed)
+}
+
+/// Removes the hook block from the named settings files.
+#[tauri::command]
+pub fn hooks_remove(dirs: Vec<String>) -> Result<usize, String> {
+    let mut removed = 0;
+    for dir in dirs {
+        let path = PathBuf::from(expand_vars(&dir)).join("settings.json");
+        let Some(mut settings) = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()) else {
+            continue;
+        };
+        if !obpterm_host::install::installed(&settings) {
+            continue;
+        }
+        obpterm_host::install::remove(&mut settings);
+        std::fs::write(&path, serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        removed += 1;
+    }
+    Ok(removed)
+}
+
+/// The rail's verdict on a held permission request.
+#[tauri::command]
+pub fn agent_answer(link: State<HostLink>, pending: String, allow: Option<bool>) -> Result<(), String> {
+    self::link(&link)?.answer(pending, allow);
+    Ok(())
+}
+
 /// The host runs from a copy outside the install folder, under its own name. Two reasons:
 /// Windows cannot replace a running executable, so an installer must never meet it; and the
 /// installer kills `OBPTerm.exe` by name, which a differently named copy escapes.

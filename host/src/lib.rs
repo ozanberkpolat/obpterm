@@ -10,6 +10,9 @@ pub mod registry;
 pub mod server;
 pub mod client;
 pub mod logins;
+pub mod agent;
+pub mod hooks;
+pub mod install;
 
 use std::path::PathBuf;
 

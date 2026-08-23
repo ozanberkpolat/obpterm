@@ -10,6 +10,17 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncWriteExt, BufReader, BufWriter};
 use tokio::sync::{mpsc, oneshot};
 
+/// A hook fired somewhere: the window's supervision state machine consumes these.
+#[derive(Debug, Clone)]
+pub struct AgentUpdate {
+    pub pane: u32,
+    pub state: String,
+    pub session_id: Option<String>,
+    pub detail: Option<String>,
+    pub pending_id: Option<String>,
+    pub options: Vec<String>,
+}
+
 /// Output and exit for one attached session, in order. Replay comes first, framed by
 /// `Replaying`/`Live` so the window can tell history from fresh bytes.
 #[derive(Debug, Clone, PartialEq)]
@@ -28,6 +39,7 @@ struct Inner {
     pending: Mutex<HashMap<u32, oneshot::Sender<Reply>>>,
     watchers: Mutex<HashMap<u32, mpsc::UnboundedSender<Delivery>>>,
     list_waiters: Mutex<Vec<oneshot::Sender<Vec<protocol::SessionInfo>>>>,
+    agent_watcher: Mutex<Option<mpsc::UnboundedSender<AgentUpdate>>>,
 }
 
 impl Inner {
@@ -66,6 +78,10 @@ impl Client {
         };
 
         let (out, mut out_rx) = mpsc::unbounded_channel::<(u8, Vec<u8>)>();
+        // Named pipes have no half-close: the host only sees this client leave when BOTH halves
+        // drop. The writer task ending (the Client was dropped) must therefore also end the
+        // reader task, or the receive half keeps the pipe open forever.
+        let (closed_tx, closed_rx) = tokio::sync::watch::channel(false);
         tokio::spawn(async move {
             while let Some((kind, payload)) = out_rx.recv().await {
                 if protocol::write_frame(&mut writer, kind, &payload).await.is_err() {
@@ -73,6 +89,7 @@ impl Client {
                 }
             }
             let _ = writer.shutdown().await;
+            let _ = closed_tx.send(true);
         });
 
         let (gone_tx, gone) = tokio::sync::watch::channel(false);
@@ -80,9 +97,14 @@ impl Client {
         let client = Arc::new(Client { instance, version, out, inner: Arc::clone(&inner), next_req: Mutex::new(0), gone });
 
         let me = inner;
+        let mut closed_rx = closed_rx;
         tokio::spawn(async move {
             loop {
-                let frame = match protocol::read_frame(&mut reader).await {
+                let frame = tokio::select! {
+                    frame = protocol::read_frame(&mut reader) => frame,
+                    _ = closed_rx.changed() => break,
+                };
+                let frame = match frame {
                     Ok(Some(f)) => f,
                     _ => break,
                 };
@@ -112,6 +134,11 @@ impl Client {
                                 me.watchers.lock().unwrap().remove(&id);
                             }
                             Reply::Hello { .. } => {}
+                            Reply::Agent { pane, state, session_id, detail, pending_id, options } => {
+                                if let Some(tx) = me.agent_watcher.lock().unwrap().as_ref() {
+                                    let _ = tx.send(AgentUpdate { pane, state, session_id, detail, pending_id, options });
+                                }
+                            }
                         }
                     }
                     _ => {}
@@ -206,5 +233,15 @@ impl Client {
 
     pub fn shutdown(&self) {
         self.send_json(&Request::Shutdown);
+    }
+
+    /// Routes hook-derived agent updates to `tx`. One watcher: the window.
+    pub fn watch_agents(&self, tx: mpsc::UnboundedSender<AgentUpdate>) {
+        *self.inner.agent_watcher.lock().unwrap() = Some(tx);
+    }
+
+    /// The rail's verdict on a held permission request.
+    pub fn answer(&self, pending: String, allow: Option<bool>) {
+        self.send_json(&Request::Answer { pending, allow });
     }
 }

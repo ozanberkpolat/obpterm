@@ -1,6 +1,5 @@
 mod claude;
 mod logins;
-mod agent;
 mod chrome;
 mod config;
 mod metrics;
@@ -25,6 +24,9 @@ pub fn run() {
             pty::pty_spawn,
             pty::pty_attach,
             pty::pty_detach,
+            pty::hooks_ensure,
+            pty::hooks_remove,
+            pty::agent_answer,
             pty::pty_write,
             pty::pty_resize,
             pty::pty_kill,

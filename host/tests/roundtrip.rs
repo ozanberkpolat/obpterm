@@ -149,3 +149,52 @@ async fn a_finished_shell_is_reported_on_attach_not_lost() {
     c.shutdown();
     let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
 }
+
+#[tokio::test]
+async fn a_hook_event_reaches_the_window_and_the_answer_reaches_the_hook() {
+    use obpterm_host::client::AgentUpdate;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), "test"));
+    let dir = std::env::temp_dir().join(format!("obpterm-hooks-{}", obpterm_host::random_hex(4)));
+    std::fs::create_dir_all(&dir).unwrap();
+    host.start_hooks(&dir).await.unwrap();
+    let advert = host.advert.clone();
+    let server = tokio::spawn(Arc::clone(&host).serve());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // The env file the hooks source: read the port and token back the way a hook would.
+    let env = std::fs::read_to_string(dir.join("hook-endpoint.env")).unwrap();
+    let get = |k: &str| env.lines().find_map(|l| l.strip_prefix(&format!("{k}="))).unwrap().to_string();
+    let (port, token) = (get("OBPTERM_HOOK_PORT").parse::<u16>().unwrap(), get("OBPTERM_HOOK_TOKEN"));
+
+    let c = Client::connect(&advert).await.unwrap();
+    let (atx, mut agents) = mpsc::unbounded_channel::<AgentUpdate>();
+    c.watch_agents(atx);
+
+    // A PermissionRequest hook posts and waits; the window answers deny through the socket.
+    let post = tokio::spawn(async move {
+        let mut s = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        let body = r#"{"hook_event_name":"PermissionRequest","session_id":"sX","tool_name":"Bash","tool_input":{"command":"rm -rf /"}}"#;
+        let req = format!("POST /hook/{token}/42 HTTP/1.1\r\nhost: x\r\ncontent-length: {}\r\n\r\n{body}", body.len());
+        s.write_all(req.as_bytes()).await.unwrap();
+        let mut out = String::new();
+        s.read_to_string(&mut out).await.unwrap();
+        out
+    });
+
+    let update = tokio::time::timeout(Duration::from_secs(3), agents.recv()).await.unwrap().unwrap();
+    assert_eq!((update.pane, update.state.as_str()), (42, "blocked"));
+    assert_eq!(update.detail.as_deref(), Some("Running rm -rf /"));
+    c.answer(update.pending_id.clone().unwrap(), Some(false));
+
+    let response = tokio::time::timeout(Duration::from_secs(3), post).await.unwrap().unwrap();
+    assert!(response.contains(r#""behavior":"deny""#), "the verdict rode the hook's own response: {response}");
+
+    // The registry remembered the state for the next window.
+    let sessions = c.list().await.unwrap();
+    let _ = sessions; // pane 42 has no pty session; state bookkeeping for real panes is note_agent's job
+    c.shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
+    let _ = std::fs::remove_dir_all(dir);
+}

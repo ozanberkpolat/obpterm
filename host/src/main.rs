@@ -14,6 +14,9 @@ async fn main() {
     let socket = format!("obpterm-{}", obpterm_host::random_hex(8));
     let host = Arc::new(Host::new(socket, obpterm_host::random_hex(16), env!("CARGO_PKG_VERSION")));
 
+    if let Err(e) = host.start_hooks(&config_dir).await {
+        eprintln!("obpterm-host: hooks disabled: {e}");
+    }
     let advert = obpterm_host::advert_path(&config_dir);
     std::fs::write(&advert, serde_json::to_string_pretty(&host.advert).unwrap()).expect("write host.json");
 
