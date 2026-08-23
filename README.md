@@ -176,21 +176,22 @@ no installer window, no clicking, and OBPTerm comes back by itself with every ta
 Windows cannot swap a running executable, so the process does restart — the installer stops it,
 replaces the files and starts the new build. Shells running inside the tabs are lost with it;
 the tabs, panes and directories come back from `session.json`, and the new window says
-*Updated to x.y.z*. While the repository is private, put a token with read access to it in `config.json`:
+*Updated to x.y.z*. The repository is public, so no token is needed. If you ever point `update_repo` at a private
+repository, add a token with read access to its releases:
 
 ```json
 "update_repo": "ozanberkpolat/obpterm",
 "github_token": "github_pat_…"
 ```
 
-A public repository needs no token. Nothing is downloaded until you press the button a second
-time, and the installer is run from `%TEMP%`.
+Nothing is downloaded until you press the button a second time, and the installer is run from
+`%TEMP%`.
 
 ## Host book
 
 ```json
 "hosts": [
-  { "id": "vps", "name": "Hetzner VPS", "host": "100.84.61.54", "user": "obp", "port": null, "identity": null, "project": "homelab" }
+  { "id": "vps", "name": "My VPS", "host": "vps.example.com", "user": "me", "port": null, "identity": null, "project": "homelab" }
 ]
 ```
 

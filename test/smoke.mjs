@@ -107,9 +107,10 @@ assert.ok(usage.files_scanned > 0, "transcripts were found");
 
 // Host book: a tab opened on a host runs ssh and says so in the status bar.
 await evaluate("void window.obpterm.newTabForHost(window.obpterm.config.hosts[0])");
-await until("window.obpterm.tab?.hostId === 'pi'", "an ssh tab");
+const host = JSON.parse(await evaluate("JSON.stringify(window.obpterm.config.hosts[0])"));
+await until(`window.obpterm.tab?.hostId === ${JSON.stringify(host.id)}`, "an ssh tab");
 assert.equal(await evaluate("window.obpterm.tab.active.profile.exe"), "ssh");
-assert.equal(await evaluate("document.querySelector('#target-chip .where').textContent"), "Pi");
+assert.equal(await evaluate("document.querySelector('#target-chip .where').textContent"), host.name);
 await evaluate("window.obpterm.closeTab(window.obpterm.tab)");
 
 const snap = await evaluate("JSON.stringify(window.obpterm.tabs.map(t => window.obpterm.snapshot(t)))");

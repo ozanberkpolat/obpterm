@@ -94,7 +94,7 @@ const SECTIONS: Section<Record<string, unknown>>[] = [
     hint: "Targets for Ctrl+Shift+H and the status bar's host chip.",
     fields: [
       { key: "name", label: "Name", placeholder: "Hetzner VPS" },
-      { key: "host", label: "Host", placeholder: "100.84.61.54" },
+      { key: "host", label: "Host", placeholder: "vps.example.com" },
       { key: "user", label: "User", placeholder: "obp" },
       { key: "port", label: "Port", placeholder: "22", kind: "number" },
       { key: "identity", label: "Key file", placeholder: "C:\\Users\\you\\.ssh\\id_ed25519" },

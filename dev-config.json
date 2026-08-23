@@ -19,11 +19,11 @@
     }
   ],
   "font_family": "JetBrains Mono, Cascadia Mono, Consolas, monospace",
-  "font_size": 19,
+  "font_size": 20,
   "scrollback": 10000,
   "rail_collapsed": false,
   "rail_width": 300,
-  "default_cwd": "/home/obp",
+  "default_cwd": "~",
   "update_repo": "ozanberkpolat/obpterm",
   "github_token": null,
   "accounts": [
@@ -31,25 +31,25 @@
       "id": "default",
       "name": "Default",
       "env": {},
-      "claude_dir": "/home/obp/.claude",
+      "claude_dir": "~/.claude",
       "color": "#ff8a1e"
     },
     {
       "id": "work",
       "name": "Work",
       "env": {
-        "CLAUDE_CONFIG_DIR": "/home/obp/.claude-work"
+        "CLAUDE_CONFIG_DIR": "~/.claude-work"
       },
-      "claude_dir": "/home/obp/.claude-work",
+      "claude_dir": "~/.claude-work",
       "color": "#4c8dff"
     }
   ],
   "hosts": [
     {
-      "id": "pi",
-      "name": "Pi",
-      "host": "100.123.23.18",
-      "user": "obp",
+      "id": "local",
+      "name": "Localhost",
+      "host": "127.0.0.1",
+      "user": null,
       "port": null,
       "identity": null,
       "project": null
@@ -268,6 +268,51 @@
     },
     {
       "id": "pmt5ksmy5",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5kx8ry",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5kxfxu",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5kxy9q",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5kygw9",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5kz3o0",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,

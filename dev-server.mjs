@@ -25,7 +25,7 @@ wss.on("connection", (ws) => {
           const p = pty.spawn(profile.exe, profile.args ?? [], {
             name: "xterm-256color",
             cols, rows,
-            cwd: profile.cwd ?? os.homedir(),
+            cwd: expand(profile.cwd) ?? os.homedir(),
             env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", OBPTERM: "dev" },
           });
           const id = nextId++;
@@ -67,7 +67,7 @@ wss.on("connection", (ws) => {
         case "claude_account_names": {
           try {
             return reply(m.reqId, {
-              names: readdirSync(`${m.dir}/accounts`, { withFileTypes: true })
+              names: readdirSync(`${expand(m.dir)}/accounts`, { withFileTypes: true })
                 .filter((d) => d.isDirectory())
                 .map((d) => d.name)
                 .sort(),
@@ -116,12 +116,18 @@ function hostMetrics() {
 }
 
 // Dev twin of src-tauri/src/claude.rs — same files, no incremental cache.
+/** dev-config.json uses `~` so it carries no one's home directory. */
+function expand(p) {
+  return typeof p === "string" && p.startsWith("~") ? p.replace(/^~/, os.homedir()) : p;
+}
+
 function readJSON(path) {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; }
 }
 
-function claudeAccount(dir) {
-  const account = { dir, name: null, email: null, organization: null, tier: null, exists: false };
+function claudeAccount(rawDir) {
+  const dir = expand(rawDir);
+  const account = { dir: rawDir, name: null, email: null, organization: null, tier: null, exists: false };
   try { statSync(dir); account.exists = true; } catch { return account; }
   try { account.name = readFileSync(`${dir}/accounts/current`, "utf8").trim() || null; } catch {}
   const p = (account.name && readJSON(`${dir}/accounts/${account.name}/account.json`)) ?? readJSON(`${dir}/.claude.json`);
@@ -132,10 +138,11 @@ function claudeAccount(dir) {
   return account;
 }
 
-function claudeUsage(dir) {
+function claudeUsage(rawDir) {
+  const dir = expand(rawDir);
   const now = Date.now();
   const empty = () => ({ input: 0, output: 0, cache_read: 0, cache_write: 0, messages: 0, billed: 0 });
-  const usage = { dir, window_5h: empty(), window_7d: empty(), last_activity: null, files_scanned: 0 };
+  const usage = { dir: rawDir, window_5h: empty(), window_7d: empty(), last_activity: null, files_scanned: 0 };
   const seen = new Set();
   let dirs = [];
   try { dirs = readdirSync(`${dir}/projects`, { withFileTypes: true }); } catch { return usage; }

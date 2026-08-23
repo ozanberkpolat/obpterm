@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 
-// host: true so the laptop can open the dev UI over Tailscale (http://100.84.61.54:1420) while
+// host: true so another machine on the same network can open the dev UI while
 // `npm run devserver` provides real shells on :1421. Inside the Tauri app this file is only
 // used for the production build.
 export default defineConfig({
