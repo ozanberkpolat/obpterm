@@ -211,7 +211,22 @@ export class App implements PaneHost {
   async openProjectLayout(project: Project) {
     const tabs = (project.layout ?? []) as SavedTab[];
     if (!tabs.length) return toast(`“${project.name}” has no saved layout`);
+    // Opening it twice used to spawn a second set of shells, and the next Save wrote the
+    // doubled set back to config.json.
+    const open = this.tabs.filter((t) => t.projectId === project.id);
+    if (open.length) {
+      this.activate(open[0]!);
+      return toast(`“${project.name}” is already open — close its tabs first to reopen the layout`);
+    }
     for (const saved of tabs) await this.restoreTab({ ...saved, project: project.id });
+  }
+
+  /** The other half of "open the layout": put it away again. */
+  closeProjectTabs(project: Project) {
+    const tabs = this.tabs.filter((t) => t.projectId === project.id);
+    if (!tabs.length) return toast(`“${project.name}” has no open tabs`);
+    for (const tab of tabs) this.closeTab(tab);
+    toast(`Closed ${tabs.length} tab${tabs.length > 1 ? "s" : ""} in “${project.name}”`);
   }
 
   // ---- tabs -----------------------------------------------------------------------------
@@ -236,13 +251,21 @@ export class App implements PaneHost {
     return tab;
   }
 
-  private async startPane(tab: Tab, pane: Pane) {
+  private async startPane(_tab: Tab, pane: Pane) {
     try {
       await pane.start();
     } catch (e) {
+      // Closing the pane here cascades: last pane closes the tab, last tab closes the window.
+      // A default profile of pwsh.exe on a machine without PowerShell 7 would take the app
+      // down with Settings unreachable. Keep the pane, show why, let `r` retry.
+      pane.exited = true;
+      pane.exitAcknowledged = true;
+      pane.exitCode = -1;
+      pane.term.term.write(
+        `\r\n\x1b[38;2;255;107;115m[${pane.profile.exe} could not start]\x1b[0m ${e}\r\n\r\n` +
+          `  Fix the profile in Settings, then press \x1b[38;2;255;138;30mr\x1b[0m to try again.\r\n`,
+      );
       toast(`Could not start ${pane.profile.name}: ${e}`);
-      this.closePane(pane, tab);
-      return;
     }
     this.paint();
   }
@@ -543,12 +566,55 @@ export class App implements PaneHost {
     void this.respawnPane(pane);
   }
 
+  /** A program asked for attention by name — the payload OSC 9 was carrying all along. */
+  onPaneNotify(pane: Pane, title: string, body: string) {
+    if (this.isFocused(pane)) return;
+    pane.bell = true;
+    this.onPaneActivity();
+    this.alert(title || pane.profile.name, body);
+  }
+
+  /** One place for "tell the user something happened while they were elsewhere". */
+  private alert(title: string, body: string) {
+    if (!this.config.notify_bell) return;
+    void this.tp.notify(title, body).catch(() => {});
+    void this.tp.attention(true).catch(() => {});
+  }
+
+  /**
+   * A pane that was busy and has gone quiet is the completion signal that needs nothing from
+   * the shell — no bell, no shell integration, and it works over SSH.
+   */
+  private checkSilence() {
+    if (!this.config.notify_silence) return;
+    const quiet = this.config.silence_seconds * 1000;
+    for (const tab of this.tabs) {
+      for (const pane of L.panes(tab.root)) {
+        const busyFor = pane.lastOutput - pane.busySince;
+        if (!pane.busySince || pane.exited || this.isFocused(pane)) continue;
+        if (Date.now() - pane.lastOutput < quiet) continue;
+        // Only worth saying for something that actually ran for a while.
+        if (busyFor > 5000) {
+          pane.bell = true;
+          this.alert(this.title(tab), `quiet for ${this.config.silence_seconds}s — probably finished`);
+        }
+        pane.busySince = 0;
+      }
+    }
+  }
+
   isFocused(pane: Pane): boolean {
     return this.tab?.active === pane && document.hasFocus();
   }
 
+  /** Coming back to the window clears the flashing. */
+  clearAttention() {
+    void this.tp.attention(false).catch(() => {});
+  }
+
   /** A pane started or stopped printing, or rang: the rail's dots are stale. */
   onPaneActivity() {
+    this.checkSilence();
     renderRail(this);
   }
 

@@ -30,8 +30,11 @@ export function installKeys(app: App) {
     (e) => {
       // A text field owns its keystrokes. The listener is on the window in the capture phase,
       // so a stopPropagation() inside the field can never reach us — check the target instead.
+      // xterm receives keys through a hidden textarea of its own, and that one is NOT a field:
+      // treating it as one killed every shortcut while a pane had focus, which is always.
       const target = e.target as HTMLElement | null;
-      if (target?.matches?.("input, textarea, select") || target?.isContentEditable) {
+      const inTerminal = !!target?.closest?.(".xterm");
+      if (!inTerminal && (target?.matches?.("input, textarea, select") || target?.isContentEditable)) {
         if (e.code === "F12") stop(e);
         return;
       }

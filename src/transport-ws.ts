@@ -77,12 +77,24 @@ export function wsTransport(): Transport {
     },
     claudeAccountNames: async (dir) => (await call("claude_account_names", { dir })).names as string[],
     windowAction: async () => {},
+    async notify(title, body) {
+      // The browser loop gets the same behaviour through the standard API.
+      if (!("Notification" in window)) return false;
+      if (Notification.permission !== "granted" && (await Notification.requestPermission()) !== "granted") return false;
+      new Notification(title, { body });
+      return true;
+    },
+    attention: async () => {},
     configReset: async () => (await call("config_reset")).config as Config,
     reveal: async (what) => what,
     sessionLoad: async () => (await call("session_load")).session as Session,
     sessionSave: async (tabs, active) => void (await call("session_save", { tabs, active })),
+    captureStats: async () => [0, 0, 0],
+    pruneCaptures: async () => 0,
+    logDir: async () => "logs",
     claudeAccount: async (dir) => (await call("claude_account", { dir })).account as ClaudeAccount,
     claudeUsage: async (dir) => (await call("claude_usage", { dir })).usage as ClaudeUsage,
+    claudeLimits: async () => null,
     loadConfig: async () => (await call("config_load")).config as Config,
     saveConfig: async (config) => void (await call("config_save", { config })),
     configPath: async () => "dev-config.json (dev server)",

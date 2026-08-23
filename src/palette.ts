@@ -75,6 +75,12 @@ export function installPalette(app: App) {
       .slice(0, 12)
       .map((x) => x.e);
     if (cursor >= filtered.length) cursor = Math.max(0, filtered.length - 1);
+    if (!filtered.length) {
+      const empty = document.createElement("div");
+      empty.className = "pempty";
+      empty.textContent = "No matches";
+      return list.replaceChildren(empty);
+    }
     list.replaceChildren(
       ...filtered.map((entry, i) => {
         const el = document.createElement("button");

@@ -59,6 +59,16 @@ export interface UsageBucket {
   billed: number;
 }
 
+/** Anthropic's own numbers, when a statusLine file or a local endpoint is configured. */
+export interface ClaudeLimits {
+  five_hour: number;
+  five_hour_resets_at: number;
+  weekly: number;
+  weekly_resets_at: number;
+  source: string;
+  stale: boolean;
+}
+
 export interface ClaudeUsage {
   dir: string;
   window_5h: UsageBucket;
@@ -124,6 +134,9 @@ export interface Config {
   dim_inactive_panes: boolean;
   capture_dir: string | null;
   update_check_on_launch: boolean;
+  notify_bell: boolean;
+  notify_silence: boolean;
+  silence_seconds: number;
   default_cwd: string | null;
   update_repo: string | null;
   github_token: string | null;
@@ -132,6 +145,8 @@ export interface Config {
   hosts: Host[];
   snippets: Snippet[];
   default_account: string | null;
+  limits_file: string | null;
+  limits_url: string | null;
   quota_5h_tokens: number | null;
   quota_7d_tokens: number | null;
   restore_session: boolean;
@@ -154,6 +169,12 @@ export interface Transport {
   /** Starts teeing this session to a file; returns the path. */
   logStart(id: number, name: string, stamp: string, dir: string | null): Promise<string>;
   logStop(id: number): Promise<void>;
+  /** [count, bytes, empty] for the capture folder. */
+  captureStats(dir: string): Promise<[number, number, number]>;
+  /** Deletes the zero-byte captures; returns how many went. */
+  pruneCaptures(dir: string): Promise<number>;
+  /** The app's own logs folder, when no capture_dir is set. */
+  logDir(): Promise<string>;
   hostMetrics(cwd: string | null): Promise<HostMetrics>;
   appVersion(): Promise<string>;
   /** Writes the installer to a temp file, launches it and quits. */
@@ -165,12 +186,17 @@ export interface Transport {
   claudeAccountNames(dir: string): Promise<string[]>;
   /** minimize | maximize | close, for our own title bar. */
   windowAction(label: string, action: "minimize" | "maximize" | "close"): Promise<void>;
+  /** A desktop notification. Resolves false when the OS refused permission. */
+  notify(title: string, body: string): Promise<boolean>;
+  /** Flash the window and its taskbar button until the app is focused. */
+  attention(on: boolean): Promise<void>;
   configReset(): Promise<Config>;
   reveal(what: "config" | "logs"): Promise<string>;
   sessionLoad(): Promise<Session>;
   sessionSave(tabs: unknown, active: number): Promise<void>;
   claudeAccount(dir: string): Promise<ClaudeAccount>;
   claudeUsage(dir: string): Promise<ClaudeUsage>;
+  claudeLimits(file: string | null, url: string | null): Promise<ClaudeLimits | null>;
   loadConfig(): Promise<Config>;
   saveConfig(config: Config): Promise<void>;
   configPath(): Promise<string>;
@@ -198,6 +224,9 @@ export function withDefaults(config: Partial<Config>): Config {
     dim_inactive_panes: config.dim_inactive_panes ?? true,
     capture_dir: config.capture_dir ?? null,
     update_check_on_launch: config.update_check_on_launch ?? true,
+    notify_bell: config.notify_bell ?? true,
+    notify_silence: config.notify_silence ?? false,
+    silence_seconds: config.silence_seconds ?? 20,
     default_cwd: config.default_cwd ?? null,
     update_repo: config.update_repo ?? "ozanberkpolat/obpterm",
     github_token: config.github_token ?? null,
@@ -205,6 +234,8 @@ export function withDefaults(config: Partial<Config>): Config {
     hosts: config.hosts ?? [],
     snippets: config.snippets ?? [],
     default_account: config.default_account ?? null,
+    limits_file: config.limits_file ?? null,
+    limits_url: config.limits_url ?? null,
     quota_5h_tokens: config.quota_5h_tokens ?? null,
     quota_7d_tokens: config.quota_7d_tokens ?? null,
     projects: (config.projects ?? []).map((p) => ({

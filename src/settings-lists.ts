@@ -76,10 +76,20 @@ const SPECS: Record<Kind, Spec> = {
             ctx.save();
             rerender();
           })),
-          field("Claude config folder", text(a.claude_dir ?? "", (v) => { a.claude_dir = v || null; ctx.save(); },
-            { placeholder: "%USERPROFILE%\\.claude" })),
+          field("Claude config folder", text(a.claude_dir ?? "", (v) => {
+            a.claude_dir = v || null;
+            // The meters read claude_dir and the shells read env.CLAUDE_CONFIG_DIR: typing the
+            // folder in one place and not the other pointed them at different logins.
+            if (v || a.env.CLAUDE_CONFIG_DIR !== undefined) a.env.CLAUDE_CONFIG_DIR = v;
+            ctx.save();
+            rerender();
+          }, { placeholder: "%USERPROFILE%\\.claude" })),
         ),
         envCard(a.env ?? (a.env = {}), ctx, "Environment for new shells"),
+        actions(
+          button("Open a tab", () => ctx.newTab(a)),
+          button("Sign in", () => ctx.signIn(a), "primary"),
+        ),
         note("Environment reaches a process when it starts, so this applies to new tabs and panes, never to a shell already running."),
       ];
     },
@@ -317,6 +327,16 @@ function headBlock(title: string, blurb: string): HTMLElement {
   const p = document.createElement("p");
   p.textContent = blurb;
   el.append(h, p);
+  return el;
+}
+
+/** A row of buttons under a card. */
+function actions(...buttons: HTMLElement[]): HTMLElement {
+  const el = document.createElement("div");
+  el.style.display = "flex";
+  el.style.gap = "8px";
+  el.style.margin = "-4px 0 16px";
+  el.append(...buttons);
   return el;
 }
 

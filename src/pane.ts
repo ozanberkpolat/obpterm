@@ -16,6 +16,8 @@ export interface PaneHost {
   onPaneActivity(): void;
   /** `r` on a dead pane: run its shell again in the same terminal. */
   onPaneRespawn(pane: Pane): void;
+  /** The program in this pane asked for the user's attention by name. */
+  onPaneNotify(pane: Pane, title: string, body: string): void;
   onPaneTitle(pane: Pane): void;
   onPaneExit(pane: Pane, code: number | null): void;
   onPaneFocus(pane: Pane): void;
@@ -38,6 +40,10 @@ export class Pane {
   bell = false;
   /** Non-zero exit code, kept so the rail can say so. */
   exitCode: number | null = null;
+  /** 0-100 while a program reports progress over OSC 9;4, else null. */
+  progress: number | null = null;
+  /** Set while this pane has been busy long enough for going quiet to mean "finished". */
+  busySince = 0;
   /** Set once the "[exited with code N]" line is on screen: the next keypress closes the pane. */
   exitAcknowledged = false;
   /** Non-null when this pane must not spawn anything — a restored tab whose target is gone. */
@@ -68,13 +74,30 @@ export class Pane {
       this.title = title || this.profile.name;
       host.onPaneTitle(this);
     });
-    // OSC 9;9;<path> — the shell reporting its working directory (Windows Terminal's convention).
+    // OSC 9 carries three different things and we were throwing two of them away:
+    //   9;9;<path>  the shell reporting its directory (Windows Terminal's convention)
+    //   9;4;<st>;<pct>  progress (ConEmu's; Claude Code emits it) — never a notification
+    //   9;<text>    a desktop notification, which is how Claude Code says it wants you
     t.parser.registerOscHandler(9, (payload) => {
       if (payload.startsWith("9;")) {
         this.cwd = payload.slice(2).replace(/^"|"$/g, "") || this.cwd;
         host.onPaneTitle(this);
+        return false;
       }
-      return false; // let xterm's own OSC 9 (notifications) still see it
+      if (payload.startsWith("4;")) {
+        const [, state, pct] = payload.split(";");
+        this.progress = state === "0" ? null : Number(pct ?? 0);
+        host.onPaneActivity();
+        return false;
+      }
+      host.onPaneNotify(this, this.title, payload);
+      return false;
+    });
+    // OSC 777;notify;<title>;<body> — the same thing in urxvt's spelling.
+    t.parser.registerOscHandler(777, (payload) => {
+      const [kind, title, ...rest] = payload.split(";");
+      if (kind === "notify") host.onPaneNotify(this, title || this.title, rest.join(";"));
+      return false;
     });
     t.onData((d) => {
       if (this.exited) {
@@ -124,7 +147,10 @@ export class Pane {
       (bytes) => {
         const wasIdle = Date.now() - this.lastOutput > ACTIVE_MS;
         this.lastOutput = Date.now();
-        if (wasIdle) this.host.onPaneActivity();
+        if (wasIdle) {
+          this.busySince = Date.now();
+          this.host.onPaneActivity();
+        }
         t.write(bytes);
       },
       (code) => {

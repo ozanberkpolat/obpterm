@@ -10,6 +10,9 @@ import { toast } from "./ui";
 export interface Ctx {
   tp: Transport;
   config: Config;
+  /** Opens a tab under this account and runs the Claude Code login in it. */
+  signIn(account: import("./transport").Account): void;
+  newTab(account: import("./transport").Account): void;
   save(): void;
   rerender(): void;
   go(section: string): void;
@@ -57,6 +60,14 @@ export function installSettings(app: App) {
 
   const ctx: Ctx = {
     tp: app.tp,
+    signIn: (account) => {
+      close();
+      void app.signIn(account);
+    },
+    newTab: (account) => {
+      close();
+      void app.newTab(undefined, undefined, null, account.id);
+    },
     get config() {
       return app.config;
     },
@@ -335,10 +346,19 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
           withButton(text(c.capture_dir ?? "", (v) => { c.capture_dir = v || null; ctx.save(); }, { width: 240, placeholder: "the app's logs folder" }),
             button("Open", () => void ctx.tp.reveal("logs")))),
       ),
+      cap("Being told"),
+      card(
+        row("Notify when a pane asks for you", "A desktop notification carrying what the program said, and the taskbar flashes until you come back.",
+          toggle(c.notify_bell, (v) => { c.notify_bell = v; ctx.save(); })),
+        row("Notify when a busy pane goes quiet", "The completion signal that needs nothing from the shell — it works over SSH too.",
+          toggle(c.notify_silence, (v) => { c.notify_silence = v; ctx.save(); })),
+        row("Quiet means", "How long a pane that was working must be silent before it counts as finished.",
+          slider(c.silence_seconds, 5, 120, 5, " s", (v) => { c.silence_seconds = v; ctx.save(); })),
+      ),
       note(
         "The rail marks a tab that rang while you were elsewhere. Claude Code only rings when its " +
-          "preferredNotifChannel is set to terminal_bell — with the default, auto, it stays silent in a " +
-          "terminal it does not recognise.",
+          "preferredNotifChannel is set to terminal_bell. For a notification that says which session " +
+          "wants you, set it to iterm2 — OBPTerm speaks that protocol, and it reaches you over SSH too.",
       ),
       note("Every change here is written straight to config.json — no Apply button, and the file stays hand-editable."),
     );
@@ -431,6 +451,10 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
       ),
       cap("Token meters"),
       card(
+        row("Real limit from a statusLine file", "Claude Code hands its rate_limits payload to a statusLine command; point this at a file one writes and the meters show the real percentage and reset time.",
+          text(c.limits_file ?? "", (v) => { c.limits_file = v || null; ctx.save(); }, { width: 280, placeholder: "~/.claude/limits.json" })),
+        row("…or from a machine of yours", "Anything serving {fiveHour:{used,resetsAt},weekly:{…}} — the homelab /ssh/ terminal already does.",
+          text(c.limits_url ?? "", (v) => { c.limits_url = v || null; ctx.save(); }, { width: 280, placeholder: "http://host:3007/api/status" })),
         row("Your budget", "The status bar shows a percentage of these instead of raw totals. Left empty it shows totals — Anthropic's real limit is not readable from disk.",
           pair(number(c.quota_5h_tokens, (v) => { c.quota_5h_tokens = v; ctx.save(); }, { width: 130, placeholder: "5h" }),
             number(c.quota_7d_tokens, (v) => { c.quota_7d_tokens = v; ctx.save(); }, { width: 130, placeholder: "7d" }))),
@@ -530,8 +554,7 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
       card(
         row("Config and session", "config.json holds these settings; session.json holds the open tabs.",
           button("Show folder", () => void ctx.tp.reveal("config"))),
-        row("Capture logs", "Everything Ctrl+Shift+L has written.",
-          button("Show folder", () => void ctx.tp.reveal("logs"))),
+        captureRow(ctx),
       ),
       card(
         row("Reset every setting", "Profiles, accounts, hosts, projects and colours go back to defaults. Open tabs are left alone.",
@@ -554,6 +577,36 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
   projects: (ctx) => renderList(ctx, "projects"),
   snippets: (ctx) => renderList(ctx, "snippets"),
 };
+
+/** Says how much the capture folder is holding, and offers to drop the empty ones. */
+function captureRow(ctx: Ctx): HTMLElement {
+  const prune = button("Delete empty", () => void run(true));
+  const show = button("Show folder", () => void ctx.tp.reveal("logs"));
+  const el = row("Capture logs", "Counting…", pair(prune, show));
+  const hint = el.querySelector("span")!;
+
+  const run = async (deleting = false) => {
+    const dir = ctx.config.capture_dir || (await ctx.tp.logDir().catch(() => ""));
+    if (!dir) return;
+    if (deleting) {
+      const gone = await ctx.tp.pruneCaptures(dir).catch(() => 0);
+      toast(gone ? `Deleted ${gone} empty capture${gone > 1 ? "s" : ""}` : "No empty captures to delete");
+    }
+    const [count, bytes, empty] = await ctx.tp.captureStats(dir).catch(() => [0, 0, 0] as [number, number, number]);
+    hint.textContent = count
+      ? `${count} file${count > 1 ? "s" : ""}, ${fmtBytes(bytes)}${empty ? ` · ${empty} empty` : ""}`
+      : "Nothing captured yet.";
+    prune.disabled = empty === 0;
+  };
+  void run();
+  return el;
+}
+
+function fmtBytes(n: number): string {
+  if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  if (n >= 1024) return `${Math.round(n / 1024)} kB`;
+  return `${n} B`;
+}
 
 export function note(message: string): HTMLElement {
   const el = document.createElement("div");

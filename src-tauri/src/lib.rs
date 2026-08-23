@@ -12,6 +12,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(pty::Sessions::default())
         .manage(claude::UsageCache::default())
         .manage(metrics::Metrics::default())
@@ -22,6 +23,8 @@ pub fn run() {
             pty::pty_kill,
             pty::pty_log_start,
             pty::pty_log_stop,
+            pty::capture_stats,
+            pty::prune_captures,
             config::config_load,
             config::config_save,
             config::config_path_string,
@@ -29,11 +32,13 @@ pub fn run() {
             config::config_reset,
             config::reveal,
             chrome::window_action,
+            chrome::attention,
             config::session_load,
             config::session_save,
             claude::claude_account,
             claude::claude_account_names,
             claude::claude_usage,
+            claude::claude_limits,
             metrics::host_metrics,
             update::app_version,
             update::update_check,

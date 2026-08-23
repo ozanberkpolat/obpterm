@@ -1,7 +1,8 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
-import type { ClaudeAccount, ClaudeUsage, Config, HostMetrics, Profile, ReleaseInfo, Session, Transport } from "./transport";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
+import type { ClaudeAccount, ClaudeLimits, ClaudeUsage, Config, HostMetrics, Profile, ReleaseInfo, Session, Transport } from "./transport";
 
 export function tauriTransport(): Transport {
   const exits = new Map<number, (code: number | null) => void>();
@@ -34,12 +35,24 @@ export function tauriTransport(): Transport {
     updateInstall: (release, token) => invoke<string>("update_install", { release, token }),
     claudeAccountNames: (dir) => invoke<string[]>("claude_account_names", { dir }),
     windowAction: (label, action) => invoke("window_action", { label, action }),
+    async notify(title, body) {
+      // Asking on first use, not at launch: a terminal that demands notification permission
+      // before it has anything to say is the wrong first impression.
+      if (!(await isPermissionGranted()) && (await requestPermission()) !== "granted") return false;
+      sendNotification({ title, body });
+      return true;
+    },
+    attention: (on) => invoke("attention", { on }),
     configReset: () => invoke<Config>("config_reset"),
     reveal: (what) => invoke<string>("reveal", { what }),
     sessionLoad: () => invoke<Session>("session_load"),
     sessionSave: (tabs, active) => invoke("session_save", { tabs, active }),
+    captureStats: (dir) => invoke<[number, number, number]>("capture_stats", { dir }),
+    pruneCaptures: (dir) => invoke<number>("prune_captures", { dir }),
+    logDir: () => invoke<string>("log_dir"),
     claudeAccount: (dir) => invoke<ClaudeAccount>("claude_account", { dir }),
     claudeUsage: (dir) => invoke<ClaudeUsage>("claude_usage", { dir }),
+    claudeLimits: (file, url) => invoke<ClaudeLimits | null>("claude_limits", { file, url }),
     loadConfig: () => invoke<Config>("config_load"),
     saveConfig: (config) => invoke("config_save", { config }),
     configPath: () => invoke<string>("config_path_string"),

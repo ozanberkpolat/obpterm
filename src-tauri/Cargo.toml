@@ -1,6 +1,6 @@
 [package]
 name = "obpterm"
-version = "0.7.0"
+version = "0.8.0"
 description = "Vertical-tab terminal for Windows: pwsh / PowerShell / cmd over ConPTY"
 edition = "2021"
 rust-version = "1.77"
@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-window-state = "2"
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-notification = "2"
 portable-pty = "0.9"
 sysinfo = { version = "0.39", default-features = false, features = ["system", "disk"] }
 serde = { version = "1", features = ["derive"] }

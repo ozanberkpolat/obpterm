@@ -20,7 +20,7 @@
     }
   ],
   "font_family": "JetBrains Mono, Cascadia Mono, Consolas, monospace",
-  "font_size": 34,
+  "font_size": 37,
   "scrollback": 10000,
   "rail_collapsed": false,
   "rail_width": 300,
@@ -32,6 +32,9 @@
   "dim_inactive_panes": true,
   "capture_dir": null,
   "update_check_on_launch": false,
+  "notify_bell": true,
+  "notify_silence": false,
+  "silence_seconds": 20,
   "default_cwd": "~",
   "update_repo": "ozanberkpolat/obpterm",
   "github_token": null,
@@ -73,7 +76,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt5t7gsm",
+      "id": "hmt5utfoz",
       "name": "New host",
       "host": "",
       "user": null,
@@ -91,6 +94,8 @@
     }
   ],
   "default_account": "default",
+  "limits_file": null,
+  "limits_url": null,
   "quota_5h_tokens": null,
   "quota_7d_tokens": null,
   "projects": [
@@ -573,6 +578,42 @@
     },
     {
       "id": "pmt5t7ecu",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5uqh7o",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5uslrz",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5ut7vc",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt5utcq6",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,

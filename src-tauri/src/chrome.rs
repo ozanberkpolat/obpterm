@@ -3,6 +3,15 @@
 
 use tauri::{AppHandle, Manager};
 
+/// Flashes the window and its taskbar button until the app is focused. The toast says what
+/// happened; this is what makes it findable when the toast has gone.
+#[tauri::command]
+pub fn attention(app: AppHandle, on: bool) -> Result<(), String> {
+    let window = app.get_webview_window("main").ok_or("no main window")?;
+    let request = on.then_some(tauri::UserAttentionType::Informational);
+    window.request_user_attention(request).map_err(|e| e.to_string())
+}
+
 /// minimize | maximize | close, for the buttons in our own header bar.
 #[tauri::command]
 pub fn window_action(app: AppHandle, label: String, action: String) -> Result<(), String> {

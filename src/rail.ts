@@ -224,7 +224,12 @@ function projectMenu(app: App, project: Project, x: number, y: number, nameEl: H
   openMenu(x, y, [
     { label: "New tab here", onPick: () => void app.newTab(undefined, project.id) },
     { label: "Save layout", hint: `${app.tabs.filter((t) => t.projectId === project.id).length} tabs`, onPick: () => app.saveProjectLayout(project) },
-    { label: "Open saved layout", onPick: () => void app.openProjectLayout(project) },
+    {
+      label: "Open saved layout",
+      hint: `${((project.layout ?? []) as unknown[]).length} saved`,
+      onPick: () => void app.openProjectLayout(project),
+    },
+    { label: "Close this project's tabs", onPick: () => app.closeProjectTabs(project) },
     {
       label: "Rename…",
       onPick: () =>

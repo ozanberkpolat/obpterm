@@ -114,6 +114,12 @@ pub struct Config {
     pub capture_dir: Option<String>,
     /// Ask GitHub for a newer release once, a few seconds after launch.
     pub update_check_on_launch: bool,
+    /// Desktop notification when an unfocused pane rings or asks for something.
+    pub notify_bell: bool,
+    /// Desktop notification when a busy pane goes quiet — a build or an agent finishing.
+    pub notify_silence: bool,
+    /// How long a pane must be quiet, after being busy, to count as finished.
+    pub silence_seconds: u32,
     /// Where shells start when nothing more specific applies.
     pub default_cwd: Option<String>,
     /// `owner/repo` the "check for updates" button asks GitHub about.
@@ -126,6 +132,11 @@ pub struct Config {
     pub snippets: Vec<Snippet>,
     /// Account applied to new shells when nothing else says otherwise.
     pub default_account: Option<String>,
+    /// A file your Claude Code statusLine writes the rate_limits payload to.
+    pub limits_file: Option<String>,
+    /// An endpoint on your own machine serving the same numbers (the homelab /ssh/ terminal
+    /// already does: http://host:3007/api/status). Nothing is contacted unless this is set.
+    pub limits_url: Option<String>,
     /// Your own budget for the status-bar meters, in tokens. `None` shows plain totals.
     pub quota_5h_tokens: Option<u64>,
     pub quota_7d_tokens: Option<u64>,
@@ -155,6 +166,9 @@ impl Default for Config {
             dim_inactive_panes: true,
             capture_dir: None,
             update_check_on_launch: true,
+            notify_bell: true,
+            notify_silence: false,
+            silence_seconds: 20,
             default_cwd: default_cwd(),
             update_repo: Some("ozanberkpolat/obpterm".into()),
             github_token: None,
@@ -163,6 +177,8 @@ impl Default for Config {
             hosts: Vec::new(),
             snippets: Vec::new(),
             default_account: None,
+            limits_file: None,
+            limits_url: None,
             quota_5h_tokens: None,
             quota_7d_tokens: None,
             restore_session: true,

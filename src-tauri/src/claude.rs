@@ -285,3 +285,74 @@ mod tests {
         assert!(parse_line(r#"{"timestamp":"x","message":{}}"#, &mut seen).is_none());
     }
 }
+
+/// Anthropic's own rate-limit numbers — the thing the local token sum can only approximate.
+///
+/// Claude Code hands `rate_limits` to whatever `statusLine` command is configured, so the
+/// percentages and reset times exist even though nothing in `~/.claude` stores them. Two
+/// places to find them, both the user's own: a local file written by their statusLine, and an
+/// HTTP endpoint on their own machine that already collects it (the homelab's /ssh/ terminal
+/// exposes exactly this shape). Nothing is contacted unless one of them is configured.
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct Limits {
+    pub five_hour: u8,
+    pub five_hour_resets_at: i64,
+    pub weekly: u8,
+    pub weekly_resets_at: i64,
+    /// "file" or the host it came from, so the status bar can say where the number is from.
+    pub source: String,
+    /// True when nothing has refreshed it lately: percentages only move while a session runs.
+    pub stale: bool,
+}
+
+#[tauri::command]
+pub async fn claude_limits(file: Option<String>, url: Option<String>) -> Option<Limits> {
+    if let Some(path) = file.filter(|p| !p.is_empty()) {
+        if let Some(limits) = from_statusline_file(&path) {
+            return Some(limits);
+        }
+    }
+    let url = url.filter(|u| !u.is_empty())?;
+    let response = reqwest::Client::new()
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(4))
+        .send()
+        .await
+        .ok()?;
+    let body: serde_json::Value = response.json().await.ok()?;
+    let host = url.split('/').nth(2).unwrap_or("remote").to_string();
+    Some(Limits {
+        five_hour: body.pointer("/fiveHour/used")?.as_u64().unwrap_or(0) as u8,
+        five_hour_resets_at: body.pointer("/fiveHour/resetsAt").and_then(|v| v.as_i64()).unwrap_or(0),
+        weekly: body.pointer("/weekly/used").and_then(|v| v.as_u64()).unwrap_or(0) as u8,
+        weekly_resets_at: body.pointer("/weekly/resetsAt").and_then(|v| v.as_i64()).unwrap_or(0),
+        stale: body.get("stale").and_then(|v| v.as_bool()).unwrap_or(false),
+        source: host,
+    })
+}
+
+/// The raw shape Claude Code pipes to a statusLine command, saved to a file by one.
+fn from_statusline_file(path: &str) -> Option<Limits> {
+    let text = std::fs::read_to_string(expand(path)).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let rl = v.get("rate_limits").unwrap_or(&v);
+    let pct = |k: &str| rl.pointer(&format!("/{k}/used_percentage")).and_then(|x| x.as_u64()).unwrap_or(0) as u8;
+    let at = |k: &str| rl.pointer(&format!("/{k}/resets_at")).and_then(|x| x.as_i64()).unwrap_or(0);
+    let written = v.get("ts").and_then(|t| t.as_f64()).unwrap_or(0.0) as i64;
+    Some(Limits {
+        five_hour: pct("five_hour"),
+        five_hour_resets_at: at("five_hour"),
+        weekly: pct("weekly"),
+        weekly_resets_at: at("weekly"),
+        // The file only moves while a session renders its status line.
+        stale: written > 0 && now_ms() / 1000 - written > 900,
+        source: "file".into(),
+    })
+}
+
+fn expand(path: &str) -> String {
+    match path.strip_prefix('~') {
+        Some(rest) => format!("{}{rest}", std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap_or_default()),
+        None => path.to_string(),
+    }
+}

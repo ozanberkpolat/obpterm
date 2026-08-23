@@ -265,6 +265,16 @@ assert.ok(
   "the close button is sized",
 );
 
+// …but xterm's own hidden textarea is not a text field: shortcuts must still work in a pane.
+// Treating it as one silently killed every shortcut while a terminal had focus (v0.5.3).
+await evaluate("window.obpterm.tab.active.focus()");
+await evaluate(
+  "(() => { const t = document.querySelector('.pane.focused .xterm-helper-textarea') || document.querySelector('.xterm-helper-textarea');" +
+  " t.focus(); t.dispatchEvent(new KeyboardEvent('keydown', {code: 'KeyK', key: 'k', ctrlKey: true, bubbles: true})); })()",
+);
+await until("!document.querySelector('#palette').hidden", "Ctrl+K opening the palette from a pane");
+await evaluate("window.obpterm.palette.close()");
+
 // App shortcuts must not fire while a text field has focus.
 await evaluate("window.obpterm.settings.open('updates')");
 await until("!document.querySelector('#settings').hidden", "settings for the field test");
@@ -333,6 +343,34 @@ await until("window.__sent.includes('docker compose ps')", "the snippet typed in
 assert.match(await evaluate("window.__sent"), /\r$/, "send:true presses Enter");
 
 await evaluate(`window.obpterm.closeTab(window.obpterm.tabs[${second}])`);
+
+// A pane that fails to spawn must stay on screen: closing it cascaded to the window.
+const tabsAtStart = await evaluate("window.obpterm.tabs.length");
+await evaluate(
+  "(() => { const p = window.obpterm.config.profiles; p.push({id: 'broken', name: 'Broken', exe: '/definitely/not/here', args: [], cwd: null, env: {}});" +
+  " window.obpterm.newTab(p[p.length - 1]); })()",
+);
+await until(`window.obpterm.tabs.length === ${tabsAtStart + 1}`, "the broken tab");
+await until("window.obpterm.panesOf(window.obpterm.tab)[0].exited === true", "the pane marked dead");
+assert.equal(await evaluate("window.obpterm.tabs.length"), tabsAtStart + 1, "the tab survived the failure");
+await evaluate("window.obpterm.closeTab(window.obpterm.tab)");
+await evaluate("window.obpterm.config.profiles.pop()");
+
+// Opening a saved layout twice must not spawn a second set of shells.
+await evaluate(
+  "(() => { const p = window.obpterm.config.projects[0]; window.obpterm.moveTabToProject(window.obpterm.tab, p.id);" +
+  " window.obpterm.saveProjectLayout(p); })()",
+);
+const beforeReopen = await evaluate("window.obpterm.tabs.length");
+await evaluate("void window.obpterm.openProjectLayout(window.obpterm.config.projects[0])");
+await new Promise((r) => setTimeout(r, 400));
+assert.equal(await evaluate("window.obpterm.tabs.length"), beforeReopen, "it refused to duplicate the open tabs");
+await evaluate("(() => { window.obpterm.config.projects[0].layout = null; window.obpterm.moveTabToProject(window.obpterm.tab, null); })()");
+
+// The palette says when nothing matched instead of showing an empty box.
+await evaluate("window.obpterm.palette.open('zzzznothing')");
+await until("!!document.querySelector('#palette .pempty')", "the no-matches row");
+await evaluate("window.obpterm.palette.close()");
 
 // ---- settings, as a sheet in this same window ------------------------------------------------
 await evaluate("window.obpterm.settings.open('hosts')");

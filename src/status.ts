@@ -3,7 +3,7 @@
 // obpterm can see locally, not Anthropic's own accounting of the plan window.
 import type { App } from "./app";
 import { openMenu } from "./menu";
-import type { Account, ClaudeAccount, ClaudeUsage, HostMetrics, ReleaseInfo } from "./transport";
+import type { Account, ClaudeAccount, ClaudeLimits, ClaudeUsage, HostMetrics, ReleaseInfo } from "./transport";
 import { toast } from "./ui";
 
 const REFRESH_MS = 60_000;
@@ -25,6 +25,7 @@ export class Status {
   private metrics: HostMetrics | null = null;
   private pendingUpdate: ReleaseInfo | null = null;
   private usage: ClaudeUsage | null = null;
+  private limits: ClaudeLimits | null = null;
   private lastDir: string | null = null;
 
   constructor(private app: App) {
@@ -62,6 +63,10 @@ export class Status {
         this.logins = await this.app.tp.claudeAccountNames(dir).catch(() => []);
       }
       this.usage = await this.app.tp.claudeUsage(dir);
+      // Anthropic's own percentages when they are reachable; the local sum stays the fallback.
+      this.limits = await this.app.tp
+        .claudeLimits(this.app.config.limits_file, this.app.config.limits_url)
+        .catch(() => null);
     } catch (e) {
       console.warn("usage unavailable", e);
     }
@@ -168,8 +173,13 @@ export class Status {
         : "Add accounts to config.json to switch between Claude Code logins or cloud CLIs",
     );
 
-    this.meter("5h", this.usage?.window_5h.billed ?? null, this.app.config.quota_5h_tokens);
-    this.meter("7d", this.usage?.window_7d.billed ?? null, this.app.config.quota_7d_tokens);
+    if (this.limits) {
+      this.realMeter("5h", this.limits.five_hour, this.limits.five_hour_resets_at);
+      this.realMeter("7d", this.limits.weekly, this.limits.weekly_resets_at);
+    } else {
+      this.meter("5h", this.usage?.window_5h.billed ?? null, this.app.config.quota_5h_tokens);
+      this.meter("7d", this.usage?.window_7d.billed ?? null, this.app.config.quota_7d_tokens);
+    }
 
     const pane = tab?.active;
     const host = this.app.host(tab?.hostId ?? null);
@@ -179,6 +189,23 @@ export class Status {
     if (pane?.logPath) this.capture.title = pane.logPath;
     const panes = tab ? this.app.paneCount(tab) : 0;
     this.panecount.textContent = panes > 1 ? `${panes} panes` : "";
+  }
+
+  /** The real limit: a percentage that means something, and when it frees up. */
+  private realMeter(window: "5h" | "7d", pct: number, resetsAt: number) {
+    const el = this.quota.querySelector<HTMLElement>(`.meter[data-window="${window}"]`)!;
+    const bar = el.querySelector<HTMLElement>("i")!;
+    const share = Math.min(1, pct / 100);
+    bar.style.width = `${Math.round(share * 100)}%`;
+    el.classList.toggle("high", pct >= 75 && pct < 95);
+    el.classList.toggle("full", pct >= 95);
+    el.classList.toggle("stale", !!this.limits?.stale);
+    const resets = resetsAt ? new Date(resetsAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    el.querySelector<HTMLElement>(".val")!.textContent = `${window} ${pct}%`;
+    el.title =
+      `${pct}% of the ${window === "5h" ? "5-hour" : "weekly"} limit used` +
+      (resets ? `, resets at ${resets}` : "") +
+      `\nfrom ${this.limits?.source}${this.limits?.stale ? " (stale — no session has reported lately)" : ""}`;
   }
 
   private meter(window: "5h" | "7d", tokens: number | null, budget: number | null) {
@@ -269,7 +296,17 @@ export class Status {
     if (!u) return toast("No Claude Code transcripts found for this account");
     const line = (label: string, b: typeof u.window_5h) =>
       `${label}: ${fmt(b.billed)} billed · ${fmt(b.cache_read)} cached · ${b.messages} messages`;
+    const real = this.limits
+      ? [
+          {
+            label: `Limit: 5h ${this.limits.five_hour}% · weekly ${this.limits.weekly}%`,
+            hint: this.limits.stale ? "stale" : this.limits.source,
+            onPick: () => {},
+          },
+        ]
+      : [];
     openMenu(e.clientX, e.clientY, [
+      ...real,
       { label: line("Last 5h", u.window_5h), onPick: () => {} },
       { label: line("Last 7d", u.window_7d), onPick: () => {} },
       {

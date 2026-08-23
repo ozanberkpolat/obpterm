@@ -133,6 +133,17 @@ header counts what is waiting. Focusing a tab answers its bell. Nothing blinks.
 Claude Code rings the bell only when `preferredNotifChannel` is set to `terminal_bell` — its
 default, `auto`, stays silent in a terminal it does not recognise.
 
+## Being told
+
+A pane that asks for you while you are looking at something else raises a desktop notification
+carrying what the program actually said, and flashes the taskbar until you come back. That works
+because OBPTerm handles `OSC 9` and `OSC 777` — so set Claude Code's `preferredNotifChannel` to
+`iterm2` and its notifications arrive by name, **including from sessions running over SSH**.
+
+Optionally, a pane that was busy and then goes quiet for a while is treated as finished and
+says so — the completion signal that needs nothing from the shell. Both switches, and the
+quiet threshold, live in Settings → Terminal.
+
 ## Selecting and copying
 
 Finishing a left drag copies the selection straight to the clipboard — no keypress, the way the
@@ -223,7 +234,14 @@ arrangement.
 
 `claude_dir` is read (never written) for two things: the login shown on the chip, from
 `accounts/current` + `accounts/<name>/account.json`, and the meters, summed from the
-`projects/**/*.jsonl` transcripts in that directory. **The meters are what this machine sent**
+`projects/**/*.jsonl` transcripts in that directory. If a `limits_file` or `limits_url` is set (Settings → Startup & session), the meters show
+**Anthropic's own numbers instead** — the real percentage of the 5-hour and weekly limit and
+when each resets. Claude Code hands its `rate_limits` payload to whatever `statusLine` command
+is configured, so a one-line script that writes that payload to a file is all it takes; a
+machine of yours already serving `{fiveHour:{used,resetsAt},weekly:{…}}` works too. Nothing is
+contacted unless you fill one of those in, and the local sum stays the fallback.
+
+Without them, **the meters are what this machine sent**
 — input + output + cache-writes, with cache reads counted separately because they are not what a
 plan window is spent on. They are not Anthropic's accounting of your limit, and nothing here goes
 over the network. Set `quota_5h_tokens` / `quota_7d_tokens` to see a percentage of your own

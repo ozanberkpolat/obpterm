@@ -13,6 +13,23 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+
+/// A capture that has a path but may not have opened its file yet.
+struct Capture {
+    path: PathBuf,
+    file: Option<File>,
+}
+
+impl Capture {
+    fn write(&mut self, bytes: &[u8]) {
+        if self.file.is_none() {
+            self.file = File::create(&self.path).ok();
+        }
+        if let Some(f) = self.file.as_mut() {
+            let _ = f.write_all(bytes);
+        }
+    }
+}
 use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -20,8 +37,9 @@ struct Session {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
-    /// Shared with the reader thread: `Some` while this session is being captured to a file.
-    log: Arc<Mutex<Option<File>>>,
+    /// Shared with the reader thread: `Some` while this session is being captured. The file is
+    /// only created on the first byte — a shell that prints nothing should not leave a file.
+    log: Arc<Mutex<Option<Capture>>>,
 }
 
 #[derive(Default)]
@@ -70,7 +88,7 @@ pub fn pty_spawn(
     let writer = pair.master.take_writer().map_err(|e| format!("writer: {e}"))?;
 
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-    let log: Arc<Mutex<Option<File>>> = Arc::new(Mutex::new(None));
+    let log: Arc<Mutex<Option<Capture>>> = Arc::new(Mutex::new(None));
     let log_writer = log.clone();
     sessions
         .0
@@ -85,9 +103,9 @@ pub fn pty_spawn(
             match reader.read(&mut buf) {
                 Ok(0) | Err(_) => break, // ConPTY reports a closed console as an error, not 0
                 Ok(n) => {
-                    if let Some(f) = log_writer.lock().unwrap().as_mut() {
+                    if let Some(capture) = log_writer.lock().unwrap().as_mut() {
                         // Raw stream, escapes and all - that is what a terminal log is.
-                        let _ = f.write_all(&buf[..n]);
+                        capture.write(&buf[..n]);
                     }
                     if on_data.send(Response::new(buf[..n].to_vec())).is_err() {
                         break; // webview gone
@@ -155,8 +173,7 @@ pub fn pty_log_start(
     // The id is in the name because two panes on the same host share a title, and the stamp
     // is only second-resolution: without it they would open the same file and interleave.
     let path = dir.join(format!("{safe}-{stamp}-{id}.log"));
-    let file = File::create(&path).map_err(|e| format!("create {}: {e}", path.display()))?;
-    *s.log.lock().unwrap() = Some(file);
+    *s.log.lock().unwrap() = Some(Capture { path: path.clone(), file: None });
     Ok(path.display().to_string())
 }
 
@@ -166,6 +183,42 @@ pub fn pty_log_stop(sessions: State<Sessions>, id: u32) -> Result<(), String> {
         *s.log.lock().unwrap() = None; // dropping the File flushes it
     }
     Ok(())
+}
+
+/// How many capture files there are, how much they take, and how many are empty.
+#[tauri::command]
+pub fn capture_stats(dir: String) -> (usize, u64, usize) {
+    let mut count = 0;
+    let mut bytes = 0;
+    let mut empty = 0;
+    for entry in std::fs::read_dir(PathBuf::from(dir)).into_iter().flatten().flatten() {
+        if entry.path().extension().is_none_or(|e| e != "log") {
+            continue;
+        }
+        let len = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        count += 1;
+        bytes += len;
+        if len == 0 {
+            empty += 1;
+        }
+    }
+    (count, bytes, empty)
+}
+
+/// Deletes the zero-byte captures a shell that printed nothing used to leave behind.
+#[tauri::command]
+pub fn prune_captures(dir: String) -> usize {
+    let mut gone = 0;
+    for entry in std::fs::read_dir(PathBuf::from(dir)).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|e| e != "log") {
+            continue;
+        }
+        if entry.metadata().map(|m| m.len()).unwrap_or(1) == 0 && std::fs::remove_file(&path).is_ok() {
+            gone += 1;
+        }
+    }
+    gone
 }
 
 pub fn kill_all(sessions: &Sessions) {

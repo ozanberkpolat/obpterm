@@ -345,6 +345,7 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 .meter.full .bar i { background: var(--bad); }
 .meter .val { font: 600 10.5px var(--mono); font-variant-numeric: tabular-nums; }
 .meter.full .val { color: var(--bad); }
+.meter.stale { opacity: .55; }
 
 /* ---- pane toolbar (the /ssh/ terminal's actions) --------------------------------------------- */
 #toolbar {
@@ -415,9 +416,11 @@ button.chip:hover { background: var(--border); color: var(--ink); }
   padding: 9px 14px; border-radius: 999px; text-align: left; color: var(--ink);
 }
 .presult.on { background: var(--border); }
+.pempty { padding: 12px 14px; color: var(--faint); font-size: 12.5px; }
 .pgroup {
   font: 700 9.5px var(--sans); text-transform: uppercase; letter-spacing: .06em;
   color: var(--faint); width: 62px; flex: none;
 }
-.presult.on .pgroup { color: var(--accent); }
+.presult.on .pempty { padding: 12px 14px; color: var(--faint); font-size: 12.5px; }
+.pgroup { color: var(--accent); }
 .plabel { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
