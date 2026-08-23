@@ -50,6 +50,7 @@ export function installHeader(app: App) {
       { label: "Zoom out", hint: "Ctrl −", onPick: () => app.zoom(-1) },
       { label: "Reset zoom", hint: "Ctrl 0", onPick: () => app.zoom(0) },
       { label: "Appearance…", onPick: () => app.settings.open("appearance") },
+      { label: "Quit and end every shell", danger: true, onPick: () => void app.quitAll() },
     ]],
   ];
 

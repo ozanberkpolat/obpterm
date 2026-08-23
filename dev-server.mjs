@@ -13,19 +13,67 @@ const SESSION = new URL("./dev-session.json", import.meta.url);
 const wss = new WebSocketServer({ port: 1421, host: process.env.OBPTERM_DEV_HOST ?? "127.0.0.1" });
 let nextId = 1;
 
+// The dev server plays the session host: ptys live here, across page reloads, with a ring of
+// what each printed, so the browser loop can prove reattach the way the real host does.
+const INSTANCE = Math.random().toString(36).slice(2, 10);
+const RING = 1024 * 1024;
+const held = new Map();
+const answered = []; // id -> { p, exe, cwd, ring: Buffer[], ringBytes, exited, startedAt, watcher }
+
 const broadcast = (msg) => {
   for (const client of wss.clients) if (client.readyState === 1) client.send(JSON.stringify(msg));
 };
 
 wss.on("connection", (ws) => {
-  const sessions = new Map();
   const logs = new Map();
   const reply = (reqId, body = {}) => ws.send(JSON.stringify({ reqId, ...body }));
+  const watching = new Set();
+  const frame = (id, d) => {
+    const head = Buffer.alloc(4);
+    head.writeUInt32BE(id);
+    return Buffer.concat([head, Buffer.from(d)]);
+  };
+  const watch = (id) => {
+    const s = held.get(id);
+    if (!s) return;
+    watching.add(id);
+    s.watcher = (d) => ws.readyState === ws.OPEN && ws.send(frame(id, d));
+    s.onExit = (code) => ws.readyState === ws.OPEN && ws.send(JSON.stringify({ t: "exit", id, code }));
+  };
 
   ws.on("message", (raw) => {
     const m = JSON.parse(raw.toString());
     try {
       switch (m.t) {
+        case "host_info": return reply(m.reqId, { info: { instance: INSTANCE, version: "dev", connected: true } });
+        case "list":
+          return reply(m.reqId, {
+            sessions: [...held.entries()].map(([id, s]) => ({
+              id, exe: s.exe, cwd: s.cwd, attached: !!s.watcher, exited: s.exited, started_at: s.startedAt,
+              last_output: s.lastOutput ?? s.startedAt, bell: !!s.bell,
+            })),
+          });
+        case "attach": {
+          const s = held.get(m.id);
+          if (!s) return reply(m.reqId, { error: `no session ${m.id}` });
+          reply(m.reqId);
+          s.bell = false;
+          for (const chunk of s.ring) ws.send(frame(m.id, chunk));
+          watch(m.id);
+          s.p?.resize(m.cols, m.rows);
+          if (s.exited !== null) ws.send(JSON.stringify({ t: "exit", id: m.id, code: s.exited }));
+          return;
+        }
+        case "detach": {
+          const s = held.get(m.id);
+          if (s) { s.watcher = null; s.onExit = null; }
+          watching.delete(m.id);
+          return reply(m.reqId);
+        }
+        case "shutdown":
+          for (const s of held.values()) s.p?.kill();
+          held.clear();
+          return reply(m.reqId);
         case "spawn": {
           const { profile, cols, rows } = m;
           const p = pty.spawn(profile.exe, profile.args ?? [], {
@@ -35,24 +83,36 @@ wss.on("connection", (ws) => {
             env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", OBPTERM: "dev" },
           });
           const id = nextId++;
-          sessions.set(id, p);
-          const head = Buffer.alloc(4);
-          head.writeUInt32BE(id);
+          const s = { p, exe: profile.exe, cwd: profile.cwd ?? null, ring: [], ringBytes: 0, exited: null, startedAt: Date.now(), watcher: null, onExit: null };
+          held.set(id, s);
           p.onData((d) => {
+            const buf = Buffer.from(d);
+            s.lastOutput = Date.now();
+            if (!s.watcher && buf.includes(7)) s.bell = true;
+            s.ring.push(buf);
+            s.ringBytes += buf.length;
+            while (s.ringBytes > RING && s.ring.length > 1) s.ringBytes -= s.ring.shift().length;
             logs.get(id)?.write(d);
-            if (ws.readyState === ws.OPEN) ws.send(Buffer.concat([head, Buffer.from(d)]));
+            s.watcher?.(d);
           });
           p.onExit(({ exitCode }) => {
-            sessions.delete(id);
+            s.exited = exitCode;
+            s.p = null;
             logs.get(id)?.end();
             logs.delete(id);
-            if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "exit", id, code: exitCode }));
+            s.onExit?.(exitCode);
           });
+          watch(id);
           return reply(m.reqId, { id });
         }
-        case "write": sessions.get(m.id)?.write(m.data); return reply(m.reqId);
-        case "resize": sessions.get(m.id)?.resize(m.cols, m.rows); return reply(m.reqId);
-        case "kill": sessions.get(m.id)?.kill(); return reply(m.reqId);
+        case "write": held.get(m.id)?.p?.write(m.data); return reply(m.reqId);
+        case "resize": held.get(m.id)?.p?.resize(m.cols, m.rows); return reply(m.reqId);
+        case "kill": {
+          const s = held.get(m.id);
+          s?.p?.kill();
+          held.delete(m.id);
+          return reply(m.reqId);
+        }
         case "log_start": {
           mkdirSync("logs", { recursive: true });
           const path = `logs/${m.name.replace(/[^\w-]/g, "-")}-${m.stamp}.log`;
@@ -67,8 +127,20 @@ wss.on("connection", (ws) => {
           catch { return reply(m.reqId, { session: { clean_exit: true, saved_at: 0, tabs: null } }); }
         }
         case "session_save":
-          writeFileSync(SESSION, JSON.stringify({ clean_exit: false, saved_at: Date.now(), tabs: m.tabs, active: m.active ?? 0, updated_to: null }));
+          writeFileSync(SESSION, JSON.stringify({ clean_exit: false, saved_at: Date.now(), tabs: m.tabs, active: m.active ?? 0, host: m.host ?? null, updated_to: null }));
           return reply(m.reqId);
+        case "logins": return reply(m.reqId, { logins: devLogins(m.action, m.name) });
+        case "agent_inject": {
+          // Test-only: pretend a hook fired. The real path is Claude Code -> host HTTP.
+          broadcast({ t: "agent", update: m.update });
+          return reply(m.reqId);
+        }
+        case "agent_answer": {
+          answered.push({ pending: m.pending, allow: m.allow });
+          broadcast({ t: "agent_answered", pending: m.pending, allow: m.allow });
+          return reply(m.reqId);
+        }
+        case "agent_answers": return reply(m.reqId, { answered });
         case "claude_account": return reply(m.reqId, { account: claudeAccount(m.dir) });
         case "claude_account_names": {
           try {
@@ -93,8 +165,29 @@ wss.on("connection", (ws) => {
       reply(m.reqId, { error: String(e) });
     }
   });
-  ws.on("close", () => sessions.forEach((p) => p.kill()));
+  // The window went away: its shells keep running, just unwatched — the host's contract.
+  ws.on("close", () => {
+    for (const id of watching) {
+      const s = held.get(id);
+      if (s) { s.watcher = null; s.onExit = null; }
+    }
+  });
 });
+// Dev twin of the login switcher: an in-memory profile set, the same refusals.
+const devProfiles = { current: "personal", live: "ozanberkplt@gmail.com", accounts: { personal: "ozanberkplt@gmail.com", is: "platform@d724cloud.com" } };
+function devLogins(action, name) {
+  if (action === "save" && name) { devProfiles.accounts[name] = devProfiles.live; devProfiles.current = name; }
+  if (action === "switch" && name) {
+    if (!devProfiles.accounts[name]) throw new Error(`no such profile: ${name}`);
+    devProfiles.current = name; devProfiles.live = devProfiles.accounts[name];
+  }
+  if (action === "forget" && name) { delete devProfiles.accounts[name]; if (devProfiles.current === name) devProfiles.current = null; }
+  return {
+    accounts: Object.entries(devProfiles.accounts).map(([n, email]) => ({ name: n, email })).sort((a, b) => a.name.localeCompare(b.name)),
+    current: devProfiles.current, email: devProfiles.live, running: 0, file_backed: true,
+  };
+}
+
 // Dev twin of src-tauri/src/metrics.rs. Linux only, which is all the browser loop needs.
 let lastCpu = os.cpus();
 function hostMetrics() {

@@ -2,7 +2,7 @@
 // Everything here can be added, edited and deleted — deletes are undoable.
 import { button, card, COLORS, note, number, select, swatches, text, toggle, type Ctx } from "./settings-panel";
 import { toast } from "./ui";
-import type { Account, Config, Host, Profile, Project, Snippet } from "./transport";
+import type { Account, Config, Host, Logins, Profile, Project, Snippet } from "./transport";
 
 type Kind = "profiles" | "accounts" | "hosts" | "projects" | "snippets";
 type Item = Profile | Account | Host | Project | Snippet;
@@ -184,6 +184,107 @@ const SPECS: Record<Kind, Spec> = {
     },
   },
 };
+
+/**
+ * The Claude Code login switcher, the way the homelab's /ssh/ terminal has it: saved profiles
+ * under `.claude/accounts/`, a switch that saves the live login back first and refuses while
+ * claude runs. Distinct from the accounts above, which are environment presets: this one
+ * changes which login the default folder holds.
+ */
+export function renderLogins(ctx: Ctx): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "sw-card";
+  const body = document.createElement("div");
+  body.style.padding = "18px";
+  body.style.display = "flex";
+  body.style.flexDirection = "column";
+  body.style.gap = "12px";
+  card.appendChild(body);
+
+  const draw = (l: Logins) => {
+    body.replaceChildren();
+    const head = document.createElement("div");
+    head.style.display = "flex";
+    head.style.alignItems = "baseline";
+    head.style.gap = "10px";
+    const title = document.createElement("span");
+    title.className = "sw-cap";
+    title.style.padding = "0";
+    title.textContent = "Claude Code logins";
+    const live = document.createElement("span");
+    live.style.font = "12px var(--mono)";
+    live.style.color = "var(--muted)";
+    live.textContent = l.email ? `live: ${l.email}${l.current ? ` · profile ${l.current}` : " · not saved to a profile"}` : "not logged in";
+    head.append(title, live);
+    body.appendChild(head);
+
+    if (!l.file_backed) {
+      body.appendChild(note("This Claude Code keeps its login somewhere other than .credentials.json, so it cannot be switched from here."));
+      return;
+    }
+    if (l.running) {
+      body.appendChild(note(`claude is running in ${l.running} place${l.running > 1 ? "s" : ""} — exit it before switching; a live session rotates its token and would overwrite the one swapped in.`));
+    }
+
+    for (const a of l.accounts) {
+      const rowEl = document.createElement("div");
+      rowEl.className = "sw-item";
+      rowEl.style.cursor = "default";
+      if (a.name === l.current) rowEl.classList.add("on");
+      const who = document.createElement("span");
+      who.className = "who";
+      const b = document.createElement("b");
+      b.textContent = a.name;
+      const sub = document.createElement("span");
+      sub.textContent = a.email ?? "no email recorded";
+      who.append(b, sub);
+      rowEl.appendChild(who);
+      if (a.name === l.current) {
+        const flag = document.createElement("span");
+        flag.className = "flag";
+        flag.textContent = "live";
+        rowEl.appendChild(flag);
+      } else {
+        rowEl.appendChild(button("Switch to", () => void act("switch", a.name), l.running ? "" : "primary"));
+      }
+      rowEl.appendChild(button("Forget", () => {
+        void act("forget", a.name);
+      }, "danger"));
+      body.appendChild(rowEl);
+    }
+
+    const saveRow = document.createElement("div");
+    saveRow.style.display = "flex";
+    saveRow.style.gap = "8px";
+    const nameInput = text("", () => {}, { placeholder: "profile name, e.g. personal", width: 240 });
+    const saveBtn = button("Save the live login as…", () => {
+      const name = nameInput.value.trim();
+      if (!name) return toast("Give the profile a name first");
+      void act("save", name);
+    });
+    saveRow.append(nameInput, saveBtn);
+    body.appendChild(saveRow);
+    body.appendChild(note(
+      "Setup is once per login, in order: logged in as A → save as a; `claude auth login` as B → save as b. " +
+      "Save right after each hand login — that is the window the mismatch guard protects.",
+    ));
+  };
+
+  const act = async (action: "list" | "save" | "switch" | "forget", name?: string) => {
+    try {
+      const l = await ctx.tp.logins(action, name);
+      draw(l);
+      if (action === "switch") toast(`Switched to ${name} — new shells log in as ${l.email ?? name}`);
+      if (action === "save") toast(`Saved the live login as ${name}`);
+      if (action === "forget") toast(`Forgot profile ${name}`);
+    } catch (e) {
+      toast(String(e));
+      void ctx.tp.logins("list").then(draw).catch(() => {});
+    }
+  };
+  void act("list");
+  return card;
+}
 
 export function renderList(ctx: Ctx, kind: Kind): HTMLElement {
   const spec = SPECS[kind];

@@ -47,6 +47,7 @@ export function installPalette(app: App) {
     { group: "App", label: "Manage snippets", run: () => app.settings.open("snippets") },
     { group: "App", label: "Appearance", run: () => app.settings.open("appearance") },
     { group: "App", label: "Check for updates", run: () => void app.status.checkUpdates() },
+    { group: "App", label: "Quit and end every shell", run: () => void app.quitAll() },
     { group: "App", label: app.config.rail_collapsed ? "Show the rail" : "Collapse the rail", hint: "Ctrl+Shift+B", run: () => app.toggleRail() },
   ];
 

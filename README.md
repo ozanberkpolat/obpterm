@@ -133,6 +133,31 @@ header counts what is waiting. Focusing a tab answers its bell. Nothing blinks.
 Claude Code rings the bell only when `preferredNotifChannel` is set to `terminal_bell` — its
 default, `auto`, stays silent in a terminal it does not recognise.
 
+## Supervising agents
+
+Every Claude Code session reports what it is doing through Claude's own hooks — a marked,
+removable block OBPTerm installs into `settings.json` automatically (Settings → Files & reset
+takes it out). No output parsing, nothing configured per shell, and a plain terminal ignores
+it. What that buys, per pane:
+
+- **True states in the rail.** ▲ now means *needs you* — a permission prompt or a question —
+  not just a bell; a filled dot means *finished while you were elsewhere, unread*; running
+  means the agent is actually mid-turn. The subtitle shows what it is doing ("Editing
+  pty.rs", "Running cargo check…") and, when it finishes, what it said.
+- **Answer a permission prompt from the rail.** Right-click the tab: Allow / Deny, without
+  focusing it. The verdict rides the hook's own reply; if you do nothing for 40 seconds the
+  normal in-pane prompt appears, exactly as without OBPTerm. A prompt on the pane you are
+  already looking at is passed straight through — no delay.
+- **Reboots stop costing conversations.** A Claude profile is launched with a session id
+  OBPTerm mints; after a reboot (which no session host survives) the restored pane runs
+  `claude --resume` on it and the conversation continues. `/clear` and `/compact` are
+  tracked through the hooks.
+- **Tabs name themselves.** Claude titles every session; the tab uses that name (or your
+  `/rename`) until you name it yourself with F2.
+- **Eco.** A session that finished and sat unread for half an hour (configurable) is
+  `/exit`ed — each idle Claude process holds ~335 MB — and the tab stays, marked; clicking
+  it resumes the same conversation.
+
 ## Being told
 
 A pane that asks for you while you are looking at something else raises a desktop notification
@@ -295,6 +320,57 @@ is left as written rather than turning into an empty path.
 Commands you keep retyping live in Settings → Snippets and show up in the palette under
 **Snippet**. Picking one types it into the focused pane; with "Press Enter for me" off it is
 left on the prompt for you to edit first. Nothing is sent until you pick it.
+
+## The session host
+
+Shells belong to the process that started them, and on Windows nothing changes that — so the
+window is not that process. **`obpterm-host.exe`** is: a headless program that owns every pty,
+keeps the last megabyte each one printed, and talks to the window over a local socket. Close
+the window, update the app, crash — the shells keep running. The next window lists what the
+host holds and **reattaches**: each pane gets its history replayed, the modes a program switched
+on (bracketed paste, mouse reporting) re-asserted, and a resize so full-screen programs repaint.
+
+What that means day to day:
+
+- **An update no longer costs your sessions.** The updater closes the window, replaces it and
+  reopens it; the host was never touched, and the new window says "N shells never stopped".
+- **Closing the window is a detach**, never a kill. The shells keep running. To end everything:
+  View → Quit and end every shell, or the same in `Ctrl+K`, or the status-bar chip.
+- **A reboot still ends them** — the host is a process, not a service. For Claude sessions the
+  way back is `claude --resume`; see the next release.
+- The host exits on its own thirty seconds after its last shell ends with no window attached,
+  so it is never a leftover. The status bar says when it is holding shells the window is not
+  showing, and it never holds anything invisibly.
+
+The host runs from a versioned copy in `%LOCALAPPDATA%\OBPTerm\host\`, under its own name: the
+installer cannot replace a running executable and kills `OBPTerm.exe` by name, and the copy
+escapes both. It advertises itself in `host.json` next to `config.json` (a random socket name
+and a token) — that file is user-only, so nothing else on the machine can find the socket.
+
+### Sleeping tabs
+
+A tab nobody has looked at for ten minutes loses its terminal: the xterm buffer and WebGL
+context are gone, the shell keeps running in the host, and the rail keeps reporting what it is
+doing from the host's own record (output, bell, exit). Clicking the tab brings the terminal
+back with the shell's recent output. Settings → Terminal → Memory sets the delay, or zero to
+keep every terminal alive. A tab being captured to a log is never put to sleep.
+
+## Claude Code logins
+
+Settings → Claude logins switches which login is live in `~/.claude`, the way the homelab's
+`/ssh/` terminal does it and with the same layout on disk (`.claude/accounts/<name>/` plus a
+`current` marker), so a profile saved on the laptop reads the same way on the VPS.
+
+A switch **saves the live login back into its own slot first** (refresh tokens rotate; a
+snapshot from days ago is dead), then copies the other profile over `.credentials.json` and the
+two identity keys of `~/.claude.json`. Nothing else is touched. Two refusals keep the save-back
+out of the wrong slot: no `current` marker, or a live email that is not the marked profile's —
+both mean "save it first". And it **refuses while `claude` is running**, because a live session
+rotates its token and would overwrite the one just swapped in, killing both logins. Setup is
+once per login, in order: logged in as A → save as `a`; `claude auth login` as B → save as `b`.
+
+This is distinct from **Accounts**, which are environment presets — a second login in its own
+folder via `CLAUDE_CONFIG_DIR`. Logins share one folder; accounts keep separate ones.
 
 ## Sessions and crashes
 

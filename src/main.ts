@@ -7,6 +7,7 @@ import { installToolbar } from "./toolbar";
 import { installHeader } from "./header";
 import { installPalette } from "./palette";
 import { installSettings } from "./settings-panel";
+import { installAgentEvents } from "./agent";
 import "./settings.css";
 import { toast } from "./ui";
 
@@ -32,15 +33,33 @@ async function main() {
   installKeys(app);
   (window as unknown as { obpterm: App }).obpterm = app; // devtools handle
   installCrashGuard(app);
+  await app.connectHost();
   // Running decays to idle on its own, so the rail re-derives once a second. The rail patches
   // rows in place, so this is a handful of attribute writes, not a rebuild.
   window.setInterval(() => app.onPaneActivity(), 1000);
+  window.setInterval(() => void app.sleepIdleTabs(), 30_000);
+  window.setInterval(() => app.ecoSweep(), 60_000);
+  window.setInterval(() => void app.refreshAgentTitles(), 5_000);
+  installAgentEvents(app);
+  // Hooks go in automatically (the user chose that): the default login's dir plus every
+  // account's. A marked block; Settings can remove it.
+  const hookDirs = [...new Set(["~/.claude", ...config.accounts.map((a) => a.claude_dir).filter((d): d is string => !!d)])];
+  void tp
+    .hooksEnsure(hookDirs)
+    .then((changed) => {
+      if (changed.length) toast(`Claude Code hooks installed (${changed.length} settings file${changed.length > 1 ? "s" : ""}) — agent states are live`);
+    })
+    .catch(() => {});
+  window.setInterval(() => void app.refreshHeld(), 3_000);
   window.addEventListener("focus", () => app.clearAttention());
   const { restored, crashed, updatedTo } = await app.restoreSession();
   const tabs = `${restored} tab${restored > 1 ? "s" : ""}`;
   if (!restored) await app.newTab();
-  if (updatedTo) toast(`Updated to ${updatedTo} — reopened ${tabs}`);
+  const kept = app.reattached ? ` — ${app.reattached} shell${app.reattached > 1 ? "s" : ""} never stopped` : "";
+  if (updatedTo) toast(`Updated to ${updatedTo}${kept || ` — reopened ${tabs}`}`);
   else if (crashed) toast(`Reopened ${tabs} — OBPTerm did not shut down cleanly`);
+  else if (app.reattached) toast(`Back${kept}`);
+  if (!app.hostInstance) toast("No session host: shells will end when the window closes");
   // Retention runs once, a moment after launch, so a folder that grew overnight is dealt with
   // before it matters. Silent unless it actually removed something.
   if (config.capture_keep_days || config.capture_max_mb) {

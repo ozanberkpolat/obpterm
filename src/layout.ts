@@ -20,6 +20,10 @@ export interface SavedNode {
   kind: "leaf" | "split";
   profile?: string;
   cwd?: string | null;
+  /** The host's id for this shell, so a restart reattaches instead of respawning. */
+  pty?: number | null;
+  /** Claude's session id, so a reboot resumes the conversation instead of losing it. */
+  claude?: string | null;
   dir?: "row" | "col";
   ratio?: number;
   a?: SavedNode;
@@ -149,7 +153,13 @@ export function neighbour(root: Node, from: Pane, dir: "left" | "right" | "up" |
 
 export function serialize(node: Node): SavedNode {
   if (node.kind === "leaf") {
-    return { kind: "leaf", profile: node.pane.profile.id, cwd: node.pane.cwd };
+    return {
+      kind: "leaf",
+      profile: node.pane.profile.id,
+      cwd: node.pane.cwd,
+      pty: node.pane.id > 0 ? node.pane.id : null,
+      claude: node.pane.claudeSessionId,
+    };
   }
   return { kind: "split", dir: node.dir, ratio: node.ratio, a: serialize(node.a), b: serialize(node.b) };
 }

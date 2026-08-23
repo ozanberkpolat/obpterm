@@ -40,6 +40,16 @@ export interface Host {
   project: string | null;
 }
 
+/** The Claude Code logins saved on this machine, the cc_account.py way. */
+export interface Logins {
+  accounts: { name: string; email: string | null }[];
+  current: string | null;
+  email: string | null;
+  running: number;
+  /** False when this Claude Code keeps its login somewhere other than .credentials.json. */
+  file_backed: boolean;
+}
+
 /** What Claude Code's own files say about the login in a config dir. */
 export interface ClaudeAccount {
   dir: string;
@@ -84,6 +94,8 @@ export interface Session {
   tabs: unknown;
   /** Index of the tab that was in front. */
   active: number;
+  /** Which session host the saved pty ids belong to. */
+  host: string | null;
   /** Version just installed, when the last exit was an update restart. */
   updated_to: string | null;
 }
@@ -136,6 +148,10 @@ export interface Config {
   capture_keep_days: number;
   capture_max_mb: number;
   update_check_on_launch: boolean;
+  /** Minutes a tab can go unvisited before its terminal is put to sleep. 0 = never. */
+  sleep_after_minutes: number;
+  /** Minutes a finished, unfocused Claude session sits before /exit frees its memory. 0 = never. */
+  eco_after_minutes: number;
   notify_bell: boolean;
   notify_silence: boolean;
   silence_seconds: number;
@@ -157,7 +173,54 @@ export interface Config {
   theme: Record<string, string>;
 }
 
+/** What the session host reports about itself. */
+export interface HostInfo {
+  instance: string;
+  version: string;
+  connected: boolean;
+}
+
+/** A shell the host is holding, whether or not a window is looking at it. */
+export interface HostSession {
+  id: number;
+  exe: string;
+  cwd: string | null;
+  attached: boolean;
+  exited: number | null;
+  started_at: number;
+  last_output: number;
+  bell: boolean;
+  agent_state: string | null;
+  agent_detail: string | null;
+  claude_session_id: string | null;
+}
+
 export interface Transport {
+  /** The session host, started if it is not running. `connected: false` = shells die with the window. */
+  hostInfo(): Promise<HostInfo>;
+  /** Every shell the host holds. */
+  listSessions(): Promise<HostSession[]>;
+  /** Picks up a shell the host already has: history replayed, then live. */
+  attach(
+    id: number,
+    cols: number,
+    rows: number,
+    onData: (bytes: Uint8Array) => void,
+    onExit: (code: number | null) => void,
+  ): Promise<void>;
+  /** Stop watching a shell without ending it. What a sleeping tab does. */
+  detach(id: number): Promise<void>;
+  /** Ends every shell and the host. The one way out that means it. */
+  hostShutdown(): Promise<void>;
+  /** Hook-derived agent updates (Claude Code's own events), for the supervision states. */
+  onAgent(handler: (u: import("./agent").AgentUpdate) => void): void;
+  /** The rail's verdict on a held permission request; null passes it to the in-pane prompt. */
+  agentAnswer(pendingId: string, allow: boolean | null): Promise<void>;
+  /** Install (or refresh) the Claude Code hook block in these config dirs' settings.json. */
+  hooksEnsure(dirs: string[]): Promise<string[]>;
+  hooksRemove(dirs: string[]): Promise<number>;
+  /** Claude's own name for a session, read from its transcript. */
+  sessionTitle(dir: string, sessionId: string): Promise<string | null>;
   spawn(
     profile: Profile,
     cols: number,
@@ -195,10 +258,11 @@ export interface Transport {
   configReset(): Promise<Config>;
   reveal(what: "config" | "logs"): Promise<string>;
   sessionLoad(): Promise<Session>;
-  sessionSave(tabs: unknown, active: number): Promise<void>;
+  sessionSave(tabs: unknown, active: number, host: string | null): Promise<void>;
   claudeAccount(dir: string): Promise<ClaudeAccount>;
   claudeUsage(dir: string): Promise<ClaudeUsage>;
   claudeLimits(file: string | null, url: string | null): Promise<ClaudeLimits | null>;
+  logins(action: "list" | "save" | "switch" | "forget", name?: string): Promise<Logins>;
   loadConfig(): Promise<Config>;
   saveConfig(config: Config): Promise<void>;
   configPath(): Promise<string>;
@@ -228,6 +292,8 @@ export function withDefaults(config: Partial<Config>): Config {
     capture_keep_days: config.capture_keep_days ?? 30,
     capture_max_mb: config.capture_max_mb ?? 512,
     update_check_on_launch: config.update_check_on_launch ?? true,
+    sleep_after_minutes: config.sleep_after_minutes ?? 10,
+    eco_after_minutes: config.eco_after_minutes ?? 30,
     notify_bell: config.notify_bell ?? true,
     notify_silence: config.notify_silence ?? false,
     silence_seconds: config.silence_seconds ?? 20,

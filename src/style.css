@@ -268,6 +268,10 @@ body.dim-inactive .pane.focused, body.dim-inactive .tab-panes > .pane:only-child
   background: var(--pane-accent, var(--accent)); border-radius: 999px;
 }
 .pane .xterm { height: 100%; }
+.pane .asleep {
+  height: 100%; display: flex; align-items: center; justify-content: center;
+  color: var(--faint); font: 12px var(--mono); user-select: none;
+}
 .xterm .xterm-viewport { scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }
 
 /* ---- menus & toast ---------------------------------------------------------------------- */

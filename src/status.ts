@@ -19,6 +19,7 @@ export class Status {
   private panecount = document.querySelector<HTMLElement>("#panecount")!;
   private metricsEl = document.querySelector<HTMLElement>("#metrics")!;
   private updateEl = document.querySelector<HTMLButtonElement>("#update-chip")!;
+  private hostEl = document.querySelector<HTMLButtonElement>("#host-chip")!;
   private login: ClaudeAccount | null = null;
   /** Logins Claude Code itself keeps in the current account's config dir. */
   private logins: string[] = [];
@@ -33,6 +34,7 @@ export class Status {
     document.querySelector("#target-chip")!.addEventListener("click", (e) => this.hostMenu(e as MouseEvent));
     this.quota.addEventListener("click", (e) => this.usageMenu(e as MouseEvent));
     this.updateEl.addEventListener("click", () => void this.checkUpdates());
+    this.hostEl.addEventListener("click", (e) => this.hostMenu2(e as MouseEvent));
     window.addEventListener("focus", () => void this.refresh());
     window.setInterval(() => void this.refresh(), REFRESH_MS);
     window.setInterval(() => void this.refreshMetrics(), METRICS_MS);
@@ -189,6 +191,15 @@ export class Status {
     if (pane?.logPath) this.capture.title = pane.logPath;
     const panes = tab ? this.app.paneCount(tab) : 0;
     this.panecount.textContent = panes > 1 ? `${panes} panes` : "";
+
+    // A background process holding shells must never be invisible.
+    const sleeping = this.app.sleepingCount();
+    const orphans = this.app.orphanedSessions();
+    const parts = [];
+    if (sleeping) parts.push(`${sleeping} asleep`);
+    if (orphans) parts.push(`${orphans} in the background`);
+    this.hostEl.hidden = !this.app.hostInstance || parts.length === 0;
+    this.hostEl.textContent = parts.join(" · ");
   }
 
   /** The real limit: a percentage that means something, and when it frees up. */
@@ -276,6 +287,14 @@ export class Status {
       })),
       { label: "Split with this host…", onPick: () => this.hostSplitMenu(e) },
       { label: "Manage hosts…", onPick: () => this.app.settings.open("hosts") },
+    ]);
+  }
+
+  /** The session host's chip: what it holds, and the one way to end it all. */
+  private hostMenu2(e: MouseEvent) {
+    openMenu(e.clientX, e.clientY, [
+      { label: "Wake every sleeping tab", onPick: () => void this.app.wakeAll() },
+      { label: "Quit and end every shell", danger: true, onPick: () => void this.app.quitAll() },
     ]);
   }
 

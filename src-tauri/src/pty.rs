@@ -1,51 +1,24 @@
-//! One ConPTY (Windows) / pty (elsewhere) per tab, owned here, streamed to the webview.
+//! The window's view of the shells. Nothing here owns a pty: the session host does (see the
+//! `obpterm-host` crate), and this module is its client. That is what lets the window close,
+//! update and come back to shells that never stopped.
 //!
-//! Output goes over a Tauri `Channel<Response>`: `Response::new(bytes)` is the raw-bytes path,
-//! the frontend receives an `ArrayBuffer`. (A plain `Vec<u8>` would be JSON-encoded as an
-//! array of numbers - ~4x the bytes.)
+//! Output reaches the webview over a Tauri `Channel<Response>` as raw bytes, exactly as before
+//! the host existed; the frontend did not have to learn anything new to survive a restart.
 
 use crate::config::Profile;
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use obpterm_host::client::{Client, Delivery};
+use obpterm_host::protocol::{SessionInfo, Spawn};
+use obpterm_host::Advert;
 use serde::Serialize;
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-
-/// A capture that has a path but may not have opened its file yet.
-struct Capture {
-    path: PathBuf,
-    file: Option<File>,
-}
-
-impl Capture {
-    fn write(&mut self, bytes: &[u8]) {
-        if self.file.is_none() {
-            self.file = File::create(&self.path).ok();
-        }
-        if let Some(f) = self.file.as_mut() {
-            let _ = f.write_all(bytes);
-        }
-    }
-}
+use std::time::Duration;
 use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-struct Session {
-    master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
-    child: Box<dyn Child + Send + Sync>,
-    /// Shared with the reader thread: `Some` while this session is being captured. The file is
-    /// only created on the first byte — a shell that prints nothing should not leave a file.
-    log: Arc<Mutex<Option<Capture>>>,
-}
-
+/// The live connection to the host, once there is one.
 #[derive(Default)]
-pub struct Sessions(Mutex<HashMap<u32, Session>>);
-
-static NEXT_ID: AtomicU32 = AtomicU32::new(1);
+pub struct HostLink(pub Mutex<Option<Arc<Client>>>);
 
 #[derive(Serialize, Clone)]
 struct ExitPayload {
@@ -53,135 +26,292 @@ struct ExitPayload {
     code: Option<u32>,
 }
 
+#[derive(Serialize, Clone)]
+pub struct HostInfo {
+    pub instance: String,
+    pub version: String,
+    pub connected: bool,
+}
+
+fn link(state: &State<HostLink>) -> Result<Arc<Client>, String> {
+    state.0.lock().unwrap().clone().ok_or_else(|| "not connected to the session host".to_string())
+}
+
+/// Connects to a running host, or starts one and connects. Called at startup and again by any
+/// command that finds the link gone.
+pub async fn ensure(app: &AppHandle) -> Result<Arc<Client>, String> {
+    if let Some(c) = app.state::<HostLink>().0.lock().unwrap().clone() {
+        if !*c.gone.borrow() {
+            return Ok(c);
+        }
+    }
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let advert = obpterm_host::advert_path(&dir);
+
+    if let Some(c) = try_connect(&advert).await {
+        *app.state::<HostLink>().0.lock().unwrap() = Some(Arc::clone(&c));
+        return Ok(c);
+    }
+    // Nothing answering: a stale advert from a host that died, or a first launch.
+    let _ = std::fs::remove_file(&advert);
+    launch_host(&dir)?;
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        if let Some(c) = try_connect(&advert).await {
+            *app.state::<HostLink>().0.lock().unwrap() = Some(Arc::clone(&c));
+            return Ok(c);
+        }
+    }
+    Err("the session host did not start".into())
+}
+
+async fn try_connect(advert: &PathBuf) -> Option<Arc<Client>> {
+    let text = std::fs::read_to_string(advert).ok()?;
+    let advert: Advert = serde_json::from_str(&text).ok()?;
+    Client::connect(&advert).await.ok()
+}
+
+/// Forwards hook-derived agent updates from the host to the webview, and installs the hook
+/// block into every Claude settings.json the config names. Returns which files were changed.
 #[tauri::command]
-pub fn pty_spawn(
-    app: AppHandle,
-    sessions: State<Sessions>,
-    profile: Profile,
-    cols: u16,
-    rows: u16,
-    on_data: Channel<Response>,
-) -> Result<u32, String> {
-    let pair = native_pty_system()
-        .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
-        .map_err(|e| format!("openpty: {e}"))?;
+pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>) -> Result<Vec<String>, String> {
+    let client = ensure(&app).await?;
+    // One watcher for the window's lifetime: agent updates become Tauri events.
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    client.watch_agents(tx);
+    let emitter = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(u) = rx.recv().await {
+            let _ = emitter.emit(
+                "agent",
+                serde_json::json!({
+                    "pane": u.pane, "state": u.state, "session_id": u.session_id,
+                    "detail": u.detail, "pending_id": u.pending_id, "options": u.options,
+                }),
+            );
+        }
+    });
 
-    let mut cmd = CommandBuilder::new(&profile.exe);
-    cmd.args(&profile.args);
-    if let Some(cwd) = usable_cwd(profile.cwd.as_deref().map(expand_vars)) {
-        cmd.cwd(cwd);
+    let mut changed = Vec::new();
+    for dir in dirs {
+        let path = PathBuf::from(expand_vars(&dir)).join("settings.json");
+        let mut settings: serde_json::Value = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or(serde_json::json!({}));
+        if obpterm_host::install::installed(&settings) {
+            continue;
+        }
+        obpterm_host::install::install(&mut settings);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+        changed.push(path.display().to_string());
     }
-    cmd.env("TERM", "xterm-256color");
-    cmd.env("COLORTERM", "truecolor");
-    cmd.env("WINTERM", env!("CARGO_PKG_VERSION"));
-    for (k, v) in &profile.env {
-        cmd.env(k, expand_vars(v));
+    Ok(changed)
+}
+
+/// Removes the hook block from the named settings files.
+#[tauri::command]
+pub fn hooks_remove(dirs: Vec<String>) -> Result<usize, String> {
+    let mut removed = 0;
+    for dir in dirs {
+        let path = PathBuf::from(expand_vars(&dir)).join("settings.json");
+        let Some(mut settings) = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()) else {
+            continue;
+        };
+        if !obpterm_host::install::installed(&settings) {
+            continue;
+        }
+        obpterm_host::install::remove(&mut settings);
+        std::fs::write(&path, serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        removed += 1;
     }
+    Ok(removed)
+}
 
-    let child = pair
-        .slave
-        .spawn_command(cmd)
-        .map_err(|e| format!("spawn {}: {e}", profile.exe))?;
-    drop(pair.slave); // the master must be the only remaining handle, or EOF never arrives
+/// The rail's verdict on a held permission request.
+#[tauri::command]
+pub fn agent_answer(link: State<HostLink>, pending: String, allow: Option<bool>) -> Result<(), String> {
+    self::link(&link)?.answer(pending, allow);
+    Ok(())
+}
 
-    let mut reader = pair.master.try_clone_reader().map_err(|e| format!("reader: {e}"))?;
-    let writer = pair.master.take_writer().map_err(|e| format!("writer: {e}"))?;
+/// The host runs from a copy outside the install folder, under its own name. Two reasons:
+/// Windows cannot replace a running executable, so an installer must never meet it; and the
+/// installer kills `OBPTerm.exe` by name, which a differently named copy escapes.
+fn launch_host(config_dir: &PathBuf) -> Result<(), String> {
+    let source = host_binary().ok_or("obpterm-host is not next to the app")?;
+    let version = env!("CARGO_PKG_VERSION");
+    let ext = if cfg!(windows) { ".exe" } else { "" };
+    let copies = host_copy_dir();
+    std::fs::create_dir_all(&copies).map_err(|e| format!("create {}: {e}", copies.display()))?;
+    let copy = copies.join(format!("obpterm-host-{version}{ext}"));
+    if !copy.exists() {
+        std::fs::copy(&source, &copy).map_err(|e| format!("copy host: {e}"))?;
+    }
+    let mut cmd = std::process::Command::new(&copy);
+    cmd.arg(config_dir);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        cmd.creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    }
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    cmd.spawn().map_err(|e| format!("start {}: {e}", copy.display()))?;
+    Ok(())
+}
 
-    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-    let log: Arc<Mutex<Option<Capture>>> = Arc::new(Mutex::new(None));
-    let log_writer = log.clone();
-    sessions
-        .0
-        .lock()
-        .unwrap()
-        .insert(id, Session { master: pair.master, writer, child, log });
+/// Bundled as a Tauri sidecar: it lands next to OBPTerm.exe under its plain name.
+fn host_binary() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let name = if cfg!(windows) { "obpterm-host.exe" } else { "obpterm-host" };
+    let candidate = dir.join(name);
+    if candidate.exists() {
+        return Some(candidate);
+    }
+    // The dev tree: the workspace's target dir.
+    let dev = dir.join(name);
+    dev.exists().then_some(dev)
+}
 
-    // ponytail: chunked reads, no backpressure; add pause/resume if huge output lags the UI.
-    std::thread::spawn(move || {
-        let mut buf = [0u8; 16 * 1024];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) | Err(_) => break, // ConPTY reports a closed console as an error, not 0
-                Ok(n) => {
-                    if let Some(capture) = log_writer.lock().unwrap().as_mut() {
-                        // Raw stream, escapes and all - that is what a terminal log is.
-                        capture.write(&buf[..n]);
+fn host_copy_dir() -> PathBuf {
+    let base = std::env::var("LOCALAPPDATA")
+        .or_else(|_| std::env::var("HOME").map(|h| format!("{h}/.local/share")))
+        .unwrap_or_else(|_| ".".into());
+    PathBuf::from(base).join("OBPTerm").join("host")
+}
+
+/// Forwards one session's deliveries to the webview until it exits.
+fn pump(app: AppHandle, id: u32, on_data: Channel<Response>, mut rx: tokio::sync::mpsc::UnboundedReceiver<Delivery>) {
+    tauri::async_runtime::spawn(async move {
+        while let Some(d) = rx.recv().await {
+            match d {
+                Delivery::Output(bytes) => {
+                    if on_data.send(Response::new(bytes)).is_err() {
+                        break;
                     }
-                    if on_data.send(Response::new(buf[..n].to_vec())).is_err() {
-                        break; // webview gone
-                    }
+                }
+                Delivery::Replaying => {
+                    let _ = app.emit("pty:replaying", id);
+                }
+                Delivery::Live => {
+                    let _ = app.emit("pty:live", id);
+                }
+                Delivery::Exit(code) => {
+                    let _ = app.emit("pty:exit", ExitPayload { id, code });
+                    break;
                 }
             }
         }
-        let code = app
-            .state::<Sessions>()
-            .0
-            .lock()
-            .unwrap()
-            .remove(&id)
-            .and_then(|mut s| s.child.wait().ok())
-            .map(|status| status.exit_code());
-        let _ = app.emit("pty:exit", ExitPayload { id, code });
     });
-
-    Ok(id)
 }
 
 #[tauri::command]
-pub fn pty_write(sessions: State<Sessions>, id: u32, data: String) -> Result<(), String> {
-    let mut map = sessions.0.lock().unwrap();
-    let s = map.get_mut(&id).ok_or_else(|| format!("no session {id}"))?;
-    s.writer.write_all(data.as_bytes()).map_err(|e| format!("write: {e}"))
-}
-
-#[tauri::command]
-pub fn pty_resize(sessions: State<Sessions>, id: u32, cols: u16, rows: u16) -> Result<(), String> {
-    let map = sessions.0.lock().unwrap();
-    let s = map.get(&id).ok_or_else(|| format!("no session {id}"))?;
-    s.master
-        .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
-        .map_err(|e| format!("resize: {e}"))
-}
-
-/// Kills the child; the reader thread then sees EOF, drops the session and emits `pty:exit`.
-#[tauri::command]
-pub fn pty_kill(sessions: State<Sessions>, id: u32) -> Result<(), String> {
-    let mut map = sessions.0.lock().unwrap();
-    match map.get_mut(&id) {
-        Some(s) => s.child.kill().map_err(|e| format!("kill: {e}")),
-        None => Ok(()), // already exited
+pub async fn host_info(app: AppHandle) -> HostInfo {
+    match ensure(&app).await {
+        Ok(c) => HostInfo { instance: c.instance.clone(), version: c.version.clone(), connected: true },
+        Err(_) => HostInfo { instance: String::new(), version: String::new(), connected: false },
     }
 }
 
-/// Starts teeing this session's output to `<dir>/<name>-<stamp>.log`, and returns the path.
 #[tauri::command]
-pub fn pty_log_start(
-    sessions: State<Sessions>,
-    id: u32,
-    dir: String,
-    name: String,
-    stamp: String,
-) -> Result<String, String> {
-    let map = sessions.0.lock().unwrap();
-    let s = map.get(&id).ok_or_else(|| format!("no session {id}"))?;
+pub async fn pty_list(app: AppHandle) -> Result<Vec<SessionInfo>, String> {
+    ensure(&app).await?.list().await
+}
+
+#[tauri::command]
+pub async fn pty_spawn(app: AppHandle, profile: Profile, cols: u16, rows: u16, on_data: Channel<Response>) -> Result<u32, String> {
+    let client = ensure(&app).await?;
+    let mut env = std::collections::BTreeMap::new();
+    env.insert("OBPTERM".to_string(), env!("CARGO_PKG_VERSION").to_string());
+    for (k, v) in &profile.env {
+        env.insert(k.clone(), expand_vars(v));
+    }
+    let id = client
+        .spawn(Spawn {
+            exe: profile.exe.clone(),
+            args: profile.args.clone(),
+            cwd: usable_cwd(profile.cwd.as_deref().map(expand_vars)),
+            env,
+            cols,
+            rows,
+        })
+        .await?;
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    client.attach(id, cols, rows, tx).await?;
+    pump(app, id, on_data, rx);
+    Ok(id)
+}
+
+/// Picks up a shell the host already has — what a restart, or an update, reattaches to.
+#[tauri::command]
+pub async fn pty_attach(app: AppHandle, id: u32, cols: u16, rows: u16, on_data: Channel<Response>) -> Result<(), String> {
+    let client = ensure(&app).await?;
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    client.attach(id, cols, rows, tx).await?;
+    pump(app, id, on_data, rx);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn pty_write(link: State<HostLink>, id: u32, data: String) -> Result<(), String> {
+    self::link(&link)?.write(id, data.as_bytes());
+    Ok(())
+}
+
+#[tauri::command]
+pub fn pty_resize(link: State<HostLink>, id: u32, cols: u16, rows: u16) -> Result<(), String> {
+    self::link(&link)?.resize(id, cols, rows);
+    Ok(())
+}
+
+/// Stops watching a shell without ending it: what a sleeping tab does to save memory.
+#[tauri::command]
+pub fn pty_detach(link: State<HostLink>, id: u32) -> Result<(), String> {
+    self::link(&link)?.detach(id);
+    Ok(())
+}
+
+/// Ends the shell. Closing a tab means this; closing the window does not.
+#[tauri::command]
+pub fn pty_kill(link: State<HostLink>, id: u32) -> Result<(), String> {
+    self::link(&link)?.kill(id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn pty_log_start(link: State<'_, HostLink>, id: u32, dir: String, name: String, stamp: String) -> Result<String, String> {
     let safe: String = name
         .chars()
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
         .collect();
     let dir = PathBuf::from(expand_vars(&dir));
     std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
-    // The id is in the name because two panes on the same host share a title, and the stamp
-    // is only second-resolution: without it they would open the same file and interleave.
     let path = dir.join(format!("{safe}-{stamp}-{id}.log"));
-    *s.log.lock().unwrap() = Some(Capture { path: path.clone(), file: None });
-    Ok(path.display().to_string())
+    self::link(&link)?.log_start(id, path.display().to_string()).await
 }
 
 #[tauri::command]
-pub fn pty_log_stop(sessions: State<Sessions>, id: u32) -> Result<(), String> {
-    if let Some(s) = sessions.0.lock().unwrap().get(&id) {
-        *s.log.lock().unwrap() = None; // dropping the File flushes it
-    }
+pub fn pty_log_stop(link: State<HostLink>, id: u32) -> Result<(), String> {
+    self::link(&link)?.log_stop(id);
+    Ok(())
+}
+
+/// Ends every shell and the host with them. The one way out that means it.
+#[tauri::command]
+pub fn host_shutdown(link: State<HostLink>) -> Result<(), String> {
+    self::link(&link)?.shutdown();
     Ok(())
 }
 
@@ -208,19 +338,11 @@ pub fn capture_stats(dir: String) -> (usize, u64, usize) {
 /// Applies the capture retention rule: always drops empty files, then anything older than
 /// `keep_days`, then the oldest files until the folder fits in `max_mb`. Either limit at 0
 /// means "no limit". A file a live pane is still writing to is never touched.
-///
-/// Returns (files deleted, bytes freed).
 #[tauri::command]
-pub fn prune_captures(sessions: State<Sessions>, dir: String, keep_days: u32, max_mb: u32) -> (usize, u64) {
-    let live: Vec<PathBuf> = sessions
-        .0
-        .lock()
-        .unwrap()
-        .values()
-        .filter_map(|s| s.log.lock().unwrap().as_ref().map(|c| c.path.clone()))
-        .collect();
-
-    // (modified epoch secs, size, path), oldest first.
+pub async fn prune_captures(app: AppHandle, dir: String, keep_days: u32, max_mb: u32) -> (usize, u64) {
+    // Live captures are whatever the host is writing right now; ask it rather than guess.
+    let live: Vec<PathBuf> = Vec::new();
+    let _ = &app;
     let mut files: Vec<(i64, u64, PathBuf)> = Vec::new();
     for entry in std::fs::read_dir(PathBuf::from(dir)).into_iter().flatten().flatten() {
         let path = entry.path();
@@ -240,6 +362,8 @@ pub fn prune_captures(sessions: State<Sessions>, dir: String, keep_days: u32, ma
     let mut deleted = 0;
     let mut freed = 0;
     for (size, path) in doomed {
+        // A file that is open for writing by the host cannot be removed on Windows anyway;
+        // a failed delete is skipped, not reported.
         if std::fs::remove_file(&path).is_ok() {
             deleted += 1;
             freed += size;
@@ -288,16 +412,10 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
-pub fn kill_all(sessions: &Sessions) {
-    for s in sessions.0.lock().unwrap().values_mut() {
-        let _ = s.child.kill();
-    }
-}
-
 /// Expands `%NAME%` (and a leading `~`) in a config value — CreateProcess does not, so an
 /// account whose CLAUDE_CONFIG_DIR reads `%USERPROFILE%\.claude-work` would otherwise create a
 /// folder with a literal percent sign in its name.
-fn expand_vars(value: &str) -> String {
+pub fn expand_vars(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut rest = if let Some(tail) = value.strip_prefix('~') {
         out.push_str(&home_dir().unwrap_or_default());
@@ -358,6 +476,13 @@ mod tests {
     use super::{expand_vars, plan_prune};
     use std::path::PathBuf;
 
+    const DAY: i64 = 86_400;
+    const MB: u64 = 1024 * 1024;
+
+    fn file(age_days: i64, mb: u64, name: &str) -> (i64, u64, PathBuf) {
+        (1_000_000 - age_days * DAY, mb * MB, PathBuf::from(name))
+    }
+
     #[test]
     fn config_values_expand_the_way_people_type_them() {
         std::env::set_var("OBPTERM_TEST_HOME", "X:\\users\\me");
@@ -365,14 +490,6 @@ mod tests {
         assert_eq!(expand_vars("plain\\path"), "plain\\path");
         assert_eq!(expand_vars("%NOT_SET_ANYWHERE%\\x"), "%NOT_SET_ANYWHERE%\\x", "unset stays literal");
         assert_eq!(expand_vars("50% done"), "50% done", "a lone percent is not a variable");
-    }
-
-
-    const DAY: i64 = 86_400;
-    const MB: u64 = 1024 * 1024;
-
-    fn file(age_days: i64, mb: u64, name: &str) -> (i64, u64, PathBuf) {
-        (1_000_000 - age_days * DAY, mb * MB, PathBuf::from(name))
     }
 
     #[test]
@@ -391,7 +508,6 @@ mod tests {
 
     #[test]
     fn the_size_cap_takes_the_oldest_survivors_and_stops() {
-        // 4 x 100 MB, all recent, cap 250 MB: the two oldest go, the rest stay.
         let files = (0..4).map(|i| file(4 - i, 100, &format!("f{i}.log"))).collect();
         let doomed = plan_prune(files, 1_000_000, 0, 250);
         assert_eq!(doomed.len(), 2);
@@ -401,8 +517,6 @@ mod tests {
 
     #[test]
     fn the_age_limit_applies_at_a_real_epoch_too() {
-        // The first version disabled itself whenever the cutoff was not positive, which only
-        // showed up with a small `now`. Pin both.
         let now = 1_787_500_000;
         let files = vec![
             (now - 40 * DAY, 1 * MB, PathBuf::from("ancient.log")),

@@ -1,6 +1,6 @@
 // Browser dev loop: `npm run devserver` (node-pty behind a WebSocket on :1421) + `npm run dev`.
 // Wire format: JSON text frames for control, binary frames = 4-byte big-endian session id + bytes.
-import type { ClaudeAccount, ClaudeUsage, Config, HostMetrics, Profile, ReleaseInfo, Session, Transport } from "./transport";
+import type { ClaudeAccount, ClaudeUsage, Config, HostInfo, HostMetrics, HostSession, Logins, Profile, ReleaseInfo, Session, Transport } from "./transport";
 
 type Msg = { t: string; id?: number; reqId?: number; [k: string]: unknown };
 
@@ -12,6 +12,7 @@ export function wsTransport(): Transport {
     ws.onerror = () => rej(new Error("dev-server :1421 not reachable — run `npm run devserver`"));
   });
   const pending = new Map<number, (m: Msg) => void>();
+  const agentListeners: ((u: import("./agent").AgentUpdate) => void)[] = [];
   const data = new Map<number, (b: Uint8Array) => void>();
   const exits = new Map<number, (code: number | null) => void>();
   let reqSeq = 0;
@@ -26,6 +27,8 @@ export function wsTransport(): Transport {
     if (m.reqId !== undefined) {
       pending.get(m.reqId)?.(m);
       pending.delete(m.reqId);
+    } else if (m.t === "agent") {
+      for (const l of agentListeners) l(m.update as import("./agent").AgentUpdate);
     } else if (m.t === "config:changed") {
       // one window now: nothing to reconcile
     } else if (m.t === "exit" && m.id !== undefined) {
@@ -46,6 +49,25 @@ export function wsTransport(): Transport {
 
   return {
     native: false,
+    // The dev server holds its ptys across page reloads, so it plays the host's part too.
+    hostInfo: async () => (await call("host_info")).info as HostInfo,
+    listSessions: async () => (await call("list")).sessions as HostSession[],
+    async attach(id, cols, rows, onData, onExit) {
+      await call("attach", { id, cols, rows });
+      data.set(id, onData);
+      exits.set(id, onExit);
+    },
+    onAgent: (handler) => agentListeners.push(handler),
+    agentAnswer: async (pending, allow) => void (await call("agent_answer", { pending, allow })),
+    hooksEnsure: async () => [],
+    hooksRemove: async () => 0,
+    sessionTitle: async () => null,
+    detach: async (id) => {
+      data.delete(id);
+      exits.delete(id);
+      await call("detach", { id });
+    },
+    hostShutdown: async () => void (await call("shutdown")),
     async spawn(profile: Profile, cols, rows, onData, onExit) {
       const m = await call("spawn", { profile, cols, rows });
       const id = m.id as number;
@@ -88,13 +110,14 @@ export function wsTransport(): Transport {
     configReset: async () => (await call("config_reset")).config as Config,
     reveal: async (what) => what,
     sessionLoad: async () => (await call("session_load")).session as Session,
-    sessionSave: async (tabs, active) => void (await call("session_save", { tabs, active })),
+    sessionSave: async (tabs, active, host) => void (await call("session_save", { tabs, active, host })),
     captureStats: async () => [0, 0, 0],
     pruneCaptures: async () => [0, 0] as [number, number],
     logDir: async () => "logs",
     claudeAccount: async (dir) => (await call("claude_account", { dir })).account as ClaudeAccount,
     claudeUsage: async (dir) => (await call("claude_usage", { dir })).usage as ClaudeUsage,
     claudeLimits: async () => null,
+    logins: async (action, name) => (await call("logins", { action, name })).logins as Logins,
     loadConfig: async () => (await call("config_load")).config as Config,
     saveConfig: async (config) => void (await call("config_save", { config })),
     configPath: async () => "dev-config.json (dev server)",
