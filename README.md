@@ -19,6 +19,7 @@ Download `winterm_<version>_x64-setup.exe` (per-user, no admin) or `winterm_<ver
 | `Ctrl+Shift+1..9` | New tab with profile N |
 | `Ctrl+Shift+W` / middle-click | Close tab |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+1..9` | Jump to tab N |
 | `Ctrl+Shift+B` | Collapse / expand the rail |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste. Right-click copies a selection, otherwise pastes |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Font size |

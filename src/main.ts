@@ -8,6 +8,8 @@ async function main() {
     // Fail loud: a corrupt config.json is shown, not silently replaced.
     throw new Error(`${e}\n(${await tp.configPath().catch(() => "config path unknown")})`);
   });
+  // xterm measures the cell box once; the bundled mono face must be in before the first terminal.
+  await document.fonts.load(`${config.font_size}px "JetBrains Mono"`).catch(() => {});
   const app = new App(tp, config);
   app.applyConfig();
   installKeys(app);

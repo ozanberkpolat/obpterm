@@ -11,7 +11,7 @@ export function ownsKey(e: KeyboardEvent): boolean {
   if (e.type !== "keydown") return false;
   if (ctrlOnly(e) && e.code === "Tab") return true;
   if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV"].includes(e.code)) return true;
-  if (ctrlShift(e) && /^Digit[1-9]$/.test(e.code)) return true;
+  if ((ctrlShift(e) || ctrlOnly(e)) && /^Digit[1-9]$/.test(e.code)) return true;
   if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract"].includes(e.code)) return true;
   return e.code === "F12"; // F5 is a real key for the shell (ESC[15~); only devtools is ours
 }
@@ -31,10 +31,13 @@ export function installKeys(app: App) {
       if (ctrlShift(e) && e.code === "KeyB") { app.toggleRail(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyC") { void app.copy(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyV") { void app.paste(); return stop(e); }
-      const digit = ctrlShift(e) && /^Digit([1-9])$/.exec(e.code);
+      const digit = (e.ctrlKey && !e.altKey && !e.metaKey) ? /^Digit([1-9])$/.exec(e.code) : null;
       if (digit) {
-        const p = app.config.profiles[Number(digit[1]) - 1];
-        if (p) void app.newTab(p);
+        const n = Number(digit[1]) - 1;
+        if (e.shiftKey) {
+          const p = app.config.profiles[n];
+          if (p) void app.newTab(p);
+        } else app.jump(n);
         return stop(e);
       }
       if (ctrlOnly(e) && (e.code === "Equal" || e.code === "NumpadAdd")) { app.zoom(1); return stop(e); }
