@@ -150,9 +150,11 @@ pub fn pty_log_start(
         .chars()
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
         .collect();
-    let dir = PathBuf::from(dir);
+    let dir = PathBuf::from(expand_vars(&dir));
     std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
-    let path = dir.join(format!("{safe}-{stamp}.log"));
+    // The id is in the name because two panes on the same host share a title, and the stamp
+    // is only second-resolution: without it they would open the same file and interleave.
+    let path = dir.join(format!("{safe}-{stamp}-{id}.log"));
     let file = File::create(&path).map_err(|e| format!("create {}: {e}", path.display()))?;
     *s.log.lock().unwrap() = Some(file);
     Ok(path.display().to_string())

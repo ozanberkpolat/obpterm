@@ -6,7 +6,7 @@
 //! `CLAUDE_CONFIG_DIR` set, which is why an account in obpterm is just an env preset.
 
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -56,7 +56,7 @@ struct FileState {
     len: u64,
     /// (epoch_ms, billed, input, output, cache_read, cache_write) per message, newest last.
     entries: Vec<(i64, u64, u64, u64, u64, u64)>,
-    seen: Vec<String>,
+    seen: HashSet<String>,
 }
 
 #[tauri::command]
@@ -101,8 +101,10 @@ pub fn claude_account_names(dir: String) -> Vec<String> {
 
 /// Token spend in the last 5 hours and 7 days, summed from the transcripts on disk.
 /// This is what *this machine* sent, not Anthropic's own accounting of the plan limit.
+/// Async so the sweep runs off the webview's IPC thread: `~/.claude/projects` grows without
+/// bound for someone running many sessions, and this is called on every window focus.
 #[tauri::command]
-pub fn claude_usage(cache: State<UsageCache>, dir: String) -> Usage {
+pub async fn claude_usage(cache: State<'_, UsageCache>, dir: String) -> Result<Usage, String> {
     let now = now_ms();
     let projects = PathBuf::from(&dir).join("projects");
     let mut usage = Usage { dir, ..Default::default() };
@@ -140,7 +142,7 @@ pub fn claude_usage(cache: State<UsageCache>, dir: String) -> Usage {
             usage.last_activity = Some(usage.last_activity.unwrap_or(ts).max(ts));
         }
     }
-    usage
+    Ok(usage)
 }
 
 fn add(b: &mut Bucket, billed: u64, input: u64, output: u64, cache_read: u64, cache_write: u64) {
@@ -197,7 +199,7 @@ fn scan(path: &Path, state: &mut FileState) {
     state.offset = consumed;
 }
 
-fn parse_line(line: &str, seen: &mut Vec<String>) -> Option<(i64, u64, u64, u64, u64, u64)> {
+fn parse_line(line: &str, seen: &mut HashSet<String>) -> Option<(i64, u64, u64, u64, u64, u64)> {
     if !line.contains("\"usage\"") {
         return None;
     }
@@ -209,10 +211,9 @@ fn parse_line(line: &str, seen: &mut Vec<String>) -> Option<(i64, u64, u64, u64,
         .and_then(|i| i.as_str())
         .map(str::to_string)
         .or_else(|| v.get("uuid").and_then(|i| i.as_str()).map(str::to_string))?;
-    if seen.contains(&id) {
+    if !seen.insert(id) {
         return None;
     }
-    seen.push(id);
     let ts = parse_rfc3339_ms(v.get("timestamp")?.as_str()?)?;
     let n = |k: &str| usage.get(k).and_then(|x| x.as_u64()).unwrap_or(0);
     let (input, output, cache_read, cache_write) = (
@@ -276,7 +277,7 @@ mod tests {
     #[test]
     fn a_repeated_message_is_counted_once_and_cache_reads_are_not_billed() {
         let line = r#"{"timestamp":"2026-08-23T05:41:51.904Z","message":{"id":"msg_1","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":900,"cache_creation_input_tokens":100}}}"#;
-        let mut seen = Vec::new();
+        let mut seen = HashSet::new();
         let (ts, billed, input, output, cache_read, cache_write) = parse_line(line, &mut seen).unwrap();
         assert_eq!((billed, input, output, cache_read, cache_write), (115, 10, 5, 900, 100));
         assert!(ts > 0);

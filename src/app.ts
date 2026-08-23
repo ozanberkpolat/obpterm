@@ -56,6 +56,9 @@ export class App implements PaneHost {
   settings!: import("./settings-panel").Settings;
   private panesEl = $("#panes");
   private sessionTimer = 0;
+  /** A shrink preset waiting for its second click. */
+  armedPreset: Preset | null = null;
+  private armedTimer = 0;
   private configTimer = 0;
 
   constructor(
@@ -399,6 +402,21 @@ export class App implements PaneHost {
     if (!tab) return;
     const want = preset === "1" ? 1 : preset === "4" ? 4 : 2;
     const existing = L.panes(tab.root);
+    const doomed = existing.slice(want).filter((p) => !p.exited);
+    // Killing a shell cannot be undone, so a shrink that would end running shells asks once.
+    if (doomed.length && this.armedPreset !== preset) {
+      this.armedPreset = preset;
+      clearTimeout(this.armedTimer);
+      this.armedTimer = window.setTimeout(() => {
+        this.armedPreset = null;
+        this.toolbar?.paint();
+      }, 5000);
+      this.toolbar?.paint();
+      toast(`That ends ${doomed.length} running shell${doomed.length > 1 ? "s" : ""} — click again to confirm`);
+      return;
+    }
+    this.armedPreset = null;
+    clearTimeout(this.armedTimer);
     for (const extra of existing.slice(want)) {
       extra.kill();
       extra.dispose();
@@ -529,7 +547,9 @@ export class App implements PaneHost {
     renderRail(this);
     this.status?.paint();
     this.toolbar?.paint();
-    document.documentElement.style.setProperty("--accent", this.accent());
+    // Scoped to the workbench: the settings sheet is app chrome and keeps the configured
+    // accent, so a rose tab cannot leave an orange nav pill beside rose controls.
+    document.querySelector<HTMLElement>("#workbench")!.style.setProperty("--accent", this.accent());
   }
 
   /** The settings window saved something: take its copy without dropping any shells. */
@@ -605,12 +625,31 @@ export class App implements PaneHost {
     };
   }
 
+  /**
+   * Rebuilds one saved pane. A saved tab can outlive the host or profile it names — deleted in
+   * Settings, or a session.json newer than config.json — and quietly falling back to the first
+   * profile would put a local shell behind a tab that still calls itself the VPS.
+   */
+  private restorePane(node: L.SavedNode, saved: SavedTab): Pane {
+    const wanted = node.profile ?? "";
+    const hostId = wanted.startsWith("host:") ? wanted.slice(5) : null;
+    const host = hostId ? this.host(hostId) : null;
+    const profile = host ? this.hostProfile(host) : this.config.profiles.find((p) => p.id === wanted);
+    if (profile) {
+      return new Pane(this, this.withAccount(profile, saved.account ?? null), node.cwd ?? null);
+    }
+    const missing = hostId
+      ? `[the SSH host "${hostId}" this pane used no longer exists]`
+      : `[the profile "${wanted}" this pane used no longer exists]`;
+    const pane = new Pane(this, { id: wanted, name: hostId ?? wanted, exe: "", args: [], cwd: null, env: {} }, node.cwd ?? null);
+    pane.deadReason = missing;
+    return pane;
+  }
+
   private async restoreTab(saved: SavedTab): Promise<boolean> {
     const build = (n: L.SavedNode): L.Node | null => {
       if (n.kind === "leaf") {
-        const host = n.profile?.startsWith("host:") ? this.host(n.profile.slice(5)) : null;
-        const profile = host ? this.hostProfile(host) : this.profileById(n.profile);
-        return L.leaf(new Pane(this, this.withAccount(profile, saved.account ?? null), n.cwd ?? null));
+        return L.leaf(this.restorePane(n, saved));
       }
       const a = n.a && build(n.a);
       const b = n.b && build(n.b);

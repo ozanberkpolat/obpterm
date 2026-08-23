@@ -151,8 +151,12 @@ await until(
 await evaluate("void window.obpterm.applyPreset('4')");
 await until("document.querySelectorAll('.pane').length === 4", "the 4-pane preset");
 assert.equal(await evaluate("document.querySelector('.layout-picker .tb.on').dataset.layout"), "4");
+// Shrinking ends live shells, so the first click only arms it.
 await evaluate("void window.obpterm.applyPreset('1')");
-await until("document.querySelectorAll('.pane').length === 1", "the 1-pane preset");
+await until("window.obpterm.armedPreset === '1'", "the shrink arming instead of killing");
+assert.equal(await evaluate("document.querySelectorAll('.pane').length"), 4, "nothing died on the first click");
+await evaluate("void window.obpterm.applyPreset('1')");
+await until("document.querySelectorAll('.pane').length === 1", "the 1-pane preset on the second click");
 
 // Machine gauges come from the host, not from placeholders.
 await until("document.querySelectorAll('#metrics .gauge').length === 4", "cpu/ram/swap/disk gauges");
@@ -221,9 +225,28 @@ await evaluate("void window.obpterm.applyPreset('2c')");
 await until("document.querySelectorAll('.pane').length === 2", "two panes");
 const full = await evaluate("document.querySelector('#panes').getBoundingClientRect().width");
 await evaluate("void window.obpterm.applyPreset('1')");
+await evaluate("void window.obpterm.applyPreset('1')");
 await until("document.querySelectorAll('.pane').length === 1", "one pane");
 const wide = await evaluate("document.querySelector('.pane').getBoundingClientRect().width");
 assert.ok(wide > full * 0.9, `the surviving pane fills the tab (${wide} of ${full})`);
+
+// A rail row lays out as a two-line pill: the parts had no CSS at all until v0.5.3.
+assert.equal(await evaluate("getComputedStyle(document.querySelector('.tab .label')).flexDirection"), "column");
+assert.equal(await evaluate("getComputedStyle(document.querySelector('.tab .title')).textOverflow"), "ellipsis");
+assert.ok(
+  await evaluate("getComputedStyle(document.querySelector('.tab .close')).width === '20px'"),
+  "the close button is sized",
+);
+
+// App shortcuts must not fire while a text field has focus.
+await evaluate("window.obpterm.settings.open('updates')");
+await until("!document.querySelector('#settings').hidden", "settings for the field test");
+const tabsBefore = await evaluate("window.obpterm.tabs.length");
+await evaluate(
+  "(() => { const i = document.querySelector('#settings input'); i.focus(); i.dispatchEvent(new KeyboardEvent('keydown', {code: 'KeyT', key: 'T', ctrlKey: true, shiftKey: true, bubbles: true})); })()",
+);
+assert.equal(await evaluate("window.obpterm.tabs.length"), tabsBefore, "Ctrl+Shift+T did not open a tab while typing");
+await evaluate("window.obpterm.settings.close()");
 
 // Tab rename wins over the shell's own title, and clearing it hands the name back.
 await evaluate("window.obpterm.renameTab(window.obpterm.tab, 'Renamed')");

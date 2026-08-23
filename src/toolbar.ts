@@ -62,5 +62,7 @@ function paintPicker(app: App, picker: HTMLElement) {
   const current = app.tab ? app.currentPreset(app.tab) : null;
   for (const b of picker.querySelectorAll<HTMLButtonElement>("button")) {
     b.classList.toggle("on", b.dataset.layout === current);
+    // A shrink that would end running shells arms first and says so.
+    b.classList.toggle("armed", b.dataset.layout === app.armedPreset);
   }
 }

@@ -15,7 +15,7 @@ const ARROWS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDow
 export function ownsKey(e: KeyboardEvent): boolean {
   if (e.type !== "keydown") return false;
   if (ctrlOnly(e) && e.code === "Tab") return true;
-  if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV", "KeyF", "KeyL", "KeyP", "KeyN", "KeyH", "Comma"].includes(e.code)) return true;
+  if (ctrlShift(e) && ["Tab", "KeyT", "KeyW", "KeyB", "KeyC", "KeyV", "KeyF", "KeyL", "KeyP", "KeyN", "KeyH", "KeyQ", "Comma"].includes(e.code)) return true;
   if ((ctrlShift(e) || ctrlOnly(e)) && /^Digit[1-9]$/.test(e.code)) return true;
   if (ctrlOnly(e) && ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract", "KeyK"].includes(e.code)) return true;
   if ((altOnly(e) || altShift(e)) && e.code in ARROWS) return true;
@@ -28,6 +28,14 @@ export function installKeys(app: App) {
   window.addEventListener(
     "keydown",
     (e) => {
+      // A text field owns its keystrokes. The listener is on the window in the capture phase,
+      // so a stopPropagation() inside the field can never reach us — check the target instead.
+      const target = e.target as HTMLElement | null;
+      if (target?.matches?.("input, textarea, select") || target?.isContentEditable) {
+        if (e.code === "F12") stop(e);
+        return;
+      }
+
       // Browser-only chords: swallow unconditionally (reload, devtools, print…)
       if (e.code === "F12" || (ctrlShift(e) && ["KeyI", "KeyJ", "KeyR"].includes(e.code))) return stop(e);
       if (e.code === "F5" && e.ctrlKey) return stop(e);
@@ -49,6 +57,7 @@ export function installKeys(app: App) {
       if (ctrlShift(e) && e.code === "KeyP") { profilePicker(app); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyN") { newProject(app); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyW") { closeActive(app); return stop(e); }
+      if (ctrlShift(e) && e.code === "KeyQ") { if (app.tab) app.closeTab(app.tab); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyB") { app.toggleRail(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyC") { void app.copy(); return stop(e); }
       if (ctrlShift(e) && e.code === "KeyV") { void app.paste(); return stop(e); }

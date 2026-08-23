@@ -7,6 +7,9 @@ import type { Project } from "./transport";
 
 export function renderRail(app: App) {
   const body = document.querySelector<HTMLElement>("#rail-body")!;
+  // Any pane's title or cwd report repaints the rail. If a rename is open in it, rebuilding
+  // would throw away the input mid-keystroke — with a dozen chatty shells, constantly.
+  if (body.contains(document.activeElement) && document.activeElement?.classList.contains("inline-edit")) return;
   body.replaceChildren();
   const loose = app.tabs.filter((t) => !app.project(t.projectId));
   if (loose.length) body.appendChild(group(app, null, loose));
@@ -61,7 +64,7 @@ function row(app: App, tab: Tab): HTMLLIElement {
     `<span class="label"><span class="title"></span><span class="sub"></span></span>` +
     (paneCount > 1 ? `<span class="badge" title="${paneCount} panes">${paneCount}</span>` : "") +
     (logging ? `<span class="rec" title="capturing to a log file">●</span>` : "") +
-    `<button class="close" title="Close (Ctrl+Shift+W)">×</button>`;
+    `<button class="close" title="Close this tab (Ctrl+Shift+Q)">×</button>`;
   li.querySelector(".title")!.textContent = app.title(tab);
   const sub = tab.active.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? tab.active.profile.name;
   li.querySelector(".sub")!.textContent = sub === app.title(tab) ? "" : sub;
@@ -98,7 +101,8 @@ function tabMenu(app: App, tab: Tab, x: number, y: number) {
     { label: capturing ? "Stop capture" : "Start capture", hint: "Ctrl+Shift+L", onPick: () => void app.toggleLog() },
     { label: "Move to project…", onPick: () => moveMenu(app, tab, x, y) },
     { label: "Tab colour…", onPick: () => colorMenu(x, y, tab.color, (c) => app.setTabColor(tab, c)) },
-    { label: "Close tab", hint: "Ctrl+Shift+W", danger: true, onPick: () => app.closeTab(tab) },
+    { label: "Close pane", hint: "Ctrl+Shift+W", onPick: () => app.closePane(tab.active, tab) },
+    { label: "Close tab", hint: "Ctrl+Shift+Q", danger: true, onPick: () => app.closeTab(tab) },
   ]);
 }
 

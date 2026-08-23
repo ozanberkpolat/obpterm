@@ -25,6 +25,8 @@ export class Pane {
   exited = false;
   /** Set once the "[exited with code N]" line is on screen: the next keypress closes the pane. */
   exitAcknowledged = false;
+  /** Non-null when this pane must not spawn anything — a restored tab whose target is gone. */
+  deadReason: string | null = null;
   logPath: string | null = null;
 
   constructor(
@@ -80,6 +82,14 @@ export class Pane {
 
   async start() {
     const t = this.term.term;
+    if (this.deadReason) {
+      // Never substitute a different shell for a missing one: a tab that was the VPS must not
+      // come back as a local PowerShell that still calls itself the VPS.
+      this.exited = true;
+      this.exitAcknowledged = true;
+      t.write(`\r\n\x1b[38;2;255;180;84m${this.deadReason}\x1b[0m\r\n\r\n  Close this pane, or fix it in Settings and open a new tab.\r\n`);
+      return;
+    }
     this.id = await this.host.tp.spawn(
       { ...this.profile, cwd: this.cwd },
       t.cols,

@@ -66,6 +66,7 @@ With neither set, the build is unsigned and says so in the log.
 | `Ctrl+Shift+B` | Collapse / expand the rail |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste. Right-click copies a selection, otherwise pastes |
 | `F2` / double-click a tab | Rename the tab |
+| `Ctrl+Shift+Q` | Close the whole tab (`Ctrl+Shift+W` closes the pane) |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Font size |
 
 Everything else, including `F5`, `Ctrl+R`, `Ctrl+F`, `Ctrl+W`, goes to the shell: WebView2's
@@ -270,7 +271,8 @@ The UI is plain TypeScript + Vite and iterates in any browser:
 
 ```sh
 npm install
-npm run devserver   # real shells (node-pty) on ws://:1421, config in dev-config.json
+npm run devserver   # real shells (node-pty) on ws://127.0.0.1:1421, config in dev-config.json
+                    # loopback only — it spawns whatever a client names; OBPTERM_DEV_HOST overrides
 npm run dev         # Vite on :1420 (listens on all interfaces)
 ```
 

@@ -221,7 +221,11 @@ fn sentinel_theme() -> BTreeMap<String, String> {
         ("cursor", "#ff8a1e"),
         ("cursorAccent", "#0a0e14"),
         ("selectionBackground", "rgba(255,138,30,0.28)"),
-        ("black", "#141a24"),
+        // Without this, a selected cell keeps its own colour: brightBlack on the orange wash
+        // measures 2.07:1 and git hashes disappear as you select them.
+        ("selectionForeground", "#eaf0f7"),
+        // #141a24 was 1.11:1 on the background — box drawing and table rules were invisible.
+        ("black", "#313c4f"),
         ("red", "#ff6b73"),
         ("green", "#2fd6a3"),
         ("yellow", "#ffb454"),
@@ -229,7 +233,8 @@ fn sentinel_theme() -> BTreeMap<String, String> {
         ("magenta", "#b48cff"),
         ("cyan", "#22d3ee"),
         ("white", "#c9d3e0"),
-        ("brightBlack", "#5b6878"),
+        // The most-printed dim colour in a shell (git hashes, ls metadata, comments): 4.53:1.
+        ("brightBlack", "#6c7c8f"),
         ("brightRed", "#ff7a85"),
         ("brightGreen", "#5ee8bd"),
         ("brightYellow", "#ffc97a"),

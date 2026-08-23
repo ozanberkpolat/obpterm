@@ -8,7 +8,9 @@ import os from "node:os";
 
 const CONFIG = new URL("./dev-config.json", import.meta.url);
 const SESSION = new URL("./dev-session.json", import.meta.url);
-const wss = new WebSocketServer({ port: 1421 });
+// Loopback only: this server spawns whatever executable a client names, so it must not be
+// reachable from the network. Set OBPTERM_DEV_HOST to drive it from another machine.
+const wss = new WebSocketServer({ port: 1421, host: process.env.OBPTERM_DEV_HOST ?? "127.0.0.1" });
 let nextId = 1;
 
 const broadcast = (msg) => {
@@ -186,4 +188,4 @@ function claudeUsage(rawDir) {
   return usage;
 }
 
-console.log("OBPTerm dev-server: ws://0.0.0.0:1421 (config: dev-config.json)");
+console.log("OBPTerm dev-server: ws://127.0.0.1:1421 (config: dev-config.json)");
