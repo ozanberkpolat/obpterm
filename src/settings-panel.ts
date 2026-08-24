@@ -367,6 +367,12 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
           toggle(c.notify_silence, (v) => { c.notify_silence = v; ctx.save(); })),
         row("Quiet means", "How long a pane that was working must be silent before it counts as finished.",
           slider(c.silence_seconds, 5, 120, 5, " s", (v) => { c.silence_seconds = v; ctx.save(); })),
+        row("Push to your phone (ntfy)", "Full publish URL including the topic, e.g. https://ntfy.obp.com.tr/obpterm. Fires only when the window is unfocused, for the same events as the desktop notification. Empty = the app contacts nothing.",
+          text(c.ntfy_url ?? "", (v) => { c.ntfy_url = v || null; ctx.save(); }, { width: 300, placeholder: "https://ntfy.obp.com.tr/obpterm" })),
+        row("ntfy access token", "When the topic needs one. Never leaves this machine in exports or the settings mirror.",
+          text(c.ntfy_token ?? "", (v) => { c.ntfy_token = v || null; ctx.save(); }, { width: 300, placeholder: "tk_…" })),
+        row("Stay awake while agents work", "Holds Windows out of sleep while any Claude session is working, so an unattended run survives the lid. The ☕ chip in the status bar shows when it is active.",
+          toggle(c.keep_awake, (v) => { c.keep_awake = v; ctx.save(); })),
       ),
       note(
         "The rail marks a tab that rang while you were elsewhere. Claude Code only rings when its " +
@@ -708,6 +714,7 @@ function importButton(ctx: Ctx): HTMLElement {
     // Machine-bound leftovers never import; the fence around secrets holds on the way in too.
     delete parsed.session;
     delete parsed.github_token;
+    delete parsed.ntfy_token;
     const backupDir = ctx.config.backup_dir; // keep THIS machine's mirror target
     Object.assign(ctx.config, withDefaults(parsed as Partial<Config>), { backup_dir: parsed.backup_dir ?? backupDir });
     bindKeys(ctx.config);

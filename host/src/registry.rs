@@ -86,6 +86,7 @@ impl Registry {
             cmd.env(k, v);
         }
         let mut child = pair.slave.spawn_command(cmd).map_err(|e| format!("spawn {}: {e}", spawn.exe))?;
+        let pid = child.process_id();
         let killer = child.clone_killer();
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().map_err(|e| format!("reader: {e}"))?;
@@ -108,6 +109,7 @@ impl Registry {
                         agent_state: None,
                         agent_detail: None,
                         claude_session_id: None,
+                        pid,
                     },
                     master: Some(pair.master),
                     writer,

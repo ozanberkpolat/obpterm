@@ -61,6 +61,8 @@ export class Pane {
   agent: AgentState = blank();
   /** Claude's session id — what `--resume` needs after a reboot or an eco sleep. */
   claudeSessionId: string | null = null;
+  /** Claude's own name for the conversation, read from the transcript for the Deck. */
+  claudeTitle: string | null = null;
   /** The shell was `/exit`ed on purpose to free the agent's memory; wake resumes it. */
   eco = false;
   /** Cold restore of claude typed into a plain shell: type `claude --resume <this>` once up. */

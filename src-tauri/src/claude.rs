@@ -44,6 +44,8 @@ pub struct Usage {
     /// Newest message seen, epoch ms.
     pub last_activity: Option<i64>,
     pub files_scanned: usize,
+    /// 7-day billed tokens per project (display name, tokens), biggest first, top 8.
+    pub by_project: Vec<(String, u64)>,
 }
 
 /// Where each transcript was last read to, so a refresh only parses what was appended.
@@ -110,6 +112,7 @@ pub async fn claude_usage(cache: State<'_, UsageCache>, dir: String) -> Result<U
     let mut usage = Usage { dir, ..Default::default() };
     let cutoff_7d = now - 7 * 24 * 3_600_000;
     let mut states = cache.0.lock().unwrap();
+    let mut per_project: HashMap<String, u64> = HashMap::new();
 
     for path in transcripts(&projects) {
         let Ok(meta) = std::fs::metadata(&path) else { continue };
@@ -134,7 +137,15 @@ pub async fn claude_usage(cache: State<'_, UsageCache>, dir: String) -> Result<U
         state.len = meta.len();
         state.entries.retain(|e| e.0 >= cutoff_7d);
         usage.files_scanned += 1;
+        // The encoded project dir name ("C--Users-obp-repos-obpterm") reads fine by its tail.
+        let project = path
+            .parent()
+            .and_then(|d| d.file_name())
+            .and_then(|n| n.to_str())
+            .map(|n| n.rsplit('-').find(|s| !s.is_empty()).unwrap_or(n).to_string())
+            .unwrap_or_else(|| "?".into());
         for &(ts, billed, input, output, cache_read, cache_write) in &state.entries {
+            *per_project.entry(project.clone()).or_default() += billed;
             add(&mut usage.window_7d, billed, input, output, cache_read, cache_write);
             if ts >= now - 5 * 3_600_000 {
                 add(&mut usage.window_5h, billed, input, output, cache_read, cache_write);
@@ -142,6 +153,10 @@ pub async fn claude_usage(cache: State<'_, UsageCache>, dir: String) -> Result<U
             usage.last_activity = Some(usage.last_activity.unwrap_or(ts).max(ts));
         }
     }
+    let mut by_project: Vec<(String, u64)> = per_project.into_iter().filter(|(_, b)| *b > 0).collect();
+    by_project.sort_by(|a, b| b.1.cmp(&a.1));
+    by_project.truncate(8);
+    usage.by_project = by_project;
     Ok(usage)
 }
 

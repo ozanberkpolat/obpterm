@@ -67,6 +67,9 @@ pub struct SessionInfo {
     /// Claude's own session id, learned from hooks — what `claude --resume` needs.
     #[serde(default)]
     pub claude_session_id: Option<String>,
+    /// The shell's root process id, so a window can weigh the process tree (RAM per session).
+    #[serde(default)]
+    pub pid: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

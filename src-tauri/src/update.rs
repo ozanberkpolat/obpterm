@@ -153,3 +153,39 @@ mod tests {
         assert!(!is_newer("0.4.1-beta", "0.4.1"), "a prerelease of the same version is not newer");
     }
 }
+
+/// One push to the user's own ntfy. Only ever called with a URL the user configured — the
+/// app contacts nothing by default. The Title header must be latin-1 or ntfy drops the push
+/// silently (fleet scar tissue), so anything outside it becomes '?'.
+#[tauri::command]
+pub async fn ntfy_publish(url: String, token: Option<String>, title: String, body: String) -> Result<(), String> {
+    let latin1: String = title.chars().map(|c| if (c as u32) < 256 { c } else { '?' }).collect();
+    let client = reqwest::Client::new();
+    let mut req = client
+        .post(&url)
+        .header("Title", latin1)
+        .header("Priority", "high")
+        .header("Tags", "robot")
+        .timeout(std::time::Duration::from_secs(6))
+        .body(body);
+    if let Some(token) = token.filter(|t| !t.is_empty()) {
+        req = req.bearer_auth(token);
+    }
+    let response = req.send().await.map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("ntfy said {}", response.status()));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod ntfy_tests {
+    #[test]
+    fn latin1_sanitize() {
+        // The em dash and the check mark are outside latin-1 and must degrade; ç and ö are
+        // inside it and must survive.
+        let title = "Agent \u{2705} blocked \u{2014} çök";
+        let out: String = title.chars().map(|c| if (c as u32) < 256 { c } else { '?' }).collect();
+        assert_eq!(out, "Agent ? blocked ? çök");
+    }
+}

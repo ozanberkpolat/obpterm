@@ -688,6 +688,11 @@ export class App implements PaneHost {
     if (!this.config.notify_bell) return;
     void this.tp.notify(title, body).catch(() => {});
     void this.tp.attention(true).catch(() => {});
+    // The phone, but only when the window itself is in the background — a push for every
+    // background-tab event while actively working here would be spam.
+    if (this.config.ntfy_url && !document.hasFocus()) {
+      void this.tp.ntfy(this.config.ntfy_url, this.config.ntfy_token, title, body).catch(() => {});
+    }
   }
 
   /**
@@ -732,6 +737,7 @@ export class App implements PaneHost {
       }
     }
     renderRail(this);
+    this.deck?.paint();
   }
 
   /**
@@ -908,11 +914,53 @@ export class App implements PaneHost {
     void this.tp.badge(needsYou).catch(() => {});
   }
 
+  /** Sleep inhibitor follows "any agent working"; the chip makes the behaviour visible. */
+  private lastAwake = false;
+  private syncAwake(working: boolean) {
+    const on = working && this.config.keep_awake;
+    document.querySelector<HTMLElement>("#awake")!.hidden = !on;
+    if (on === this.lastAwake) return;
+    this.lastAwake = on;
+    void this.tp.keepAwake(on).catch(() => {});
+  }
+
+  /** Ctrl+Shift+G: the next Claude session that waits on the user, cycling. */
+  jumpNeedsYou() {
+    const list: { pane: Pane; tab: Tab }[] = [];
+    for (const tab of this.tabs) {
+      for (const pane of this.panesOf(tab)) {
+        if (pane.agent.state === "blocked" || pane.agent.state === "waiting") list.push({ pane, tab });
+      }
+    }
+    if (!list.length) return;
+    const current = list.findIndex(({ pane }) => pane === this.tab?.active);
+    const next = list[(current + 1) % list.length]!;
+    this.activate(next.tab);
+    this.focusPane(next.pane);
+  }
+
+  /** A second shell exactly where you are: profile, project, account and current directory. */
+  async duplicateTab() {
+    const tab = this.tab;
+    if (!tab) return;
+    // The pane's args may carry the session id its own spawn minted; a duplicate must get a
+    // fresh one, or two claude processes share a session.
+    const args: string[] = [];
+    for (let i = 0; i < tab.active.profile.args.length; i++) {
+      const a = tab.active.profile.args[i]!;
+      if (a === "--session-id" || a === "--resume" || a === "-r") { i++; continue; }
+      args.push(a);
+    }
+    await this.newTab({ ...tab.active.profile, args }, tab.projectId, tab.active.cwd, tab.accountId);
+  }
+
   /** Repaint the rail. Cheap: the rail is the only derived view. */
   paint() {
     renderRail(this);
     this.deck?.paint();
-    this.syncBadge(this.agentCounts().needsYou);
+    const counts = this.agentCounts();
+    this.syncBadge(counts.needsYou);
+    this.syncAwake(counts.working > 0);
     this.status?.paint();
     this.toolbar?.paint();
     // Scoped to the workbench: the settings sheet is app chrome and keeps the configured

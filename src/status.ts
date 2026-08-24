@@ -35,6 +35,11 @@ export class Status {
     this.quota.addEventListener("click", (e) => this.usageMenu(e as MouseEvent));
     this.updateEl.addEventListener("click", () => void this.checkUpdates());
     this.hostEl.addEventListener("click", (e) => this.hostMenu2(e as MouseEvent));
+    this.capture.addEventListener("click", () => {
+      const path = this.app.tab?.active.logPath;
+      if (!path) return;
+      void this.app.tp.writeClipboard(path).then(() => toast(`Copied ${path}`)).catch(() => {});
+    });
     window.addEventListener("focus", () => void this.refresh());
     window.setInterval(() => void this.refresh(), REFRESH_MS);
     window.setInterval(() => void this.refreshMetrics(), METRICS_MS);
@@ -328,6 +333,10 @@ export class Status {
       ...real,
       { label: line("Last 5h", u.window_5h), onPick: () => {} },
       { label: line("Last 7d", u.window_7d), onPick: () => {} },
+      ...u.by_project.map(([name, billed]) => ({
+        label: `    ${name}: ${fmt(billed)} billed (7d)`,
+        onPick: () => {},
+      })),
       {
         label: `From ${u.files_scanned} transcripts in ${u.dir}`,
         hint: u.last_activity ? new Date(u.last_activity).toLocaleTimeString() : "",

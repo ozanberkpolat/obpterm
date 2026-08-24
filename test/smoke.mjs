@@ -585,6 +585,83 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
 
 
 
+
+// ---- v0.14.0: deck keyboard, needs-you jump, duplicate tab, progress, find count ----------
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const injectDev = (update) =>
+    new Promise((r) => {
+      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
+      setTimeout(r, 150);
+    });
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; }), window.obpterm.paint()");
+  await evaluate("void window.obpterm.newTab()");
+  await until("window.obpterm.tabs.length >= 2", "a second tab");
+  const busyPane = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+
+  // Ctrl+Shift+G jumps to the agent that waits.
+  await injectDev({ pane: busyPane, state: "blocked", session_id: "sess-14", detail: "Running npm publish", pending_id: "p-140", options: [] });
+  await until(`window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${busyPane})?.agent.state === 'blocked'`, "the blocked state");
+  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyG', key: 'G', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }))");
+  await until(`window.obpterm.tab.active.id === ${busyPane}`, "the jump landing on the waiting pane");
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+
+  // The deck takes focus and answers from the keyboard: first card is the loudest, 'a' allows.
+  await evaluate("window.obpterm.deck.open()");
+  await until("document.activeElement === document.querySelector('#deck .dgrid')", "the deck holding focus");
+  await until("document.querySelector('.dcard[data-state=blocked]') !== null", "the blocked card");
+  assert.ok(await evaluate("document.querySelector('.dcard').classList.contains('selected')"), "the loudest card is selected");
+  // Working chip carries elapsed time once workingSince is old enough.
+  await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${busyPane}); p.agent.workingSince = Date.now() - 300000; })()`);
+  await evaluate("document.querySelector('#deck .dgrid').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', key: 'a', bubbles: true, cancelable: true }))");
+  const a14 = await new Promise((resolve) => {
+    devWs.send(JSON.stringify({ t: "agent_answers", reqId: 1400 }));
+    devWs.on("message", function once(d) {
+      const m = JSON.parse(d);
+      if (m.reqId === 1400) { devWs.off("message", once); resolve(m.answered); }
+    });
+  });
+  assert.deepEqual(a14.at(-1), { pending: "p-140", allow: true }, "keyboard Allow reached the host");
+  await evaluate("window.obpterm.deck.close()");
+
+  // The rail draws OSC 9;4 progress.
+  await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${busyPane}); p.progress = 42; window.obpterm.paint(); })()`);
+  await until("!!document.querySelector('.tab.has-prog')", "a progress sliver on the rail row");
+  await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${busyPane}); p.progress = null; window.obpterm.paint(); })()`);
+
+  // Duplicate tab lands in the same directory and never carries a session id along.
+  await evaluate("window.obpterm.tab.active.cwd = '/tmp/dup-test'");
+  await evaluate("window.obpterm.tab.active.profile.args = ['--session-id', 'sess-old']");
+  const tabsBefore = await evaluate("window.obpterm.tabs.length");
+  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD', key: 'D', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }))");
+  await until(`window.obpterm.tabs.length === ${tabsBefore + 1}`, "the duplicated tab");
+  assert.equal(await evaluate("window.obpterm.tab.active.cwd"), "/tmp/dup-test", "the duplicate keeps the directory");
+  assert.ok(!(await evaluate("window.obpterm.tab.active.profile.args.includes('sess-old')")), "the duplicate minted its own session");
+  await evaluate("window.obpterm.closeTab(window.obpterm.tab)");
+
+  // Find reports which match of how many.
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+  await evaluate("window.obpterm.tab.active.term.term.write('needle one needle two needle three\\r\\n')");
+  await new Promise((r) => setTimeout(r, 200));
+  await evaluate("window.obpterm.find.open()");
+  await evaluate("(() => { const i = document.querySelector('#find input'); i.value = 'needle'; i.dispatchEvent(new Event('input')); })()");
+  await until("/^\\d+\\/\\d+$/.test(document.querySelector('#find .count').textContent)", "the match count");
+  await evaluate("document.querySelector('#find .close').click()");
+
+  // The phone push is suppressed while the window has focus — no accidental spam.
+  await evaluate("(() => { window.__ntfy = 0; window.obpterm.tp.ntfy = async () => { window.__ntfy++; }; window.obpterm.config.ntfy_url = 'https://example.invalid/t'; })()");
+  await evaluate("window.obpterm.agentAlert('Test', 'needs you')");
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(await evaluate("window.__ntfy"), 0, "focused window means no phone push");
+  await evaluate("window.obpterm.config.ntfy_url = null");
+
+  // cleanup: end the extra tab
+  await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
+  devWs.close();
+}
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

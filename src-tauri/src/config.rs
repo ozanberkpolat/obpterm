@@ -149,6 +149,13 @@ pub struct Config {
     pub limits_url: Option<String>,
     /// Shortcut overrides: action id -> chord ("Ctrl+Shift+KeyT"); the frontend owns the ids.
     pub keybindings: BTreeMap<String, String>,
+    /// Full ntfy publish URL including the topic (e.g. https://ntfy.sh/mytopic, or a
+    /// self-hosted one). `None` = no pushes; the app contacts nothing that is not configured.
+    pub ntfy_url: Option<String>,
+    /// Bearer token for that topic, when it needs one.
+    pub ntfy_token: Option<String>,
+    /// Hold the machine out of sleep while any agent is working.
+    pub keep_awake: bool,
     /// Every config save is mirrored to `<this folder>/obpterm-config.json` (tokens stripped).
     /// Point it at a OneDrive / Google Drive folder and the cloud client does the transport.
     pub backup_dir: Option<String>,
@@ -205,6 +212,9 @@ impl Default for Config {
             theme: sentinel_theme(),
             keybindings: BTreeMap::new(),
             backup_dir: None,
+            ntfy_url: None,
+            ntfy_token: None,
+            keep_awake: true,
         }
     }
 }
@@ -369,6 +379,7 @@ pub fn config_save(app: AppHandle, config: Config) -> Result<(), String> {
 fn portable(config: &Config) -> Config {
     let mut copy = config.clone();
     copy.github_token = None;
+    copy.ntfy_token = None;
     copy.session = None; // machine-bound: pty ids from this host
     copy
 }
@@ -537,9 +548,10 @@ mod tests {
     fn portable_strips_the_secrets_and_the_session() {
         let mut cfg = Config::default();
         cfg.github_token = Some("ghp_x".into());
+        cfg.ntfy_token = Some("tk_x".into());
         cfg.session = Some(serde_json::json!({"tabs": []}));
         let p = portable(&cfg);
-        assert!(p.github_token.is_none() && p.session.is_none());
+        assert!(p.github_token.is_none() && p.ntfy_token.is_none() && p.session.is_none());
         assert_eq!(p.profiles.len(), cfg.profiles.len(), "everything else survives");
     }
 

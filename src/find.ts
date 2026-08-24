@@ -20,9 +20,23 @@ export function installFind(app: App) {
     },
   });
 
+  // The addon announces result index/count when decorations are on; one subscription per addon.
+  const counted = new WeakSet<object>();
+  const subscribe = (pane: { term: { search: import("@xterm/addon-search").SearchAddon } }) => {
+    const addon = pane.term.search;
+    if (counted.has(addon)) return;
+    counted.add(addon);
+    addon.onDidChangeResults(({ resultIndex, resultCount }) => {
+      if (bar.hidden) return;
+      count.classList.remove("miss");
+      count.textContent = resultCount > 0 ? `${resultIndex + 1}/${resultCount}` : "";
+    });
+  };
+
   const search = (dir: 1 | -1, fromCursor = false) => {
     const pane = app.tab?.active;
     if (!pane) return;
+    subscribe(pane);
     const term = input.value;
     if (!term) {
       pane.term.search.clearDecorations();
@@ -30,7 +44,8 @@ export function installFind(app: App) {
       return;
     }
     const found = dir > 0 ? pane.term.search.findNext(term, opts()) : pane.term.search.findPrevious(term, opts());
-    count.textContent = found ? "" : "no match";
+    // On a hit the addon's onDidChangeResults writes "3/17" — clearing here would erase it.
+    if (!found) count.textContent = "no match";
     count.classList.toggle("miss", !found);
     if (fromCursor) return;
   };

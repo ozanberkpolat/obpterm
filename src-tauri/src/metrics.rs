@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 use std::sync::Mutex;
-use sysinfo::{Disks, MemoryRefreshKind, RefreshKind, System};
+use sysinfo::{Disks, MemoryRefreshKind, Pid, ProcessesToUpdate, RefreshKind, System};
 use tauri::State;
 
 pub struct Metrics(Mutex<Sampler>);
@@ -64,4 +64,38 @@ pub fn host_metrics(metrics: State<Metrics>, cwd: Option<String>) -> HostMetrics
         disk_total: disk.map(|d| d.total_space()).unwrap_or(0),
         disk_name: disk.map(|d| d.mount_point().display().to_string()).unwrap_or_default(),
     }
+}
+
+/// RSS of each given process tree (root pid + all descendants), in bytes. Zero for a pid
+/// that is gone. Feeds the Agent Deck's per-session memory readout.
+#[tauri::command]
+pub fn rss_for(metrics: State<Metrics>, pids: Vec<u32>) -> Vec<u64> {
+    let mut s = metrics.0.lock().unwrap();
+    s.system.refresh_processes(ProcessesToUpdate::All, true);
+    // parent -> children, one pass
+    let mut children: std::collections::HashMap<Pid, Vec<Pid>> = std::collections::HashMap::new();
+    for (pid, proc_) in s.system.processes() {
+        if let Some(parent) = proc_.parent() {
+            children.entry(parent).or_default().push(*pid);
+        }
+    }
+    pids.iter()
+        .map(|&root| {
+            let mut total = 0u64;
+            let mut stack = vec![Pid::from_u32(root)];
+            let mut seen = std::collections::HashSet::new();
+            while let Some(pid) = stack.pop() {
+                if !seen.insert(pid) {
+                    continue; // a cycle in parent links must not hang the loop
+                }
+                if let Some(p) = s.system.process(pid) {
+                    total += p.memory();
+                }
+                if let Some(kids) = children.get(&pid) {
+                    stack.extend(kids.iter().copied());
+                }
+            }
+            total
+        })
+        .collect()
 }

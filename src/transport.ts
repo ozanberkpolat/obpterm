@@ -85,6 +85,7 @@ export interface ClaudeUsage {
   window_7d: UsageBucket;
   last_activity: number | null;
   files_scanned: number;
+  by_project: [string, number][];
 }
 
 /** The tabs that were open, and whether the app got to close normally last time. */
@@ -169,6 +170,11 @@ export interface Config {
   keybindings: Record<string, string>;
   /** Folder every config save is mirrored to (point it at OneDrive / Drive). */
   backup_dir: string | null;
+  /** Full ntfy publish URL including the topic. null = no pushes, nothing contacted. */
+  ntfy_url: string | null;
+  ntfy_token: string | null;
+  /** Hold the machine out of sleep while any agent is working. */
+  keep_awake: boolean;
   quota_5h_tokens: number | null;
   quota_7d_tokens: number | null;
   restore_session: boolean;
@@ -197,6 +203,7 @@ export interface HostSession {
   agent_state: string | null;
   agent_detail: string | null;
   claude_session_id: string | null;
+  pid: number | null;
 }
 
 export interface Transport {
@@ -261,6 +268,12 @@ export interface Transport {
   attention(on: boolean): Promise<void>;
   /** Taskbar overlay badge: how many agents wait on the user. 0 clears it. */
   badge(count: number): Promise<void>;
+  /** One push to the user's own ntfy. Only called with a URL the user configured. */
+  ntfy(url: string, token: string | null, title: string, body: string): Promise<void>;
+  /** Hold or release the OS sleep inhibitor. */
+  keepAwake(on: boolean): Promise<void>;
+  /** RSS in bytes of each pid's process tree, for the Deck's memory readout. */
+  rssFor(pids: number[]): Promise<number[]>;
   configReset(): Promise<Config>;
   /** Writes a portable settings copy to Downloads; returns the path. */
   configExport(config: Config): Promise<string>;
@@ -316,6 +329,9 @@ export function withDefaults(config: Partial<Config>): Config {
     limits_url: config.limits_url ?? null,
     keybindings: config.keybindings ?? {},
     backup_dir: config.backup_dir ?? null,
+    ntfy_url: config.ntfy_url ?? null,
+    ntfy_token: config.ntfy_token ?? null,
+    keep_awake: config.keep_awake ?? true,
     quota_5h_tokens: config.quota_5h_tokens ?? null,
     quota_7d_tokens: config.quota_7d_tokens ?? null,
     projects: (config.projects ?? []).map((p) => ({
