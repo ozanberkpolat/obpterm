@@ -351,12 +351,27 @@ fn as_pct(v: &serde_json::Value) -> u8 {
 
 /// The raw shape Claude Code pipes to a statusLine command, saved to a file by one.
 fn from_statusline_file(path: &str) -> Option<Limits> {
-    let text = std::fs::read_to_string(expand(path)).ok()?;
+    let full = expand(path);
+    let text = std::fs::read_to_string(&full).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
     let rl = v.get("rate_limits").unwrap_or(&v);
     let pct = |k: &str| rl.pointer(&format!("/{k}/used_percentage")).map(as_pct).unwrap_or(0);
     let at = |k: &str| rl.pointer(&format!("/{k}/resets_at")).and_then(|x| x.as_i64()).unwrap_or(0);
-    let written = v.get("ts").and_then(|t| t.as_f64()).unwrap_or(0.0) as i64;
+    // `ts` if the writer added one, else the file's own mtime — the sh statusLine has no jq.
+    let written = v
+        .get("ts")
+        .and_then(|t| t.as_f64())
+        .map(|t| t as i64)
+        .or_else(|| {
+            std::fs::metadata(&full)
+                .ok()?
+                .modified()
+                .ok()?
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .map(|d| d.as_secs() as i64)
+        })
+        .unwrap_or(0);
     Some(Limits {
         five_hour: pct("five_hour"),
         five_hour_resets_at: at("five_hour"),

@@ -51,7 +51,13 @@ async function main() {
   void tp
     .hooksEnsure(hookDirs)
     .then((changed) => {
-      if (changed.length) toast(`Claude Code hooks installed (${changed.length} settings file${changed.length > 1 ? "s" : ""}) — agent states are live`);
+      if (changed.length) toast(`Claude Code hooks + status line installed (${changed.length} settings file${changed.length > 1 ? "s" : ""}) — agent states and token meters are live`);
+      // The statusLine now writes ~/.claude/limits.json; point the meters there unless the
+      // user already chose a source.
+      if (!config.limits_file && !config.limits_url) {
+        config.limits_file = "~/.claude/limits.json";
+        app.persistConfig();
+      }
     })
     .catch(() => {});
   window.setInterval(() => void app.refreshHeld(), 3_000);

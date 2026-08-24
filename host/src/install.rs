@@ -96,6 +96,53 @@ pub fn remove(settings: &mut Value) {
     }
 }
 
+/// Marks our statusLine so it is recognizably ours and never clobbers a user's own.
+pub const SL_MARK: &str = "# obpterm-statusline v1";
+
+/// Saves the payload (rate_limits included) where the token meters read it, and prints the
+/// model plus both percentages as Claude Code's own status line. POSIX sh, same as the hooks;
+/// staleness comes from the file's mtime, so no timestamp needs appending.
+pub fn statusline_command() -> String {
+    format!(
+        r#"p=$(cat); d="${{CLAUDE_CONFIG_DIR:-$HOME/.claude}}"; printf '%s' "$p" >"$d/limits.json"; printf '%s 5h %s%% wk %s%%' "$(printf '%s' "$p" | sed -n 's/.*"display_name" *: *"\([^"]*\)".*/\1/p')" "$(printf '%s' "$p" | sed -n 's/.*"five_hour"[^0-9]*\([0-9]*\).*/\1/p')" "$(printf '%s' "$p" | sed -n 's/.*"weekly"[^0-9]*\([0-9]*\).*/\1/p')"; : {SL_MARK}"#
+    )
+}
+
+/// True when the statusLine is ours. A user's own statusLine returns false — and install
+/// leaves it alone, because there is only one statusLine slot.
+pub fn statusline_installed(settings: &Value) -> bool {
+    settings
+        .pointer("/statusLine/command")
+        .and_then(|c| c.as_str())
+        .is_some_and(|c| c.contains(SL_MARK))
+}
+
+/// Sets our statusLine only when the slot is empty or already ours. Returns whether it wrote.
+pub fn statusline_install(settings: &mut Value) -> bool {
+    let foreign = settings.get("statusLine").is_some() && !statusline_installed(settings);
+    if foreign {
+        return false;
+    }
+    if !settings.is_object() {
+        *settings = json!({});
+    }
+    let wanted = json!({ "type": "command", "command": statusline_command() });
+    if settings.get("statusLine") == Some(&wanted) {
+        return false;
+    }
+    settings.as_object_mut().unwrap().insert("statusLine".into(), wanted);
+    true
+}
+
+/// Removes the statusLine only when it is ours.
+pub fn statusline_remove(settings: &mut Value) -> bool {
+    if !statusline_installed(settings) {
+        return false;
+    }
+    settings.as_object_mut().map(|o| o.remove("statusLine"));
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +168,23 @@ mod tests {
         let stop = settings.pointer("/hooks/Stop").unwrap().as_array().unwrap();
         assert_eq!(stop.len(), 1, "only ours removed");
         assert_eq!(stop[0].pointer("/hooks/0/command").unwrap(), "ntfy send done");
+    }
+
+    #[test]
+    fn statusline_respects_a_foreign_one_and_round_trips() {
+        // Empty file: installs.
+        let mut settings = json!({});
+        assert!(statusline_install(&mut settings));
+        assert!(statusline_installed(&settings));
+        assert!(!statusline_install(&mut settings), "idempotent: a second install writes nothing");
+        // Ours is removable…
+        assert!(statusline_remove(&mut settings));
+        assert!(settings.get("statusLine").is_none());
+        // …a user's own is neither replaced nor removed.
+        let mut theirs = json!({ "statusLine": { "type": "command", "command": "starship prompt" } });
+        assert!(!statusline_install(&mut theirs));
+        assert!(!statusline_remove(&mut theirs));
+        assert_eq!(theirs.pointer("/statusLine/command").unwrap(), "starship prompt");
     }
 
     #[test]

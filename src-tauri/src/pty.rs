@@ -100,10 +100,17 @@ pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>) -> Result<Vec<Strin
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or(serde_json::json!({}));
-        if obpterm_host::install::installed(&settings) {
+        let hooks_done = obpterm_host::install::installed(&settings);
+        let mut wrote = false;
+        if !hooks_done {
+            obpterm_host::install::install(&mut settings);
+            wrote = true;
+        }
+        // Same pass, same file: the token meters' statusLine (never over a user's own).
+        wrote |= obpterm_host::install::statusline_install(&mut settings);
+        if !wrote {
             continue;
         }
-        obpterm_host::install::install(&mut settings);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
@@ -124,10 +131,13 @@ pub fn hooks_remove(dirs: Vec<String>) -> Result<usize, String> {
         let Some(mut settings) = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()) else {
             continue;
         };
-        if !obpterm_host::install::installed(&settings) {
+        let had_hooks = obpterm_host::install::installed(&settings);
+        if had_hooks {
+            obpterm_host::install::remove(&mut settings);
+        }
+        if !obpterm_host::install::statusline_remove(&mut settings) && !had_hooks {
             continue;
         }
-        obpterm_host::install::remove(&mut settings);
         std::fs::write(&path, serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         removed += 1;
     }

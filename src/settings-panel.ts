@@ -630,9 +630,9 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
       head("Files & reset", "Where OBPTerm keeps things, and the way back to defaults."),
       card(
         row("Claude Code hooks", "A marked block in settings.json that tells OBPTerm what each session is doing. Installed automatically; this takes it back out.",
-          button("Remove hooks", () => {
+          button("Remove hooks & status line", () => {
             const dirs = [...new Set(["~/.claude", ...ctx.config.accounts.map((a) => a.claude_dir).filter((d): d is string => !!d)])];
-            void ctx.tp.hooksRemove(dirs).then((n) => toast(n ? `Hooks removed from ${n} settings file${n > 1 ? "s" : ""}` : "No hooks were installed"));
+            void ctx.tp.hooksRemove(dirs).then((n) => toast(n ? `Hooks + status line removed from ${n} settings file${n > 1 ? "s" : ""}` : "Nothing of ours was installed"));
           })),
         row("Config and session", "config.json holds these settings; session.json holds the open tabs.",
           button("Show folder", () => void ctx.tp.reveal("config"))),
