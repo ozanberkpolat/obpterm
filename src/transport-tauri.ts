@@ -79,6 +79,7 @@ export function tauriTransport(): Transport {
       return invoke("taskbar_badge", { rgba, size });
     },
     configReset: () => invoke<Config>("config_reset"),
+    configExport: (config) => invoke<string>("config_export", { config }),
     reveal: (what) => invoke<string>("reveal", { what }),
     sessionLoad: () => invoke<Session>("session_load"),
     sessionSave: (tabs, active, host) => invoke("session_save", { tabs, active, host }),

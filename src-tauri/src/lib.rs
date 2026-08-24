@@ -39,6 +39,7 @@ pub fn run() {
             config::config_path_string,
             config::log_dir,
             config::config_reset,
+            config::config_export,
             config::reveal,
             chrome::window_action,
             chrome::attention,

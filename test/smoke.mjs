@@ -584,6 +584,39 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
 }
 
 
+
+// ---- settings backup: the new rows exist and import round-trips through the UI handler ----
+await evaluate("window.obpterm.settings.open('files')");
+await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");
+assert.ok(await evaluate("[...document.querySelectorAll('#settings .sw-btn')].some(b => b.textContent === 'Save settings to file')"), "the export button");
+// Import path: feed the hidden file input's handler a crafted settings file.
+const importedFont = "Cascadia Code Import Test";
+await evaluate(`(() => {
+  const input = document.querySelector('#settings input[type=file]');
+  const cfg = JSON.parse(JSON.stringify(window.obpterm.config));
+  cfg.font_family = ${JSON.stringify(importedFont)};
+  cfg.session = { junk: true };
+  const file = new File([JSON.stringify(cfg)], 'obpterm-config.json', { type: 'application/json' });
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  input.files = dt.files;
+  input.onchange();
+})()`);
+await until(`window.obpterm.config.font_family === ${JSON.stringify(importedFont)}`, "the imported font applied");
+assert.equal(await evaluate("window.obpterm.config.session?.junk ?? null"), null, "machine-bound session never imports");
+// Garbage is refused with the config untouched.
+await evaluate(`(() => {
+  const input = document.querySelector('#settings input[type=file]');
+  const dt = new DataTransfer();
+  dt.items.add(new File(['{"nope": 1}'], 'x.json', { type: 'application/json' }));
+  input.files = dt.files;
+  input.onchange();
+})()`);
+await new Promise((r) => setTimeout(r, 300));
+assert.equal(await evaluate("window.obpterm.config.font_family"), importedFont, "a bad file changes nothing");
+await evaluate("window.obpterm.config.font_family = 'JetBrains Mono'"); // put the font back
+await evaluate("window.obpterm.settings.close()");
+
 // ---- shortcut rebinding: the map follows config, and the old chord is released ------------
 await evaluate("window.obpterm.settings.open('keyboard')");
 await until("document.querySelectorAll('#settings .sw-chord').length > 10", "the rebindable rows");
