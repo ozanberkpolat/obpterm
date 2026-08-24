@@ -167,6 +167,8 @@ export interface Config {
   limits_url: string | null;
   /** Shortcut overrides: action id -> chord ("Ctrl+Shift+KeyT"). Missing = the default. */
   keybindings: Record<string, string>;
+  /** Folder every config save is mirrored to (point it at OneDrive / Drive). */
+  backup_dir: string | null;
   quota_5h_tokens: number | null;
   quota_7d_tokens: number | null;
   restore_session: boolean;
@@ -260,6 +262,8 @@ export interface Transport {
   /** Taskbar overlay badge: how many agents wait on the user. 0 clears it. */
   badge(count: number): Promise<void>;
   configReset(): Promise<Config>;
+  /** Writes a portable settings copy to Downloads; returns the path. */
+  configExport(config: Config): Promise<string>;
   reveal(what: "config" | "logs"): Promise<string>;
   sessionLoad(): Promise<Session>;
   sessionSave(tabs: unknown, active: number, host: string | null): Promise<void>;
@@ -311,6 +315,7 @@ export function withDefaults(config: Partial<Config>): Config {
     limits_file: config.limits_file ?? null,
     limits_url: config.limits_url ?? null,
     keybindings: config.keybindings ?? {},
+    backup_dir: config.backup_dir ?? null,
     quota_5h_tokens: config.quota_5h_tokens ?? null,
     quota_7d_tokens: config.quota_7d_tokens ?? null,
     projects: (config.projects ?? []).map((p) => ({

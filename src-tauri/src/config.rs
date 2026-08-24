@@ -149,6 +149,9 @@ pub struct Config {
     pub limits_url: Option<String>,
     /// Shortcut overrides: action id -> chord ("Ctrl+Shift+KeyT"); the frontend owns the ids.
     pub keybindings: BTreeMap<String, String>,
+    /// Every config save is mirrored to `<this folder>/obpterm-config.json` (tokens stripped).
+    /// Point it at a OneDrive / Google Drive folder and the cloud client does the transport.
+    pub backup_dir: Option<String>,
     /// Your own budget for the status-bar meters, in tokens. `None` shows plain totals.
     pub quota_5h_tokens: Option<u64>,
     pub quota_7d_tokens: Option<u64>,
@@ -201,6 +204,7 @@ impl Default for Config {
             session: None,
             theme: sentinel_theme(),
             keybindings: BTreeMap::new(),
+            backup_dir: None,
         }
     }
 }
@@ -353,7 +357,55 @@ pub fn config_save(app: AppHandle, config: Config) -> Result<(), String> {
     // The other window is showing the same config; tell it to reload rather than letting the
     // two drift apart.
     let _ = app.emit("config:changed", ());
+    // The mirror rides every save; its failure must not read as "config not saved".
+    if let Err(e) = mirror(&config) {
+        return Err(format!("Saved — but the backup mirror failed: {e}"));
+    }
     Ok(())
+}
+
+/// A copy for another machine: the whole config minus tokens. Credentials never ride along —
+/// a new laptop signs into Claude once and the hooks/statusLine reinstall themselves.
+fn portable(config: &Config) -> Config {
+    let mut copy = config.clone();
+    copy.github_token = None;
+    copy.session = None; // machine-bound: pty ids from this host
+    copy
+}
+
+fn mirror(config: &Config) -> Result<(), String> {
+    let Some(dir) = config.backup_dir.as_deref().filter(|d| !d.is_empty()) else {
+        return Ok(());
+    };
+    let dir = PathBuf::from(crate::pty::expand_vars(dir));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    write(&dir.join("obpterm-config.json"), &portable(config))
+}
+
+/// Writes a portable copy into the Downloads folder and returns its path.
+#[tauri::command]
+pub fn config_export(app: AppHandle, config: Config) -> Result<String, String> {
+    let dir = app.path().download_dir().map_err(|e| e.to_string())?;
+    let stamp = chrono_free_date();
+    let path = dir.join(format!("obpterm-config-{stamp}.json"));
+    write(&path, &portable(&config))?;
+    Ok(path.display().to_string())
+}
+
+/// YYYY-MM-DD without pulling in chrono: days since epoch, civil-calendar arithmetic.
+fn chrono_free_date() -> String {
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let z = secs as i64 / 86400 + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z.rem_euclid(146097);
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
 }
 
 /// Puts the defaults back, keeping the open tabs.
@@ -481,6 +533,24 @@ fn now_ms() -> i64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn portable_strips_the_secrets_and_the_session() {
+        let mut cfg = Config::default();
+        cfg.github_token = Some("ghp_x".into());
+        cfg.session = Some(serde_json::json!({"tabs": []}));
+        let p = portable(&cfg);
+        assert!(p.github_token.is_none() && p.session.is_none());
+        assert_eq!(p.profiles.len(), cfg.profiles.len(), "everything else survives");
+    }
+
+    #[test]
+    fn export_stamp_is_a_date() {
+        let d = chrono_free_date();
+        assert_eq!(d.len(), 10, "{d}");
+        assert!(d.as_bytes()[4] == b'-' && d.as_bytes()[7] == b'-', "{d}");
+        assert!(d.starts_with("20"), "{d}");
+    }
+
     use super::*;
 
     #[test]

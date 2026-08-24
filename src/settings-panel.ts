@@ -2,7 +2,7 @@
 // Tauri window is outside the app's capability scope, so its webview comes up with no IPC —
 // a black rectangle.
 import type { App } from "./app";
-import type { Config, Transport } from "./transport";
+import { withDefaults, type Config, type Transport } from "./transport";
 import { ACTIONS, bindKeys, chordFor, chordOf, FIXED, pretty } from "./keymap";
 import { renderList, renderLogins } from "./settings-lists";
 import { toast } from "./ui";
@@ -75,6 +75,8 @@ export function installSettings(app: App) {
     },
     save() {
       app.applyConfig();
+      app.applyRailWidth();
+      document.querySelector("#rail")!.classList.toggle("collapsed", app.config.rail_collapsed);
       app.paint();
       app.persistConfig();
       saved.hidden = false;
@@ -636,6 +638,16 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
           })),
         row("Config and session", "config.json holds these settings; session.json holds the open tabs.",
           button("Show folder", () => void ctx.tp.reveal("config"))),
+      ),
+      card(
+        row("Mirror settings to a folder", "Every save also writes obpterm-config.json here. Point it at a OneDrive or Google Drive folder and the cloud client carries it to the next laptop. Tokens and Claude credentials never ride along.",
+          text(ctx.config.backup_dir ?? "", (v) => { ctx.config.backup_dir = v || null; ctx.save(); }, { width: 300, placeholder: "C:\\Users\\you\\OneDrive\\obpterm" })),
+        row("Save settings to a file", "A portable copy in your Downloads folder — the manual version of the mirror.",
+          button("Save settings to file", () => {
+            void ctx.tp.configExport(ctx.config).then((p) => toast(`Saved ${p}`)).catch((e) => toast(String(e)));
+          })),
+        row("Load settings from a file", "Restores a mirror or an exported copy. Replaces these settings; open tabs are left alone.",
+          importButton(ctx)),
         captureRow(ctx),
         row("Keep captures for", "Older ones are deleted when the app starts. Zero keeps them forever.",
           slider(ctx.config.capture_keep_days, 0, 180, 5, " days", (v) => { ctx.config.capture_keep_days = v; ctx.save(); })),
@@ -674,6 +686,40 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
 };
 
 /** Says how much the capture folder is holding, and offers to drop the empty ones. */
+function importButton(ctx: Ctx): HTMLElement {
+  const holder = document.createElement("span");
+  const pick = document.createElement("input");
+  pick.type = "file";
+  pick.accept = ".json,application/json";
+  pick.hidden = true;
+  pick.onchange = async () => {
+    const file = pick.files?.[0];
+    pick.value = "";
+    if (!file) return;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch (e) {
+      return toast(`Not valid JSON: ${e}`);
+    }
+    if (!Array.isArray(parsed.profiles) || !parsed.profiles.length) {
+      return toast("That file has no profiles — not an OBPTerm settings file");
+    }
+    // Machine-bound leftovers never import; the fence around secrets holds on the way in too.
+    delete parsed.session;
+    delete parsed.github_token;
+    const backupDir = ctx.config.backup_dir; // keep THIS machine's mirror target
+    Object.assign(ctx.config, withDefaults(parsed as Partial<Config>), { backup_dir: parsed.backup_dir ?? backupDir });
+    bindKeys(ctx.config);
+    ctx.save();
+    ctx.rerender();
+    toast("Settings imported — fonts, shortcuts and profiles are live");
+  };
+  const btn = button("Load settings from file", () => pick.click());
+  holder.append(btn, pick);
+  return holder;
+}
+
 function captureRow(ctx: Ctx): HTMLElement {
   const prune = button("Clean up now", () => void run(true));
   const show = button("Show folder", () => void ctx.tp.reveal("logs"));

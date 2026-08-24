@@ -2658,7 +2658,7 @@ dependencies = [
 
 [[package]]
 name = "obpterm"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "obpterm-host",
  "portable-pty",
@@ -2678,7 +2678,7 @@ dependencies = [
 
 [[package]]
 name = "obpterm-host"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "interprocess",
  "portable-pty",

@@ -19,7 +19,7 @@
       "cwd": null
     }
   ],
-  "font_family": "JetBrains Mono, Cascadia Mono, Consolas, monospace",
+  "font_family": "JetBrains Mono",
   "font_size": 15,
   "scrollback": 10000,
   "rail_collapsed": false,
@@ -80,7 +80,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt6d18dk",
+      "id": "hmt6v3p2g",
       "name": "New host",
       "host": "",
       "user": null,
@@ -98,9 +98,10 @@
     }
   ],
   "default_account": "default",
-  "limits_file": null,
+  "limits_file": "~/.claude/limits.json",
   "limits_url": null,
   "keybindings": {},
+  "backup_dir": null,
   "quota_5h_tokens": null,
   "quota_7d_tokens": null,
   "projects": [
@@ -967,32 +968,19 @@
       "default_profile": null,
       "layout": null,
       "collapsed": false
+    },
+    {
+      "id": "pmt6v3fzf",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
     }
   ],
   "restore_session": true,
-  "session": [
-    {
-      "project": "pmt5h9ljl",
-      "color": null,
-      "account": "default",
-      "host": null,
-      "root": {
-        "kind": "split",
-        "dir": "row",
-        "ratio": 0.5,
-        "a": {
-          "kind": "leaf",
-          "profile": "bash",
-          "cwd": null
-        },
-        "b": {
-          "kind": "leaf",
-          "profile": "bash",
-          "cwd": null
-        }
-      }
-    }
-  ],
+  "session": null,
   "theme": {
     "background": "#0a0e14",
     "foreground": "#eaf0f7",

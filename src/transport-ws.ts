@@ -108,6 +108,7 @@ export function wsTransport(): Transport {
     },
     attention: async () => {},
     badge: async () => {},
+    configExport: async () => "(dev: export is a desktop feature)",
     configReset: async () => (await call("config_reset")).config as Config,
     reveal: async (what) => what,
     sessionLoad: async () => (await call("session_load")).session as Session,
