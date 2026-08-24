@@ -567,3 +567,18 @@ button.chip:hover { background: var(--border); color: var(--ink); }
   border-top: 1px solid var(--border); font-size: 11px; color: var(--faint);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* ---- v0.14.0: progress slivers, deck selection, capture/awake chips ---- */
+.tab.has-prog { position: relative; }
+.tab.has-prog::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 2px; height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--tab-accent, var(--accent)) var(--prog, 0%), rgba(140, 160, 190, .18) var(--prog, 0%));
+}
+#rail.collapsed .tab.has-prog::after { left: 4px; right: 4px; }
+.dprog { height: 4px; margin: 0 12px 8px; border-radius: 999px; background: rgba(140, 160, 190, .18); overflow: hidden; }
+.dprog i { display: block; height: 100%; border-radius: 999px; background: var(--card-accent, var(--accent)); }
+.dcard.selected { outline: 2px solid color-mix(in srgb, var(--card-accent, var(--accent)) 65%, transparent); outline-offset: 1px; }
+.dgrid:focus { outline: none; }
+#capture { cursor: pointer; }
+#awake { color: var(--faint); font-size: 11px; }

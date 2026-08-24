@@ -80,7 +80,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt6v3p2g",
+      "id": "hmt7htbkf",
       "name": "New host",
       "host": "",
       "user": null,
@@ -102,6 +102,9 @@
   "limits_url": null,
   "keybindings": {},
   "backup_dir": null,
+  "ntfy_url": null,
+  "ntfy_token": null,
+  "keep_awake": true,
   "quota_5h_tokens": null,
   "quota_7d_tokens": null,
   "projects": [
@@ -971,6 +974,42 @@
     },
     {
       "id": "pmt6v3fzf",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt7hpwta",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt7hqu5d",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt7hrwb4",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt7ht0id",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,

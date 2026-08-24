@@ -166,13 +166,22 @@ function patchRow(app: App, tab: Tab) {
   const title = app.title(tab);
   const state = app.activity(tab);
   const exited = panes.find((p) => p.exitCode && !p.eco);
-  const agentDetail = panes.map((p) => (p.agent.state ? p.agent.detail : null)).find(Boolean);
+  const agentPane = panes.find((p) => p.agent.state);
+  const agentDetail = agentPane?.agent.detail ?? null;
   const eco = panes.some((p) => p.eco);
+  // "Editing pty.rs · 12m" — how long this agent has been at it. Quiet for the first minute:
+  // a fresh agent labelled "1m" reads as stuck when it is two seconds old.
+  const workedMin = agentPane?.agent.state === "working" && agentPane.agent.workingSince
+    ? Math.floor((Date.now() - agentPane.agent.workingSince) / 60_000)
+    : 0;
+  const working = workedMin >= 1 ? ` · ${workedMin}m` : "";
   const sub = exited
     ? `exited · code ${exited.exitCode}`
     : eco
       ? "agent sleeping — click to resume"
-      : (agentDetail ?? tab.active.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? tab.active.profile.name);
+      : agentDetail
+        ? agentDetail + working
+        : (tab.active.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? tab.active.profile.name);
 
   row.li.classList.toggle("active", tab === app.tab);
   row.li.classList.toggle("dead", state === "exited");
@@ -185,6 +194,10 @@ function patchRow(app: App, tab: Tab) {
   row.badge.hidden = panes.length < 2;
   set(row.badge, panes.length > 1 ? String(panes.length) : "");
   row.rec.hidden = !panes.some((p) => p.logPath);
+  // OSC 9;4 progress, parsed for a long time and finally drawn: a sliver along the row's foot.
+  const progress = panes.map((p) => p.progress).find((v) => v !== null) ?? null;
+  row.li.classList.toggle("has-prog", progress !== null);
+  if (progress !== null) row.li.style.setProperty("--prog", `${progress}%`);
   if (row.state.dataset.state !== state) {
     row.state.dataset.state = state;
     row.state.className = `st ${state}`;

@@ -45,3 +45,35 @@ pub fn taskbar_badge(app: AppHandle, rgba: Vec<u8>, size: u32) -> Result<(), Str
         Ok(())
     }
 }
+
+/// Holds Windows out of sleep while agents work. SetThreadExecutionState is per-thread and
+/// ES_CONTINUOUS dies with its thread, so one long-lived thread owns the state and commands
+/// just send it the wanted value.
+#[tauri::command]
+pub fn keep_awake(on: bool) -> Result<(), String> {
+    awake_sender().send(on).map_err(|e| e.to_string())
+}
+
+fn awake_sender() -> &'static std::sync::mpsc::Sender<bool> {
+    use std::sync::OnceLock;
+    static TX: OnceLock<std::sync::mpsc::Sender<bool>> = OnceLock::new();
+    TX.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<bool>();
+        std::thread::spawn(move || {
+            while let Ok(_on) = rx.recv() {
+                #[cfg(windows)]
+                unsafe {
+                    use windows::Win32::System::Power::{
+                        SetThreadExecutionState, ES_CONTINUOUS, ES_SYSTEM_REQUIRED,
+                    };
+                    if _on {
+                        SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
+                    } else {
+                        SetThreadExecutionState(ES_CONTINUOUS);
+                    }
+                }
+            }
+        });
+        tx
+    })
+}
