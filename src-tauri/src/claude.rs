@@ -284,6 +284,8 @@ mod tests {
         assert_eq!(super::window_for("claude-fable-5"), 1_000_000);
         assert_eq!(super::window_for("claude-mythos-5"), 1_000_000);
         assert_eq!(super::window_for("claude-sonnet-4-5[1m]"), 1_000_000);
+        assert_eq!(super::window_for("claude-opus-5"), 1_000_000);
+        assert_eq!(super::window_for("claude-sonnet-5"), 1_000_000);
         assert_eq!(super::window_for("claude-opus-4-1"), 200_000);
         assert_eq!(super::window_for(""), 200_000);
     }
@@ -446,6 +448,11 @@ pub async fn session_title(dir: String, session_id: String) -> Option<String> {
 /// accounting. None when the transcript (or a usage entry) cannot be found.
 #[tauri::command]
 pub async fn session_context(dir: String, session_id: String) -> Option<u8> {
+    // Claude's own number first: the statusLine payload saved to <dir>/limits.json carries
+    // context_window.used_percentage and the session it belongs to — exact, no model table.
+    if let Some(pct) = payload_context(&dir, &session_id) {
+        return Some(pct);
+    }
     let projects = PathBuf::from(expand(&dir)).join("projects");
     let file = std::fs::read_dir(&projects)
         .ok()?
@@ -477,11 +484,26 @@ pub async fn session_context(dir: String, session_id: String) -> Option<u8> {
     last.map(|t| ((t as f64 / window_for(&model) as f64) * 100.0).round().clamp(0.0, 100.0) as u8)
 }
 
-/// The context window the percentage is measured against. Hardcoding 200k showed a Fable
-/// session at 100% while /context said 23% — the big-window models need their own figure.
+/// The saved statusLine payload, when it is this very session's: Claude's own percentage.
+fn payload_context(dir: &str, session_id: &str) -> Option<u8> {
+    let text = std::fs::read_to_string(PathBuf::from(expand(dir)).join("limits.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    if v.get("session_id").and_then(|s| s.as_str()) != Some(session_id) {
+        return None;
+    }
+    v.pointer("/context_window/used_percentage")
+        .and_then(|p| p.as_f64())
+        .map(|p| p.round().clamp(0.0, 100.0) as u8)
+}
+
+/// The context window the transcript-math fallback measures against. The Claude 5 family
+/// (opus-5, sonnet-5, fable, mythos) and the [1m] betas run 1M windows — the laptop's
+/// /context showed opus-5 at 223.6k/1m while the old 200k assumption pinned the meter at
+/// 100%. Only the sessions the statusLine has not reported on land here at all.
 fn window_for(model: &str) -> u64 {
     let m = model.to_ascii_lowercase();
-    if m.contains("fable") || m.contains("mythos") || m.contains("[1m]") || m.contains("-1m") {
+    let million = ["fable", "mythos", "[1m]", "-1m", "opus-5", "sonnet-5"];
+    if million.iter().any(|p| m.contains(p)) {
         1_000_000
     } else {
         200_000
