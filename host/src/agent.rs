@@ -26,6 +26,10 @@ pub struct AgentEvent {
     pub pending_id: Option<String>,
     /// The options of an AskUserQuestion, when that is what blocked it.
     pub options: Vec<String>,
+    /// The tool a PermissionRequest is about ("Bash"), so the window can grade and allowlist.
+    pub tool: Option<String>,
+    /// Its raw input — the full command for Bash — unclipped, unlike `detail`.
+    pub tool_input: Option<String>,
 }
 
 /// Maps one hook payload to an event. Pure, so it is testable without HTTP or hooks.
@@ -39,6 +43,8 @@ pub fn normalize(pane: u32, payload: &serde_json::Value) -> Option<AgentEvent> {
         detail,
         pending_id: None,
         options: Vec::new(),
+        tool: None,
+        tool_input: None,
     };
     Some(match event {
         "UserPromptSubmit" => mk("working", None),
@@ -48,6 +54,11 @@ pub fn normalize(pane: u32, payload: &serde_json::Value) -> Option<AgentEvent> {
             let mut e = mk("blocked", permission_detail(payload));
             e.pending_id = payload.get("obpterm_pending").and_then(|v| v.as_str()).map(str::to_string);
             e.options = question_options(payload);
+            e.tool = payload.get("tool_name").and_then(|v| v.as_str()).map(str::to_string);
+            e.tool_input = payload
+                .pointer("/tool_input/command")
+                .and_then(|v| v.as_str())
+                .map(|s| s.chars().take(500).collect());
             e
         }
         "Notification" => {
@@ -132,6 +143,7 @@ mod tests {
         assert_eq!(e.state, "blocked");
         assert_eq!(e.detail.as_deref(), Some("Running rm -rf build"));
         assert_eq!(e.pending_id.as_deref(), Some("p-1"));
+        assert_eq!((e.tool.as_deref(), e.tool_input.as_deref()), (Some("Bash"), Some("rm -rf build")), "the raw command rides along for grading");
 
         let e = normalize(7, &json!({"hook_event_name": "Notification", "notification_type": "idle_prompt"})).unwrap();
         assert_eq!(e.state, "idle_rescue", "idle_prompt may only rescue a stuck working state");

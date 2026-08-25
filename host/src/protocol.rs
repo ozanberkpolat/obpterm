@@ -92,6 +92,10 @@ pub enum Reply {
         detail: Option<String>,
         pending_id: Option<String>,
         options: Vec<String>,
+        #[serde(default)]
+        tool: Option<String>,
+        #[serde(default)]
+        tool_input: Option<String>,
     },
 }
 

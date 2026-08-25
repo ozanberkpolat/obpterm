@@ -19,6 +19,8 @@ pub struct AgentUpdate {
     pub detail: Option<String>,
     pub pending_id: Option<String>,
     pub options: Vec<String>,
+    pub tool: Option<String>,
+    pub tool_input: Option<String>,
 }
 
 /// Output and exit for one attached session, in order. Replay comes first, framed by
@@ -134,9 +136,9 @@ impl Client {
                                 me.watchers.lock().unwrap().remove(&id);
                             }
                             Reply::Hello { .. } => {}
-                            Reply::Agent { pane, state, session_id, detail, pending_id, options } => {
+                            Reply::Agent { pane, state, session_id, detail, pending_id, options, tool, tool_input } => {
                                 if let Some(tx) = me.agent_watcher.lock().unwrap().as_ref() {
-                                    let _ = tx.send(AgentUpdate { pane, state, session_id, detail, pending_id, options });
+                                    let _ = tx.send(AgentUpdate { pane, state, session_id, detail, pending_id, options, tool, tool_input });
                                 }
                             }
                         }

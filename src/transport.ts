@@ -274,6 +274,15 @@ export interface Transport {
   keepAwake(on: boolean): Promise<void>;
   /** RSS in bytes of each pid's process tree, for the Deck's memory readout. */
   rssFor(pids: number[]): Promise<number[]>;
+  /** `git diff --shortstat HEAD` for a directory; null when it is not a repo. */
+  gitShortstat(cwd: string): Promise<string | null>;
+  /** Appends a rule to the project's .claude/settings.local.json permissions.allow. */
+  allowRule(cwd: string, rule: string): Promise<void>;
+  /** Rough context-window fill % for a session, from its transcript tail. */
+  sessionContext(dir: string, sessionId: string): Promise<number | null>;
+  /** A pasted bitmap, saved to a temp PNG; resolves the path to type, or null when the
+   *  clipboard holds no image (or images are unsupported here). */
+  readClipboardImage(): Promise<string | null>;
   configReset(): Promise<Config>;
   /** Writes a portable settings copy to Downloads; returns the path. */
   configExport(config: Config): Promise<string>;

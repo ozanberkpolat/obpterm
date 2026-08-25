@@ -88,6 +88,7 @@ pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>) -> Result<Vec<Strin
                 serde_json::json!({
                     "pane": u.pane, "state": u.state, "session_id": u.session_id,
                     "detail": u.detail, "pending_id": u.pending_id, "options": u.options,
+                    "tool": u.tool, "tool_input": u.tool_input,
                 }),
             );
         }

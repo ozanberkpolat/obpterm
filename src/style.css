@@ -582,3 +582,18 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 .dgrid:focus { outline: none; }
 #capture { cursor: pointer; }
 #awake { color: var(--faint); font-size: 11px; }
+
+/* ---- v0.15.0: review & steer ---- */
+.dcard.danger { border-color: rgba(255, 107, 115, .65); box-shadow: 0 0 0 1px rgba(255, 107, 115, .3); }
+.dcard.danger .dchip { background: rgba(255, 107, 115, .18); color: #ff6b73; }
+.dcard.danger .dactions .allow { background: none; border: 1px solid rgba(255, 107, 115, .5); color: #ff6b73; }
+.dreply { padding: 0 12px 10px; }
+.dreply input {
+  width: 100%; padding: 6px 12px; border-radius: 999px;
+  background: var(--bg); border: 1px solid var(--border-2); color: var(--ink);
+  font: 12px var(--mono); outline: none;
+}
+.dreply input:focus { border-color: var(--card-accent, var(--accent)); }
+.dfoot.ctx-high { color: #ffb454; }
+.dactions .always { background: none; border: 1px solid var(--border-2); color: var(--faint); }
+.dactions .always:hover { border-color: var(--accent); color: var(--accent); }

@@ -1,3 +1,4 @@
+mod extras;
 mod claude;
 mod logins;
 mod chrome;
@@ -47,6 +48,10 @@ pub fn run() {
             chrome::keep_awake,
             update::ntfy_publish,
             metrics::rss_for,
+            claude::session_context,
+            extras::git_shortstat,
+            extras::allow_rule,
+            extras::save_clip_image,
             config::session_load,
             config::session_save,
             claude::claude_account,

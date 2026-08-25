@@ -1,6 +1,6 @@
 // Tabs, panes and projects. A tab owns a pane tree; a project groups tabs, gives them a colour
 // and can save/restore its own set of tabs.
-import { isClaudePane, tick as agentTick } from "./agent";
+import { isClaudePane, isDangerous, tick as agentTick } from "./agent";
 import { withDefaults, type Account, type Config, type Host, type Profile, type Project, type Transport } from "./transport";
 import { ACTIVE_MS, Pane, type PaneHost } from "./pane";
 import * as L from "./layout";
@@ -932,11 +932,27 @@ export class App implements PaneHost {
         if (pane.agent.state === "blocked" || pane.agent.state === "waiting") list.push({ pane, tab });
       }
     }
+    // A dangerous held request is always the next stop.
+    list.sort((a, b) => Number(isDangerous(b.pane.agent)) - Number(isDangerous(a.pane.agent)));
     if (!list.length) return;
     const current = list.findIndex(({ pane }) => pane === this.tab?.active);
     const next = list[(current + 1) % list.length]!;
     this.activate(next.tab);
     this.focusPane(next.pane);
+  }
+
+  /** Ctrl+Shift+Y: the session's diff in a split — the review step, next to the work. */
+  async reviewSplit() {
+    const tab = this.tab;
+    if (!tab) return;
+    const from = tab.active;
+    await this.splitPane("row");
+    // The new split is now the active pane; give its shell a beat, then ask for the diff.
+    const pane = tab.active;
+    window.setTimeout(() => {
+      if (!pane.exited && pane.id > 0) void this.tp.write(pane.id, "git diff\r").catch(() => {});
+    }, 900);
+    void from; // the split already inherited its cwd
   }
 
   /** A second shell exactly where you are: profile, project, account and current directory. */
@@ -1172,9 +1188,14 @@ export class App implements PaneHost {
   }
 
   async paste() {
-    const t = this.tab?.active.term.term;
-    if (!t) return;
+    const pane = this.tab?.active;
+    const t = pane?.term.term;
+    if (!pane || !t) return;
     const text = await this.tp.readClipboard().catch(() => "");
-    if (text) t.paste(text);
+    if (text) return t.paste(text);
+    // No text: a screenshot, maybe. Save it and type its path — the fastest way to put an
+    // image in front of a Claude prompt on Windows.
+    const path = await this.tp.readClipboardImage().catch(() => null);
+    if (path) t.paste(`"${path}" `);
   }
 }

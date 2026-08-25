@@ -632,6 +632,7 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${busyPane}); p.progress = null; window.obpterm.paint(); })()`);
 
   // Duplicate tab lands in the same directory and never carries a session id along.
+  await evaluate("void (window.__dupPane = window.obpterm.tab.active)"); // the fixture must be undone on THIS pane
   await evaluate("window.obpterm.tab.active.cwd = '/tmp/dup-test'");
   await evaluate("window.obpterm.tab.active.profile.args = ['--session-id', 'sess-old']");
   const tabsBefore = await evaluate("window.obpterm.tabs.length");
@@ -640,6 +641,7 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   assert.equal(await evaluate("window.obpterm.tab.active.cwd"), "/tmp/dup-test", "the duplicate keeps the directory");
   assert.ok(!(await evaluate("window.obpterm.tab.active.profile.args.includes('sess-old')")), "the duplicate minted its own session");
   await evaluate("window.obpterm.closeTab(window.obpterm.tab)");
+  await evaluate("window.__dupPane.cwd = null; window.__dupPane.profile.args = []"); // undo the fixture on the right pane
 
   // Find reports which match of how many.
   await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
@@ -658,6 +660,88 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   await evaluate("window.obpterm.config.ntfy_url = null");
 
   // cleanup: end the extra tab
+  await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
+  devWs.close();
+}
+
+
+// ---- v0.15.0: danger tier, deck reply, always-allow, diffstat/ctx, review split -----------
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const injectDev = (update) =>
+    new Promise((r) => {
+      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
+      setTimeout(r, 150);
+    });
+  const answers = (reqId) => new Promise((resolve) => {
+    devWs.send(JSON.stringify({ t: "agent_answers", reqId }));
+    devWs.on("message", function once(d) {
+      const m = JSON.parse(d);
+      if (m.reqId === reqId) { devWs.off("message", once); resolve(m.answered); }
+    });
+  });
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; }), window.obpterm.paint()");
+  await evaluate("void window.obpterm.newTab()");
+  await until("window.obpterm.tabs.length >= 2", "a tab for wave 1");
+  const wavePane = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+
+  // A dangerous request: red card, 'a' refuses, 'y' allows.
+  await injectDev({ pane: wavePane, state: "blocked", session_id: "sess-15", detail: "Running rm -rf build", pending_id: "p-150", options: [], tool: "Bash", tool_input: "rm -rf build" });
+  await until(`window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${wavePane})?.agent.state === 'blocked'`, "the dangerous block");
+  await evaluate("window.obpterm.deck.open()");
+  await until("!!document.querySelector('.dcard.danger')", "the red card");
+  const before = (await answers(1500)).length;
+  await evaluate("document.querySelector('#deck .dgrid').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', key: 'a', bubbles: true, cancelable: true }))");
+  await new Promise((r) => setTimeout(r, 250));
+  assert.equal((await answers(1501)).length, before, "muscle-memory a did not approve the red card");
+  await evaluate("document.querySelector('#deck .dgrid').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyY', key: 'y', bubbles: true, cancelable: true }))");
+  await until("document.querySelector('.dcard.danger') === null", "the card quieting after y");
+  const a15 = await answers(1502);
+  assert.deepEqual(a15.at(-1), { pending: "p-150", allow: true }, "y allowed it deliberately");
+
+  // Always-allow on a benign command: the rule lands and the verdict travels.
+  await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${wavePane}); p.cwd = '/tmp/wave1'; })()`);
+  await injectDev({ pane: wavePane, state: "blocked", session_id: "sess-15", detail: "Running npm test", pending_id: "p-151", options: [], tool: "Bash", tool_input: "npm test" });
+  await until("!!document.querySelector('.dcard[data-state=blocked]')", "the benign block");
+  await evaluate("(() => { window.__rules = []; window.obpterm.tp.allowRule = async (cwd, rule) => { window.__rules.push([cwd, rule]); }; })()");
+  await evaluate("document.querySelector('#deck .dgrid').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', key: 'w', bubbles: true, cancelable: true }))");
+  await until("window.__rules.length === 1", "the rule saved");
+  assert.deepEqual(await evaluate("window.__rules[0]"), ["/tmp/wave1", "Bash(npm:*)"], "the rule pins the command word");
+  const a151 = await answers(1503);
+  assert.deepEqual(a151.at(-1), { pending: "p-151", allow: true }, "always also allowed the held request");
+
+  // Reply without attaching: t focuses the input, Enter writes into the pty.
+  await injectDev({ pane: wavePane, state: "waiting", session_id: "sess-15", detail: "Which option?", pending_id: null, options: ["A", "B"] });
+  await until("!!document.querySelector('.dcard[data-state=waiting] .dreply:not([hidden])')", "the reply input shown");
+  await evaluate("(() => { window.__writes = []; const real = window.obpterm.tp.write; window.__realWrite = real; window.obpterm.tp.write = async (id, d) => { window.__writes.push([id, d]); }; })()");
+  await evaluate("document.querySelector('#deck .dgrid').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', key: 't', bubbles: true, cancelable: true }))");
+  await until("document.activeElement?.matches('.dreply input')", "the input focused by t");
+  await evaluate("(() => { const i = document.querySelector('.dcard[data-state=waiting] .dreply input') ?? document.activeElement; i.value = 'use option B'; i.dispatchEvent(new KeyboardEvent('keydown', { code: 'Enter', key: 'Enter', bubbles: true, cancelable: true })); })()");
+  await until("window.__writes.length === 1", "the reply written");
+  assert.deepEqual(await evaluate("window.__writes[0]"), [wavePane, "use option B\r"], "the reply hit the right pty with Enter");
+  await evaluate("void (window.obpterm.tp.write = window.__realWrite)");
+  assert.equal(await evaluate("window.obpterm.tp.write === window.__realWrite"), true, "the real write is back");
+
+  // Diffstat + context land on the card through the slow lane.
+  await evaluate("(() => { window.obpterm.tp.gitShortstat = async () => '2 files changed, 4 insertions(+), 1 deletion(-)'; window.obpterm.tp.sessionContext = async () => 85; })()");
+  await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${wavePane}); p.claudeSessionId = 'sess-15'; })()`);
+  await evaluate("window.obpterm.deck.close(); window.obpterm.deck.open()");
+  await until("[...document.querySelectorAll('.dcard .dfoot')].some(f => f.textContent.includes('+4 \\u22121') || f.textContent.includes('+4 −1'))", "the diffstat chip");
+  await until("[...document.querySelectorAll('.dcard .dfoot')].some(f => f.textContent.includes('ctx 85%'))", "the context chip");
+  await evaluate("window.obpterm.deck.close()");
+
+  // Review split: a second pane opens where you are and asks git for the diff.
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+  await evaluate("window.obpterm.tab.active.cwd = null"); // an earlier fixture may have poisoned it
+  const panesBefore = await evaluate("window.obpterm.paneCount(window.obpterm.tab)");
+  await evaluate("void window.obpterm.reviewSplit()");
+  await until(`window.obpterm.paneCount(window.obpterm.tab) === ${panesBefore + 1}`, "the review split");
+  await until(`(() => { const b = window.obpterm.tab.active.term.term.buffer.active; let t = ''; for (let i = 0; i < b.length; i++) t += b.getLine(i)?.translateToString(true) ?? ''; return t.includes('git diff'); })()`, "the diff asked for");
+  await evaluate("window.obpterm.closePane(window.obpterm.tab.active)");
+
+  // cleanup
   await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
   devWs.close();
 }

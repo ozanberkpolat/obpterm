@@ -225,6 +225,8 @@ OBPTERM_HOOK_TOKEN={}
                             detail: e.detail,
                             pending_id: e.pending_id,
                             options: e.options,
+                            tool: e.tool,
+                            tool_input: e.tool_input,
                         });
                     }
                 }
