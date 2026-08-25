@@ -246,6 +246,7 @@ function tabMenu(app: App, tab: Tab, x: number, y: number) {
     { label: "Split right", hint: "Alt+Shift+=", onPick: () => void app.splitPane("row") },
     { label: "Split down", hint: "Alt+Shift+-", onPick: () => void app.splitPane("col") },
     { label: capturing ? "Stop capture" : "Start capture", hint: "Ctrl+Shift+L", onPick: () => void app.toggleLog() },
+    { label: "New tab in a worktree…", hint: "Ctrl+Shift+U", onPick: () => newWorktree(app) },
     { label: "Move to project…", onPick: () => moveMenu(app, tab, x, y) },
     { label: "Tab colour…", onPick: () => colorMenu(x, y, tab.color, (c) => app.setTabColor(tab, c)) },
     { label: "Settings…", hint: "Ctrl+Shift+,", onPick: () => app.settings.open() },
@@ -310,6 +311,17 @@ function colorMenu(x: number, y: number, current: string | null, set: (c: string
       onPick: () => set(c.value),
     })),
   ]);
+}
+
+/** Inline "name the worktree" field — same spot as the new-project prompt. */
+export function newWorktree(app: App) {
+  const host = document.querySelector<HTMLElement>("#rail-new")!;
+  host.hidden = false;
+  editInline(host, "", "Worktree name (becomes the branch)", (v) => {
+    host.hidden = true;
+    host.replaceChildren();
+    if (v) void app.newWorktreeTab(v);
+  });
 }
 
 /** Inline "new project" field at the foot of the rail — no modal, Escape cancels. */

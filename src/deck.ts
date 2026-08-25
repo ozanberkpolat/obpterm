@@ -208,6 +208,14 @@ export class Deck {
     const prog = card.el.querySelector<HTMLElement>(".dprog")!;
     prog.hidden = pane.progress === null;
     if (pane.progress !== null) prog.querySelector<HTMLElement>("i")!.style.width = `${pane.progress}%`;
+    const ctx = card.el.querySelector<HTMLElement>(".dctx")!;
+    ctx.hidden = pane.ctxPct === null;
+    if (pane.ctxPct !== null) {
+      ctx.querySelector<HTMLElement>(".bar i")!.style.width = `${pane.ctxPct}%`;
+      set(ctx.querySelector<HTMLElement>(".v")!, `${pane.ctxPct}%`);
+      ctx.classList.toggle("high", pane.ctxPct >= 70 && pane.ctxPct < 85);
+      ctx.classList.toggle("full", pane.ctxPct >= 85);
+    }
     // The held question, in the agent's words, with its options when it asked one.
     const ask = a.state === "blocked" || a.state === "waiting" ? (a.detail ?? "") : "";
     set(card.ask.querySelector<HTMLElement>(".q")!, ask);
@@ -232,10 +240,8 @@ export class Deck {
       pane.cwd?.split(/[\\/]/).filter(Boolean).pop(),
       quiet,
       mb ? `${Math.round(mb / 1048576)} MB` : null,
-      pane.ctxPct !== null ? `ctx ${pane.ctxPct}%` : null,
       pane.diffstat,
     ].filter(Boolean).join(" · "));
-    card.foot.classList.toggle("ctx-high", (pane.ctxPct ?? 0) >= 80);
     return card;
   }
 
@@ -246,6 +252,7 @@ export class Deck {
       `<header><span class="ddot"></span><span class="dname"></span><span class="dchip"></span></header>` +
       `<pre class="dtail"></pre>` +
       `<div class="dprog" hidden><i></i></div>` +
+      `<div class="dctx" hidden title="How full this session's context window is — at 100% it auto-compacts and loses detail"><span class="k">ctx</span><span class="bar"><i></i></span><span class="v"></span></div>` +
       `<div class="dask" hidden><div class="q"></div><ul class="opts"></ul></div>` +
       `<div class="dactions" hidden><button class="allow">Allow</button><button class="deny">Deny</button><button class="always" title="Allow, and never ask for this command in this project again">Always</button></div>` +
       `<div class="dreply" hidden><input type="text" placeholder="type an answer — Enter sends it to the session" spellcheck="false"></div>` +

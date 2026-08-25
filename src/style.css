@@ -597,3 +597,16 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 .dfoot.ctx-high { color: #ffb454; }
 .dactions .always { background: none; border: 1px solid var(--border-2); color: var(--faint); }
 .dactions .always:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ---- v0.16.0: worktrees + context visualizer ---- */
+.dctx { display: flex; align-items: center; gap: 6px; padding: 0 12px 8px; }
+.dctx .k { font: 600 9px var(--sans); text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
+.dctx .bar { flex: 1; height: 4px; border-radius: 999px; background: rgba(140, 160, 190, .18); overflow: hidden; }
+.dctx .bar i { display: block; height: 100%; border-radius: 999px; background: #2fd6a3; transition: width .3s; }
+.dctx.high .bar i { background: #ffb454; }
+.dctx.full .bar i { background: #ff6b73; }
+.dctx .v { font: 600 10px var(--mono); color: var(--faint); min-width: 32px; text-align: right; }
+.dctx.full .v { color: #ff6b73; }
+#ctx-chip .bar i { background: #2fd6a3; }
+#ctx-chip.high .bar i { background: #ffb454; }
+#ctx-chip.full .bar i { background: #ff6b73; }

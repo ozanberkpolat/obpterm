@@ -84,6 +84,9 @@ export function tauriTransport(): Transport {
     keepAwake: (on) => invoke("keep_awake", { on }),
     rssFor: (pids) => invoke<number[]>("rss_for", { pids }),
     gitShortstat: (cwd) => invoke<string | null>("git_shortstat", { cwd }),
+    worktreeStatus: (cwd) => invoke<import("./transport").WorktreeStatus | null>("worktree_status", { cwd }),
+    worktreeAdd: (cwd, name) => invoke<string>("worktree_add", { cwd, name }),
+    worktreeRemove: (mainRoot, path, branch) => invoke("worktree_remove", { mainRoot, path, branch }),
     allowRule: (cwd, rule) => invoke("allow_rule", { cwd, rule }),
     sessionContext: (dir, sessionId) => invoke<number | null>("session_context", { dir, sessionId }),
     async readClipboardImage() {

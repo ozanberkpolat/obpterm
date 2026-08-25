@@ -44,6 +44,7 @@ export function installPalette(app: App) {
     { group: "Panes", label: "Find in scrollback", hint: "Ctrl+Shift+F", run: () => app.find.open() },
     { group: "Panes", label: app.tab?.active.logPath ? "Stop capture" : "Start capture", hint: "Ctrl+Shift+L", run: () => void app.toggleLog() },
     { group: "App", label: "Agents — every Claude session at once", hint: "Ctrl+G", run: () => app.deck.open() },
+    { group: "App", label: "New tab in a worktree — isolated copy of this repo", hint: "Ctrl+Shift+U", run: () => void import("./rail").then((r) => r.newWorktree(app)) },
     { group: "App", label: "Settings", hint: "Ctrl+Shift+,", run: () => app.settings.open() },
     { group: "App", label: "Manage snippets", run: () => app.settings.open("snippets") },
     { group: "App", label: "Appearance", run: () => app.settings.open("appearance") },

@@ -157,7 +157,22 @@ export class Status {
     }
   }
 
+  /** The focused pane's context fill, next to the quota meters — the third gauge that
+   *  matters while an agent runs. */
+  paintCtx() {
+    const el = document.querySelector<HTMLElement>("#ctx-chip")!;
+    const pct = this.app.tab?.active.ctxPct ?? null;
+    el.hidden = pct === null;
+    if (pct === null) return;
+    el.querySelector<HTMLElement>(".bar i")!.style.width = `${pct}%`;
+    el.querySelector<HTMLElement>(".v")!.textContent = `ctx ${pct}%`;
+    el.classList.toggle("high", pct >= 70 && pct < 85);
+    el.classList.toggle("full", pct >= 85);
+    el.title = `This session's context window is ${pct}% full — at 100% Claude compacts it and loses detail`;
+  }
+
   paint() {
+    this.paintCtx();
     const account = this.current();
     const tab = this.app.tab;
     this.dot.style.background = account?.color ?? this.app.accent();
