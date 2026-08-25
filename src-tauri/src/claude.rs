@@ -280,6 +280,15 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn context_window_follows_the_model() {
+        assert_eq!(super::window_for("claude-fable-5"), 1_000_000);
+        assert_eq!(super::window_for("claude-mythos-5"), 1_000_000);
+        assert_eq!(super::window_for("claude-sonnet-4-5[1m]"), 1_000_000);
+        assert_eq!(super::window_for("claude-opus-4-1"), 200_000);
+        assert_eq!(super::window_for(""), 200_000);
+    }
+
+    #[test]
     fn pct_reads_floats_and_ints() {
         // The homelab endpoint emits 14.000000000000002; as_u64() returned None and the
         // weekly meter silently showed 0. This pins the fix.
@@ -445,19 +454,38 @@ pub async fn session_context(dir: String, session_id: String) -> Option<u8> {
         .find(|p| p.exists())?;
     let text = tail(&file, 256 * 1024)?;
     let mut last: Option<u64> = None;
+    let mut model = String::new();
     for line in text.lines() {
         if !line.contains("\"usage\"") {
             continue;
         }
         let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        // Subagent (sidechain) entries carry the SUBAGENT's context, not this session's.
+        if v.get("isSidechain").and_then(|x| x.as_bool()).unwrap_or(false) {
+            continue;
+        }
         let Some(u) = v.pointer("/message/usage") else { continue };
         let n = |k: &str| u.get(k).and_then(|x| x.as_u64()).unwrap_or(0);
         let total = n("input_tokens") + n("cache_read_input_tokens") + n("cache_creation_input_tokens");
         if total > 0 {
             last = Some(total);
+            if let Some(m) = v.pointer("/message/model").and_then(|x| x.as_str()) {
+                model = m.to_string();
+            }
         }
     }
-    last.map(|t| ((t as f64 / 200_000.0) * 100.0).round().clamp(0.0, 100.0) as u8)
+    last.map(|t| ((t as f64 / window_for(&model) as f64) * 100.0).round().clamp(0.0, 100.0) as u8)
+}
+
+/// The context window the percentage is measured against. Hardcoding 200k showed a Fable
+/// session at 100% while /context said 23% — the big-window models need their own figure.
+fn window_for(model: &str) -> u64 {
+    let m = model.to_ascii_lowercase();
+    if m.contains("fable") || m.contains("mythos") || m.contains("[1m]") || m.contains("-1m") {
+        1_000_000
+    } else {
+        200_000
+    }
 }
 
 fn tail(path: &Path, max: u64) -> Option<String> {
