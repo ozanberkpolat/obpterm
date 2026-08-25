@@ -31,10 +31,13 @@ export interface Tab {
   accountId: string | null;
   /** Set when the tab was opened on an SSH host. */
   hostId: string | null;
+  /** Small stable integer, unique among open tabs — OBPTERM_SLOT for port/DB derivation. */
+  slot: number;
 }
 
 export interface SavedTab {
   project: string | null;
+  slot?: number;
   color: string | null;
   name?: string | null;
   account?: string | null;
@@ -52,6 +55,17 @@ function presetTree(preset: Preset, p: Pane[]): L.Node {
 }
 
 let nextTabId = 1;
+
+/** A copy of a claude profile must mint its own session — never share or resume the source's. */
+function stripSessionArgs(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === "--session-id" || a === "--resume" || a === "-r") { i++; continue; }
+    out.push(a);
+  }
+  return out;
+}
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const DEFAULT_ACCENT = "#ff8a1e";
@@ -138,10 +152,18 @@ export class App implements PaneHost {
     return tab;
   }
 
-  /** Environment a shell starts with: the profile's own, then the account's on top. */
-  private withAccount(profile: Profile, accountId: string | null): Profile {
+  /** The smallest slot no open tab holds. Slots are how per-session dev scripts stay apart:
+   *  `$env:OBPTERM_SLOT` -> ports, DB names, compose project names. */
+  private nextSlot(): number {
+    const used = new Set(this.tabs.map((t) => t.slot));
+    for (let n = 1; ; n++) if (!used.has(n)) return n;
+  }
+
+  /** Environment a shell starts with: the profile's own, then the account's, then the slot. */
+  private withAccount(profile: Profile, accountId: string | null, slot?: number): Profile {
     const account = this.account(accountId);
-    const merged = account ? { ...profile, env: { ...(profile.env ?? {}), ...account.env } } : { ...profile };
+    const merged = account ? { ...profile, env: { ...(profile.env ?? {}), ...account.env } } : { ...profile, env: { ...(profile.env ?? {}) } };
+    if (slot) merged.env = { ...merged.env, OBPTERM_SLOT: String(slot) };
     // A Claude profile gets a session id we minted: hooks then track it through /clear and
     // /compact, and a reboot costs one --resume instead of a blank session.
     const hay = `${merged.exe} ${merged.args.join(" ")}`.toLowerCase();
@@ -158,17 +180,22 @@ export class App implements PaneHost {
    */
   async refreshAgentTitles() {
     const tab = this.tab;
-    if (!tab || tab.name) return;
+    if (!tab) return;
     const account = this.account(tab.accountId);
     const dir = account?.claude_dir ?? "~/.claude";
     for (const pane of L.panes(tab.root)) {
       if (!pane.claudeSessionId) continue;
-      const title = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
-      if (title && title !== pane.title) {
-        pane.title = title;
-        this.paint();
+      // The name only when the user has not chosen one; the context gauge always.
+      if (!tab.name) {
+        const title = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
+        if (title && title !== pane.title) {
+          pane.title = title;
+          this.paint();
+        }
       }
+      pane.ctxPct = await this.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
     }
+    this.status?.paintCtx();
   }
 
   /** The rail's verdict on a pane's held permission request. */
@@ -324,11 +351,12 @@ export class App implements PaneHost {
   ) {
     const project = this.project(projectId);
     const p = profile ?? this.profileById(project?.default_profile ?? this.config.default_profile);
-    const pane = new Pane(this, this.withAccount(p, accountId), cwd ?? project?.cwd ?? this.config.default_cwd);
+    const slot = this.nextSlot();
+    const pane = new Pane(this, this.withAccount(p, accountId, slot), cwd ?? project?.cwd ?? this.config.default_cwd);
     const el = document.createElement("div");
     el.className = "tab-panes";
     this.panesEl.appendChild(el);
-    const tab: Tab = { id: nextTabId++, root: L.leaf(pane), active: pane, el, projectId, color: null, name: null, accountId, hostId: null };
+    const tab: Tab = { id: nextTabId++, root: L.leaf(pane), active: pane, el, projectId, color: null, name: null, accountId, hostId: null, slot };
     this.tabs.push(tab);
     this.activate(tab);
     await this.startPane(tab, pane);
@@ -356,10 +384,12 @@ export class App implements PaneHost {
   }
 
   closeTab(tab: Tab) {
+    const lastCwd = tab.active.cwd;
     for (const p of L.panes(tab.root)) {
       p.kill();
       p.dispose();
     }
+    if (lastCwd) this.offerWorktreeCleanup(lastCwd);
     const i = this.tabs.indexOf(tab);
     if (i < 0) return;
     this.tabs.splice(i, 1);
@@ -456,7 +486,7 @@ export class App implements PaneHost {
     if (!tab) return;
     const from = tab.active;
     // A split inherits where you already are, so `cd` carries over when the shell reports it.
-    const pane = new Pane(this, this.withAccount(profile ?? from.profile, tab.accountId), from.cwd);
+    const pane = new Pane(this, this.withAccount(profile ?? from.profile, tab.accountId, tab.slot), from.cwd);
     tab.root = L.split(tab.root, from, pane, dir);
     tab.active = pane;
     this.layout(tab);
@@ -585,7 +615,7 @@ export class App implements PaneHost {
     const panes = existing.slice(0, want);
     while (panes.length < want) {
       const from = panes[panes.length - 1]!;
-      panes.push(new Pane(this, this.withAccount(from.profile, tab.accountId), from.cwd));
+      panes.push(new Pane(this, this.withAccount(from.profile, tab.accountId, tab.slot), from.cwd));
     }
     tab.root = presetTree(preset, panes);
     tab.active = panes[0]!;
@@ -941,6 +971,41 @@ export class App implements PaneHost {
     this.focusPane(next.pane);
   }
 
+  /** Ctrl+Shift+U: a sibling worktree (`<repo>-<name>`, branch `<name>`) with a tab in it —
+   *  the parallel-agent move: same repo, isolated files. */
+  async newWorktreeTab(name: string) {
+    const from = this.tab;
+    const cwd = from?.active.cwd ?? this.config.default_cwd;
+    if (!cwd) return toast("Open a tab inside the repository first");
+    try {
+      const path = await this.tp.worktreeAdd(cwd, name.trim());
+      const tab = await this.newTab(from ? { ...from.active.profile, args: stripSessionArgs(from.active.profile.args) } : undefined, from?.projectId ?? null, path, from?.accountId);
+      if (tab) this.renameTab(tab, name.trim());
+      toast(`Worktree ${path} on branch ${name.trim()}`);
+    } catch (e) {
+      toast(`Worktree not created: ${e}`);
+    }
+  }
+
+  /** Closing a tab that lived in a merged, clean worktree offers to sweep it — creation gets
+   *  a matching deletion, and dead checkouts stop piling up. */
+  private offerWorktreeCleanup(cwd: string) {
+    void this.tp
+      .worktreeStatus(cwd)
+      .then((wt) => {
+        if (!wt || !wt.clean || !wt.merged) return;
+        toast(`${wt.branch} is merged — its worktree is still on disk`, {
+          label: "Remove it",
+          run: () =>
+            void this.tp
+              .worktreeRemove(wt.main_root, wt.path, wt.branch)
+              .then(() => toast(`Removed ${wt.path} and branch ${wt.branch}`))
+              .catch((e) => toast(`Not removed: ${e}`)),
+        });
+      })
+      .catch(() => {});
+  }
+
   /** Ctrl+Shift+Y: the session's diff in a split — the review step, next to the work. */
   async reviewSplit() {
     const tab = this.tab;
@@ -959,15 +1024,7 @@ export class App implements PaneHost {
   async duplicateTab() {
     const tab = this.tab;
     if (!tab) return;
-    // The pane's args may carry the session id its own spawn minted; a duplicate must get a
-    // fresh one, or two claude processes share a session.
-    const args: string[] = [];
-    for (let i = 0; i < tab.active.profile.args.length; i++) {
-      const a = tab.active.profile.args[i]!;
-      if (a === "--session-id" || a === "--resume" || a === "-r") { i++; continue; }
-      args.push(a);
-    }
-    await this.newTab({ ...tab.active.profile, args }, tab.projectId, tab.active.cwd, tab.accountId);
+    await this.newTab({ ...tab.active.profile, args: stripSessionArgs(tab.active.profile.args) }, tab.projectId, tab.active.cwd, tab.accountId);
   }
 
   /** Repaint the rail. Cheap: the rail is the only derived view. */
@@ -999,6 +1056,7 @@ export class App implements PaneHost {
   snapshot(tab: Tab): SavedTab {
     return {
       project: tab.projectId,
+      slot: tab.slot,
       color: tab.color,
       name: tab.name,
       account: tab.accountId,
@@ -1099,7 +1157,7 @@ export class App implements PaneHost {
     const host = hostId ? this.host(hostId) : null;
     const profile = host ? this.hostProfile(host) : this.config.profiles.find((p) => p.id === wanted);
     if (profile) {
-      let effective = this.withAccount(profile, saved.account ?? null);
+      let effective = this.withAccount(profile, saved.account ?? null, saved.slot);
       const held = this.reattachable && node.pty ? this.held.get(node.pty) : undefined;
       let typeResume: string | null = null;
       if (!held && node.claude) {
@@ -1162,6 +1220,7 @@ export class App implements PaneHost {
       name: saved.name ?? null,
       accountId: saved.account ?? null,
       hostId: saved.host ?? null,
+      slot: saved.slot ?? this.nextSlot(),
     };
     this.tabs.push(tab);
     this.layout(tab);

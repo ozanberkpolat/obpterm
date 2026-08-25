@@ -729,7 +729,7 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${wavePane}); p.claudeSessionId = 'sess-15'; })()`);
   await evaluate("window.obpterm.deck.close(); window.obpterm.deck.open()");
   await until("[...document.querySelectorAll('.dcard .dfoot')].some(f => f.textContent.includes('+4 \\u22121') || f.textContent.includes('+4 −1'))", "the diffstat chip");
-  await until("[...document.querySelectorAll('.dcard .dfoot')].some(f => f.textContent.includes('ctx 85%'))", "the context chip");
+  await until("[...document.querySelectorAll('.dcard .dctx .v')].some(v => v.textContent === '85%')", "the context bar");
   await evaluate("window.obpterm.deck.close()");
 
   // Review split: a second pane opens where you are and asks git for the diff.
@@ -744,6 +744,58 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   // cleanup
   await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
   devWs.close();
+}
+
+
+// ---- v0.16.0: slots, worktree spawn + janitor, context visualizer ------------------------
+{
+  // Slots: every tab holds a distinct small integer and its shells carry it as env.
+  await evaluate("void window.obpterm.newTab()");
+  await until("window.obpterm.tabs.length >= 2", "a second tab for slots");
+  const slots = await evaluate("window.obpterm.tabs.map(t => t.slot)");
+  assert.equal(new Set(slots).size, slots.length, "slots are unique");
+  assert.ok(slots.every((n) => n >= 1), "slots start at 1");
+  assert.equal(
+    await evaluate("window.obpterm.tabs[1].active.profile.env.OBPTERM_SLOT"),
+    String(slots[1]),
+    "the shell environment carries the slot",
+  );
+
+  // Worktree spawn: the flow prompts, creates, and opens the tab in the new path.
+  await evaluate("(() => { window.__wt = []; window.obpterm.tp.worktreeAdd = async (cwd, name) => { window.__wt.push([cwd, name]); return '/tmp/repo-' + name; }; })()");
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+  await evaluate("window.obpterm.tab.active.cwd = '/tmp/repo'");
+  const tabsBefore = await evaluate("window.obpterm.tabs.length");
+  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyU', key: 'U', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }))");
+  await until("!document.querySelector('#rail-new').hidden", "the worktree name prompt");
+  await evaluate("(() => { const i = document.querySelector('#rail-new input'); i.value = 'feat-x'; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true })); })()");
+  await until(`window.obpterm.tabs.length === ${tabsBefore + 1}`, "the worktree tab");
+  assert.deepEqual(await evaluate("window.__wt[0]"), ["/tmp/repo", "feat-x"], "worktree add got the repo and the name");
+  assert.equal(await evaluate("window.obpterm.tab.active.cwd"), "/tmp/repo-feat-x", "the tab opened inside the worktree");
+  assert.equal(await evaluate("window.obpterm.title(window.obpterm.tab)"), "feat-x", "the tab is named after the branch");
+
+  // Janitor: closing a tab in a merged clean worktree offers the sweep, and the sweep runs.
+  await evaluate("(() => { window.__rm = []; window.obpterm.tp.worktreeStatus = async () => ({ main_root: '/tmp/repo', path: '/tmp/repo-feat-x', branch: 'feat-x', clean: true, merged: true }); window.obpterm.tp.worktreeRemove = async (...a) => { window.__rm.push(a); }; })()");
+  await evaluate("window.obpterm.closeTab(window.obpterm.tab)");
+  await until("document.querySelector('#toast .undo')?.textContent === 'Remove it'", "the janitor's offer");
+  await evaluate("document.querySelector('#toast .undo').click()");
+  await until("window.__rm.length === 1", "the sweep ran");
+  assert.deepEqual(await evaluate("window.__rm[0]"), ["/tmp/repo", "/tmp/repo-feat-x", "feat-x"], "sweep removes the path and the branch");
+
+  // Context visualizer: the deck bar and the status chip both read the percentage.
+  await evaluate("(() => { window.obpterm.tp.sessionContext = async () => 91; })()");
+  await evaluate("(() => { const p = window.obpterm.tab.active; p.claudeSessionId = 'sess-ctx'; p.ctxPct = 91; window.obpterm.deck.open(); })()");
+  await until("!!document.querySelector('.dcard .dctx:not([hidden])')", "the deck context bar");
+  assert.ok(await evaluate("document.querySelector('.dcard .dctx').classList.contains('full')"), "91% shows red");
+  assert.equal(await evaluate("document.querySelector('.dcard .dctx .v').textContent"), "91%");
+  await evaluate("window.obpterm.deck.close()");
+  await evaluate("window.obpterm.status.paintCtx()");
+  await until("!document.querySelector('#ctx-chip').hidden", "the status-bar context gauge");
+  assert.equal(await evaluate("document.querySelector('#ctx-chip .v').textContent"), "ctx 91%");
+  await evaluate("(() => { const p = window.obpterm.tab.active; p.ctxPct = null; p.claudeSessionId = null; p.cwd = null; window.obpterm.status.paintCtx(); })()");
+
+  // cleanup: drop the extra tab
+  await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
 }
 
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----

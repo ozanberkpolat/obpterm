@@ -191,6 +191,14 @@ export interface HostInfo {
 }
 
 /** A shell the host is holding, whether or not a window is looking at it. */
+export interface WorktreeStatus {
+  main_root: string;
+  path: string;
+  branch: string;
+  clean: boolean;
+  merged: boolean;
+}
+
 export interface HostSession {
   id: number;
   exe: string;
@@ -283,6 +291,11 @@ export interface Transport {
   /** A pasted bitmap, saved to a temp PNG; resolves the path to type, or null when the
    *  clipboard holds no image (or images are unsupported here). */
   readClipboardImage(): Promise<string | null>;
+  /** Linked-worktree facts for a directory; null for a main checkout or non-repo. */
+  worktreeStatus(cwd: string): Promise<WorktreeStatus | null>;
+  /** `git worktree add` as `<root>-<name>` on branch `<name>`; resolves the new path. */
+  worktreeAdd(cwd: string, name: string): Promise<string>;
+  worktreeRemove(mainRoot: string, path: string, branch: string): Promise<void>;
   configReset(): Promise<Config>;
   /** Writes a portable settings copy to Downloads; returns the path. */
   configExport(config: Config): Promise<string>;

@@ -4,7 +4,7 @@
 // Alt+arrows, the zoom row, Escape, F12 — stay fixed; a chord is `Mods+e.code`.
 import type { App } from "./app";
 import type { Config } from "./transport";
-import { newProject, renameTab } from "./rail";
+import { newProject, newWorktree, renameTab } from "./rail";
 import { hostPicker, profilePicker } from "./keys";
 
 export interface KeyAction {
@@ -23,6 +23,7 @@ export const ACTIONS: KeyAction[] = [
   { id: "needs-you", label: "Go to the agent that needs you", def: "Ctrl+Shift+KeyG", run: (a) => a.jumpNeedsYou() },
   { id: "dup-tab", label: "Duplicate tab (same directory)", def: "Ctrl+Shift+KeyD", run: (a) => void a.duplicateTab() },
   { id: "review", label: "Review changes (git diff in a split)", def: "Ctrl+Shift+KeyY", run: (a) => void a.reviewSplit() },
+  { id: "worktree", label: "New tab in a worktree", def: "Ctrl+Shift+KeyU", run: (a) => newWorktree(a) },
   { id: "rename", label: "Rename the tab", def: "F2", run: (a) => { if (a.tab) renameTab(a, a.tab); } },
   { id: "close", label: "Close pane, or the tab when it is the last", def: "Ctrl+Shift+KeyW", run: (a) => { if (a.tab) a.closePane(a.tab.active, a.tab); } },
   { id: "close-tab", label: "Close the whole tab", def: "Ctrl+Shift+KeyQ", run: (a) => { if (a.tab) a.closeTab(a.tab); } },
