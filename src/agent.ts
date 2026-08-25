@@ -5,6 +5,18 @@
 import type { App } from "./app";
 import type { Pane } from "./pane";
 
+/** One agent a session fanned out, tracked start to finish. */
+export interface FannedAgent {
+  id: string;
+  kind: string;
+  task: string;
+  /** The last tool call it made, already phrased ("Grep pty.rs"). */
+  feed: string | null;
+  startedAt: number;
+  endedAt: number | null;
+  tools: number;
+}
+
 export interface AgentState {
   /** working | done | waiting | blocked, or null = no agent seen in this pane. */
   state: "working" | "done" | "waiting" | "blocked" | null;
@@ -21,6 +33,8 @@ export interface AgentState {
   unread: boolean;
   lastToolAt: number;
   workingSince: number;
+  /** Agents this session spawned, newest last. Ended ones linger until the turn finishes. */
+  fanned: FannedAgent[];
 }
 
 export const blank = (): AgentState => ({
@@ -34,6 +48,7 @@ export const blank = (): AgentState => ({
   unread: false,
   lastToolAt: 0,
   workingSince: 0,
+  fanned: [],
 });
 
 const DONE_HOLDOFF_MS = 3000;
@@ -49,11 +64,21 @@ export interface AgentUpdate {
   options: string[];
   tool?: string | null;
   tool_input?: string | null;
+  agent_id?: string | null;
+  agent_kind?: string | null;
+  agent_task?: string | null;
+  agent_event?: string | null;
 }
 
 /** Applies one hook event. Returns what the app should do beyond repainting. */
 export function reduce(a: AgentState, u: AgentUpdate, focused: boolean): "notify" | "auto-pass" | null {
   if (u.session_id) a.sessionId = u.session_id;
+  // Fan-out bookkeeping runs first and, for agent-owned events, INSTEAD of the session's own
+  // state machine: one agent's tool call is not the session doing something new.
+  if (u.agent_id && u.agent_event) {
+    applyFan(a, u);
+    if (u.agent_event !== "spawned") return null;
+  }
   switch (u.state) {
     case "working": {
       // A tool event trailing a Stop by moments is Claude's parallel hooks, not new work.
@@ -72,6 +97,8 @@ export function reduce(a: AgentState, u: AgentUpdate, focused: boolean): "notify
       return null;
     }
     case "done": {
+      // The turn is over: agents that belonged to it stop being live.
+      for (const f of a.fanned) f.endedAt ??= Date.now();
       a.state = "done";
       a.detail = u.detail ?? a.detail;
       a.pendingId = null;
@@ -116,6 +143,29 @@ export function reduce(a: AgentState, u: AgentUpdate, focused: boolean): "notify
     default:
       return null;
   }
+}
+
+/** Opens, feeds and closes the agents a session fanned out. */
+function applyFan(a: AgentState, u: AgentUpdate) {
+  const id = u.agent_id!;
+  let agent = a.fanned.find((f) => f.id === id);
+  if (!agent) {
+    if (u.agent_event === "finished") return; // a close for an agent we never saw open
+    agent = { id, kind: u.agent_kind || "agent", task: u.agent_task || "", feed: null, startedAt: Date.now(), endedAt: null, tools: 0 };
+    a.fanned.push(agent);
+  }
+  if (u.agent_kind) agent.kind = u.agent_kind;
+  if (u.agent_task) agent.task = u.agent_task;
+  if (u.agent_event === "tool") {
+    agent.tools += 1;
+    if (u.detail) agent.feed = u.detail;
+  }
+  if (u.agent_event === "finished") agent.endedAt = Date.now();
+}
+
+/** Agents still running for this session. */
+export function liveAgents(a: AgentState): FannedAgent[] {
+  return a.fanned.filter((f) => f.endedAt === null);
 }
 
 /** The decays that need no event: a lost Stop, and reading what was unread. */

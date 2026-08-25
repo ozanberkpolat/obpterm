@@ -1,0 +1,150 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .mono { font-family: "JetBrains Mono", monospace; }
+    .node { border-radius: 12px; background: #10151d; border: 1px solid rgba(140,160,190,.16);
+      overflow: hidden; box-shadow: 0 14px 40px rgba(0,0,0,.5); }
+    .nh { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #161c26; }
+    .nh .name { font-weight: 700; font-size: 12.5px; }
+    .pill { font: 700 8.5px "Plus Jakarta Sans"; text-transform: uppercase; letter-spacing: .08em;
+      padding: 2px 8px; border-radius: 999px; flex: none; }
+    .p-run { background: rgba(47,214,163,.16); color: #2fd6a3; }
+    .p-need { background: #ff8a1e; color: #0a0e14; }
+    .p-done { background: rgba(76,141,255,.18); color: #4c8dff; }
+    .body { padding: 9px 12px; font: 10.5px/1.7 "JetBrains Mono", monospace; color: #93a0b4; white-space: pre; }
+    .foot { display: flex; gap: 10px; padding: 6px 12px 8px; font: 500 9.5px "JetBrains Mono", monospace; color: #5b6878; }
+    .sa { width: 250px; border-radius: 11px; background: #0e1219; border: 1px solid rgba(140,160,190,.13);
+      box-shadow: 0 10px 26px rgba(0,0,0,.45); position: relative; }
+    .sa .eyebrow { font: 700 8px "Plus Jakarta Sans"; letter-spacing: .12em; color: #ff8a1e; padding: 8px 11px 0; }
+    .sa .task { font-weight: 700; font-size: 11.5px; padding: 2px 11px 6px; color: #d7dee9; }
+    .sa .feed { padding: 0 11px 9px; font: 500 9.5px/1.8 "JetBrains Mono", monospace; color: #5f6c80; }
+    .sa .feed b { color: #8b97a8; font-weight: 500; }
+    .sadot { position: absolute; top: 9px; right: 10px; width: 7px; height: 7px; border-radius: 999px; }
+    .dotgrid { background-image: radial-gradient(rgba(140,160,190,.09) 1px, transparent 1px); background-size: 26px 26px; }
+    .toggle { display: inline-flex; border: 1px solid rgba(140,160,190,.2); border-radius: 999px; overflow: hidden; }
+    .toggle span { padding: 5px 14px; font: 700 10.5px "Plus Jakarta Sans"; color: #76879c; }
+    .toggle .on { background: linear-gradient(135deg, #ffa23e, #ff8410); color: #04101f; }
+  </style>
+</helmet>
+
+<div class="dotgrid" style="width: 1440px; height: 900px; background-color: #0a0e14; position: relative; overflow: hidden">
+
+  <div style="position: absolute; left: 26px; top: 16px; display: flex; align-items: center; gap: 14px">
+    <span style="font-size: 17px; font-weight: 800">Node View</span>
+    <span style="font-size: 12px; color: #76879c">the whole workspace as connected nodes, born from events — never placed by hand</span>
+  </div>
+  <div class="mono" style="position: absolute; left: 26px; top: 46px; display: flex; gap: 14px; font-size: 9.5px; color: #5b6878">
+    <span><b style="color: #2fd6a3">■</b> SESSION</span>
+    <span><b style="color: #ff8a1e">■</b> AGENT</span>
+    <span><b style="color: #8b97a8">■</b> SHELL</span>
+    <span><b style="color: #b48cff">■</b> ORIGIN</span>
+    <span style="color: #3d4654">■ DIFF · ■ NOTE · ■ TRIGGER — later, same grammar</span>
+  </div>
+  <div style="position: absolute; right: 26px; top: 16px; display: flex; align-items: center; gap: 10px">
+    <span class="toggle"><span>List</span><span class="on">Nodes</span></span>
+    <span class="mono" style="font-size: 10px; color: #5b6878">Ctrl+M</span>
+  </div>
+
+  <!-- edges: anchored card-to-card — in the app these are computed from real node geometry,
+       bottom-center of the parent to top-center of each child, and follow the cards live -->
+  <svg style="position: absolute; inset: 0; pointer-events: none" width="1440" height="900">
+    <path d="M 590 330 C 590 470, 455 480, 455 606" stroke="rgba(255,138,30,.5)" stroke-width="1.5" fill="none"/>
+    <path d="M 630 330 C 630 450, 825 460, 825 592" stroke="rgba(255,138,30,.5)" stroke-width="1.5" fill="none"/>
+    <path d="M 180 656 C 220 540, 330 330, 436 300" stroke="rgba(180,140,255,.35)" stroke-width="1.5" stroke-dasharray="4 4" fill="none"/>
+    <circle cx="590" cy="330" r="3" fill="#ff8a1e"/>
+    <circle cx="630" cy="330" r="3" fill="#ff8a1e"/>
+    <circle cx="455" cy="606" r="3" fill="#2fd6a3"/>
+    <circle cx="825" cy="592" r="3" fill="#4c8dff"/>
+    <circle cx="180" cy="656" r="3" fill="#b48cff"/>
+  </svg>
+
+  <!-- session: running (left) -->
+  <div class="node" style="position: absolute; left: 80px; top: 150px; width: 300px">
+    <div class="nh"><span style="width: 7px; height: 7px; border-radius: 999px; background: #2fd6a3"></span><span class="name">claude · grading refactor</span><span style="flex: 1"></span><span class="pill p-run">running</span></div>
+    <div class="body">> migrate the maturity legs
+• Edit(<b style="color:#c3cddb">grader.py</b>)
+  578/580 rows migrated
+<span style="color: #2fd6a3">▊</span></div>
+    <div class="foot"><span>41m</span><span>ctx 71%</span><span>+580 −102</span></div>
+  </div>
+
+  <!-- session: NEEDS YOU (center) — the star of the frame -->
+  <div class="node" style="position: absolute; left: 440px; top: 130px; width: 340px; border-color: #ff8a1e; box-shadow: 0 0 0 1px rgba(255,138,30,.35), 0 0 34px rgba(255,138,30,.14), 0 16px 44px rgba(0,0,0,.55)">
+    <div class="nh" style="background: linear-gradient(180deg, #241a10, #1a1610)"><span style="width: 7px; height: 7px; border-radius: 999px; background: #ff8a1e; box-shadow: 0 0 7px rgba(255,138,30,.9)"></span><span class="name" style="color: #ffd9ae">claude · portal resolver</span><span style="flex: 1"></span><span class="pill p-need">needs you</span></div>
+    <div class="body">> fix the 502s with the resolver pattern
+• Edit(<b style="color:#c3cddb">nginx.conf</b>) <span style="color: #2fd6a3">✓</span>
+• Bash(<b style="color:#c3cddb">nginx -t</b>) — test successful
+
+<span style="color: #ffcf9e">Run docker exec portal nginx -s reload?</span>
+<span style="color: #ff8a1e">❯ 1. Yes   2. No   (a · d · w always)</span></div>
+    <div class="foot"><span>12m</span><span>ctx 36%</span><span>+214 −38</span><span style="color: #ff8a1e">2 agents live</span></div>
+  </div>
+
+  <!-- session: done (right) -->
+  <div class="node" style="position: absolute; left: 840px; top: 150px; width: 300px">
+    <div class="nh"><span style="width: 7px; height: 7px; border-radius: 999px; background: #4c8dff"></span><span class="name">claude · brain backlinks</span><span style="flex: 1"></span><span class="pill p-done">done</span></div>
+    <div class="body"><span style="color: #4c8dff">✓ Done — 148 notes linked, tests green</span>
+<span style="color: #5b6878">applied · +312 −67</span></div>
+    <div class="foot"><span>32m total</span><span>review waiting · y</span></div>
+  </div>
+
+  <!-- subagents of the center session -->
+  <div class="sa" style="position: absolute; left: 330px; top: 610px">
+    <span class="sadot" style="background: #2fd6a3; box-shadow: 0 0 6px rgba(47,214,163,.7)"></span>
+    <div class="eyebrow">AGENT · Explore</div>
+    <div class="task">Audit upstream consumers</div>
+    <div class="feed">• Grep(<b>proxy_pass</b>)
+• 7 matches
+• Read(<b>portal/nginx.conf</b>)</div>
+  </div>
+  <div class="sa" style="position: absolute; left: 700px; top: 596px">
+    <span class="sadot" style="background: #4c8dff"></span>
+    <div class="eyebrow">AGENT · general-purpose</div>
+    <div class="task">Smoke /brain/ and /finance/</div>
+    <div class="feed">• Bash(<b>curl -s /brain/</b>)
+• Bash(<b>curl -s /finance/</b>)
+• <span style="color: #4c8dff">18 passed</span> · 41s · 2.4k tok</div>
+  </div>
+
+  <!-- origin node -->
+  <div class="node" style="position: absolute; left: 60px; top: 660px; width: 240px; opacity: .8; border-style: dashed">
+    <div class="nh" style="background: none"><span class="mono" style="font-size: 9px; color: #b48cff">ORIGIN</span><span style="font-size: 11px; color: #8b97a8">forked from <b style="color: #c3cddb">502 hunt</b></span></div>
+    <div class="foot" style="padding-top: 0"><span>wt/portal-fix · 14:02</span></div>
+  </div>
+
+  <!-- chrome: quota, zoom, minimap -->
+  <div class="mono" style="position: absolute; left: 26px; bottom: 18px; display: flex; align-items: center; gap: 10px; font-size: 10.5px; color: #76879c; padding: 6px 14px; border: 1px solid rgba(140,160,190,.15); border-radius: 999px; background: rgba(16,21,29,.9)">
+    <span style="width: 40px; height: 4px; border-radius: 999px; background: rgba(140,160,190,.2); overflow: hidden"><i style="display: block; width: 22%; height: 100%; background: #2fd6a3; border-radius: 999px"></i></span>22% 5h · 41% wk
+  </div>
+  <div class="mono" style="position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 14px; font-size: 11px; color: #76879c; padding: 7px 18px; border: 1px solid rgba(140,160,190,.15); border-radius: 999px; background: rgba(16,21,29,.9)">
+    <span>−</span><span style="color: #eaf0f7">80%</span><span>+</span><span style="color: #3d4654">·</span><span>fit</span>
+  </div>
+  <div style="position: absolute; right: 24px; bottom: 18px; width: 150px; height: 92px; border: 1px solid rgba(140,160,190,.16); border-radius: 10px; background: rgba(16,21,29,.92); padding: 10px">
+    <div style="position: relative; width: 100%; height: 100%">
+      <span style="position: absolute; left: 4%; top: 16%; width: 22%; height: 26%; background: rgba(47,214,163,.5); border-radius: 2px"></span>
+      <span style="position: absolute; left: 32%; top: 12%; width: 26%; height: 32%; background: #ff8a1e; border-radius: 2px"></span>
+      <span style="position: absolute; left: 64%; top: 16%; width: 22%; height: 24%; background: rgba(76,141,255,.55); border-radius: 2px"></span>
+      <span style="position: absolute; left: 24%; top: 66%; width: 16%; height: 20%; background: rgba(140,160,190,.4); border-radius: 2px"></span>
+      <span style="position: absolute; left: 52%; top: 64%; width: 16%; height: 20%; background: rgba(140,160,190,.4); border-radius: 2px"></span>
+    </div>
+  </div>
+
+  <div style="position: absolute; right: 200px; bottom: 22px; font-size: 11px; color: #5b6878; max-width: 380px; text-align: right; line-height: 1.6">
+    Auto-laid-out per focus — pan and zoom, no dragging. Answer the ask on the node itself; ⏎ drops into the real terminal.
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
