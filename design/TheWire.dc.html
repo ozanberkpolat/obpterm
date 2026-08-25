@@ -1,0 +1,129 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .mono { font-family: "JetBrains Mono", monospace; }
+    .ev { display: flex; gap: 12px; padding: 9px 0; position: relative; }
+    .ev .time { width: 46px; flex: none; font: 500 10px "JetBrains Mono", monospace; color: #3d4654; text-align: right; padding-top: 2px; }
+    .ev .spine { width: 20px; flex: none; display: flex; flex-direction: column; align-items: center; }
+    .ev .spine .dot { width: 9px; height: 9px; border-radius: 999px; flex: none; margin-top: 3px; }
+    .ev .spine .line { width: 1.5px; flex: 1; background: rgba(140,160,190,.12); margin-top: 3px; }
+    .ev .what { flex: 1; min-width: 0; }
+    .ev .who { font-weight: 700; font-size: 12.5px; }
+    .proj { font: 600 9px "JetBrains Mono", monospace; padding: 1px 6px; border-radius: 999px; }
+    .ev .text { font-size: 12px; color: #8b97a8; line-height: 1.5; margin-top: 2px; }
+    .act { padding: 3px 11px; border-radius: 999px; font-size: 10px; font-weight: 700;
+      border: 1px solid rgba(140,160,190,.22); background: none; color: #8b97a8; cursor: pointer; }
+    .act.hot { border-color: rgba(255,138,30,.5); color: #ff8a1e; }
+    .day { font: 700 10px "Plus Jakarta Sans"; text-transform: uppercase; letter-spacing: .08em; color: #3d4654; padding: 12px 0 4px 78px; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #0a0e14; display: flex; overflow: hidden">
+
+  <div style="flex: 1.4; display: flex; flex-direction: column; min-width: 0; padding: 14px 26px 0 22px">
+    <div style="display: flex; align-items: center; gap: 14px; padding-bottom: 8px">
+      <span style="font-size: 17px; font-weight: 800">The Wire</span>
+      <span class="mono" style="font-size: 11px; color: #5b6878">Ctrl+E · everything your fleet did, newest first — the catch-up-after-lunch surface. ⏎ jumps to the moment in that session</span>
+    </div>
+
+    <div style="flex: 1; overflow: hidden">
+      <div class="ev">
+        <span class="time">14:20</span>
+        <span class="spine"><span class="dot" style="background: #ff8a1e; box-shadow: 0 0 8px rgba(255,138,30,.7)"></span><span class="line"></span></span>
+        <div class="what">
+          <div style="display: flex; align-items: center; gap: 8px"><span class="who">ntfy tokens</span><span class="proj" style="background: rgba(76,141,255,.15); color: #4c8dff">iot-stack</span><span class="mono" style="font-size: 10px; color: #ff8a1e">ASKS</span></div>
+          <div class="text">Wants to run <b class="mono" style="color: #ffb454">docker restart ntfy</b> — applies the new ACL, drops subscriptions for ~2s.</div>
+          <div style="display: flex; gap: 6px; margin-top: 6px"><button class="act hot">Allow</button><button class="act">Deny</button><button class="act">Reply</button></div>
+        </div>
+      </div>
+      <div class="ev">
+        <span class="time">14:16</span>
+        <span class="spine"><span class="dot" style="background: #4c8dff"></span><span class="line"></span></span>
+        <div class="what">
+          <div style="display: flex; align-items: center; gap: 8px"><span class="who">brain backlinks</span><span class="proj" style="background: rgba(76,141,255,.15); color: #4c8dff">iot-stack</span><span class="mono" style="font-size: 10px; color: #4c8dff">DONE</span></div>
+          <div class="text">"148 notes now interlinked, up from 3. Tests green." <span class="mono" style="color: #4c8dff">+312 −67</span></div>
+          <div style="display: flex; gap: 6px; margin-top: 6px"><button class="act">Review diff</button><button class="act">Fork</button></div>
+        </div>
+      </div>
+      <div class="ev">
+        <span class="time">14:11</span>
+        <span class="spine"><span class="dot" style="background: #2fd6a3"></span><span class="line"></span></span>
+        <div class="what">
+          <div style="display: flex; align-items: center; gap: 8px"><span class="who">portal resolver</span><span class="proj" style="background: rgba(76,141,255,.15); color: #4c8dff">iot-stack</span><span class="mono" style="font-size: 10px; color: #2fd6a3">TEST PASS</span></div>
+          <div class="text">nginx config test green inside the container; rebuilding.</div>
+        </div>
+      </div>
+      <div class="ev">
+        <span class="time">14:02</span>
+        <span class="spine"><span class="dot" style="background: #ff6b73"></span><span class="line"></span></span>
+        <div class="what">
+          <div style="display: flex; align-items: center; gap: 8px"><span class="who">grading refactor</span><span class="proj" style="background: rgba(47,214,163,.15); color: #2fd6a3">invest</span><span class="mono" style="font-size: 10px; color: #ff6b73">ERROR</span></div>
+          <div class="text">pytest: 2 rows with null maturity dates broke the migration — agent is writing a backfill.</div>
+        </div>
+      </div>
+      <div class="ev">
+        <span class="time">13:54</span>
+        <span class="spine"><span class="dot" style="background: #b48cff"></span><span class="line"></span></span>
+        <div class="what">
+          <div style="display: flex; align-items: center; gap: 8px"><span class="who">docs sweep</span><span class="proj" style="background: rgba(180,140,255,.15); color: #b48cff">keep</span><span class="mono" style="font-size: 10px; color: #b48cff">MERGED</span></div>
+          <div class="text">Worktree <span class="mono">keep-docs</span> merged and swept; branch deleted.</div>
+        </div>
+      </div>
+      <div class="day">Before lunch</div>
+      <div class="ev">
+        <span class="time">12:40</span>
+        <span class="spine"><span class="dot" style="background: #4c8dff"></span><span class="line"></span></span>
+        <div class="what">
+          <div style="display: flex; align-items: center; gap: 8px"><span class="who">monitoring loop</span><span class="proj" style="background: rgba(76,141,255,.15); color: #4c8dff">iot-stack</span><span class="mono" style="font-size: 10px; color: #4c8dff">DONE</span></div>
+          <div class="text">"Sampler dead-man wired; 24 tests pass." <span class="mono" style="color: #4c8dff">+96 −31</span> · reviewed ✓</div>
+        </div>
+      </div>
+      <div class="ev">
+        <span class="time">12:31</span>
+        <span class="spine"><span class="dot" style="background: #ffb454"></span><span class="line" style="background: transparent"></span></span>
+        <div class="what">
+          <div style="display: flex; align-items: center; gap: 8px"><span class="who">quota</span><span class="mono" style="font-size: 10px; color: #ffb454">NOTICE</span></div>
+          <div class="text">5h window crossed 20% — projected to survive the reset at current pace.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- right: live filters + the fleet at a glance -->
+  <div style="width: 320px; flex: none; border-left: 1px solid rgba(140,160,190,.12); padding: 16px 18px; display: flex; flex-direction: column; gap: 14px">
+    <div>
+      <div style="font: 700 10px 'Plus Jakarta Sans'; text-transform: uppercase; letter-spacing: .08em; color: #5b6878; margin-bottom: 8px">Show</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px">
+        <span class="act hot">asks</span><span class="act hot">done</span><span class="act hot">errors</span><span class="act">tests</span><span class="act">merges</span><span class="act">quota</span>
+      </div>
+    </div>
+    <div>
+      <div style="font: 700 10px 'Plus Jakarta Sans'; text-transform: uppercase; letter-spacing: .08em; color: #5b6878; margin-bottom: 8px">Fleet</div>
+      <div class="mono" style="font-size: 11px; color: #8b97a8; line-height: 2">
+        <span style="color: #ff8a1e">● 1 asking</span><br>
+        <span style="color: #2fd6a3">● 3 working</span> · longest 41m<br>
+        <span style="color: #4c8dff">● 2 done</span> · 1 unreviewed<br>
+        <span style="color: #5b6878">● 4 idle/sleeping</span><br>
+        ctx worst: grading 71%<br>
+        RAM: 2.9 GB across 6 claudes
+      </div>
+    </div>
+    <span style="flex: 1"></span>
+    <div class="mono" style="font-size: 10px; color: #3d4654; line-height: 1.7">Feed is derived from what the host already hears: hooks, exits, diffstats, quota ticks. Nothing new is collected.</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
