@@ -625,7 +625,7 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
           text(c.update_repo ?? "", (v) => { c.update_repo = v || null; ctx.save(); }, { width: 280 })),
         row("Access token", "Only for a private repository.",
           text(c.github_token ?? "", (v) => { c.github_token = v || null; ctx.save(); }, { width: 280, placeholder: "not set", password: true })),
-        row("Check on launch", "Just checks; it never installs on its own.",
+        row("Check for updates automatically", "On launch and once a day while running. Just checks; it never installs on its own.",
           toggle(c.update_check_on_launch, (v) => { c.update_check_on_launch = v; ctx.save(); })),
       ),
     );

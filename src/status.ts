@@ -29,7 +29,16 @@ export class Status {
   private limits: ClaudeLimits | null = null;
   private lastDir: string | null = null;
 
+  private version = "";
+
   constructor(private app: App) {
+    void this.app.tp.appVersion().then((v) => {
+      this.version = v;
+      if (!this.pendingUpdate) {
+        this.updateEl.textContent = `v${v}`;
+        this.updateEl.title = "Click to check GitHub for a newer release (it also checks by itself once a day)";
+      }
+    });
     document.querySelector("#account-chip")!.addEventListener("click", (e) => this.accountMenu(e as MouseEvent));
     document.querySelector("#target-chip")!.addEventListener("click", (e) => this.hostMenu(e as MouseEvent));
     this.quota.addEventListener("click", (e) => this.usageMenu(e as MouseEvent));
@@ -117,26 +126,32 @@ export class Status {
    * webview cannot fetch a release asset, because GitHub redirects it to a host that sends no
    * CORS headers, and the fetch fails with a bare "Failed to fetch".
    */
-  async checkUpdates() {
+  /** `quiet` is the daily self-check: no toasts, no "Checking…" flicker — the chip only
+   *  changes when there is actually something to install. */
+  async checkUpdates(quiet = false) {
     if (this.pendingUpdate) return void this.install();
     const repo = this.app.config.update_repo;
-    if (!repo) return toast("Set update_repo in config.json to check for updates");
-    this.updateEl.textContent = "Checking…";
-    this.updateEl.disabled = true;
+    if (!repo) return quiet ? undefined : toast("Set update_repo in config.json to check for updates");
+    if (!quiet) {
+      this.updateEl.textContent = "Checking…";
+      this.updateEl.disabled = true;
+    }
     try {
       const release = await this.app.tp.updateCheck(repo, this.app.config.github_token);
       if (!release.newer) {
-        this.updateEl.textContent = "App is up to date";
-        this.updateEl.title = `${await this.app.tp.appVersion()} is the newest release`;
+        this.updateEl.textContent = `v${this.version}`;
+        this.updateEl.title = `v${this.version} is the newest release (checked ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}) — click to check again`;
         return;
       }
       this.pendingUpdate = release;
       this.updateEl.classList.add("has-update");
       this.updateEl.textContent = `Update to ${release.version}`;
-      this.updateEl.title = `Installs ${release.name} and restarts OBPTerm with your tabs`;
+      this.updateEl.title = `Installs ${release.name} and restarts OBPTerm — your shells keep running in the host`;
     } catch (e) {
-      this.updateEl.textContent = "Check for updates";
-      toast(`Update check failed: ${e}`);
+      if (!quiet) {
+        this.updateEl.textContent = `v${this.version}`;
+        toast(`Update check failed: ${e}`);
+      }
     } finally {
       this.updateEl.disabled = false;
     }
