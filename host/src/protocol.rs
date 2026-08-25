@@ -96,6 +96,14 @@ pub enum Reply {
         tool: Option<String>,
         #[serde(default)]
         tool_input: Option<String>,
+        #[serde(default)]
+        agent_id: Option<String>,
+        #[serde(default)]
+        agent_kind: Option<String>,
+        #[serde(default)]
+        agent_task: Option<String>,
+        #[serde(default)]
+        agent_event: Option<String>,
     },
 }
 

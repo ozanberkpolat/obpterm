@@ -31,6 +31,10 @@
     {
       "id": "page-10",
       "name": "Beyond the terminal"
+    },
+    {
+      "id": "page-11",
+      "name": "Session lineage"
     }
   ],
   "artboards": [
@@ -236,6 +240,24 @@
       "h": 900,
       "page": "page-10",
       "title": "D3 \u00b7 The Wire"
+    },
+    {
+      "file": "Constellation.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "page": "page-11",
+      "title": "Node View"
+    },
+    {
+      "file": "LineageRail.dc.html",
+      "x": 0,
+      "y": 1030,
+      "w": 1360,
+      "h": 860,
+      "page": "page-11",
+      "title": "List View"
     }
   ],
   "annotations": [
@@ -334,10 +356,18 @@
       "w": 320,
       "page": "page-10",
       "text": "Three surfaces for 'this is where my day runs', all one keypress from the terminal, none replacing it. All are built from data the host ALREADY has (hooks, transcripts, diffstats, quota) \u2014 no new collection.\n\nD1 MISSION CONTROL (Ctrl+Home) \u2014 the day as a board: Needs you / Running / Done-today review queue, plus an hour-by-hour activity strip with quota projection. The morning and return-to-desk surface. (Steals: Warp's triage columns, Superset's review queue.)\n\nD2 THREADS (Ctrl+T) \u2014 sessions as conversations: Claude's answers as readable text, your reply box inline, Fork on every card. Work through words, not scrollback. (Steals: NodeTerm's branch-a-conversation + reply-without-attaching.)\n\nD3 THE WIRE (Ctrl+E) \u2014 a chronological feed of everything the fleet did (asks, dones, errors, test passes, merges, quota notices) with inline actions and filters. The catch-up surface. (Steals: CI-feed ergonomics nobody has put in a terminal yet.)\n\nMy take: D1 and D3 answer different moments (start of a block vs return from away) \u2014 D2 is the boldest reframe and the closest to how you actually work. If forced to one: THREADS, with the Wire's feed as its left rail later."
+    },
+    {
+      "id": "lineage-take",
+      "x": 1520,
+      "y": 40,
+      "w": 320,
+      "page": "page-11",
+      "text": "The two views, final naming:\n\nLIST VIEW \u2014 the better-visualized evolution of today's rail: filter + count, square dots, ctx% pill per row, state in words, and the \u00d7N chip unfolding each session's agents inline with their live tool feeds. The daily driver.\n\nNODE VIEW \u2014 the other level: sessions as state-tinted nodes (RUNNING / NEEDS YOU / DONE), the permission prompt answerable ON the node, AGENT cards with live tool feeds hanging off computed edges (bottom-center of parent to top-center of child \u2014 always attached, they follow the cards through layout and zoom), dashed ORIGIN node, minimap + zoom + quota chrome. Auto-layout, pan/zoom, no dragging.\n\nCtrl+M toggles. Same data feed, same answer keys. Build order: List View first (it upgrades the rail you use all day), Node View second on the same plumbing. Run Ledger discarded.\n\nAnswers settled 2026-08-26: nodes are LIVE (answer/reply/scroll on the node; click promotes to a real terminal in place); nodes are born from events with one-shot entrance motion (edge draws itself, node scales in from the parent's anchor); node types v1 = SESSION / AGENT / SHELL / ORIGIN, later DIFF / NOTE / TRIGGER. Ctrl+G opens the surface (replacing the deck), Ctrl+M flips the view."
     }
   ],
   "launch": {
     "view": "canvas",
-    "page": "page-10"
+    "page": "page-11"
   }
 }

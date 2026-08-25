@@ -852,6 +852,56 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   devWs.close();
 }
 
+
+// ---- v0.18.0: agent fan-out — the data behind List/Node view --------------------------------
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const injectDev = (update) =>
+    new Promise((r) => {
+      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
+      setTimeout(r, 150);
+    });
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; p.agent.fanned = []; }), window.obpterm.paint()");
+  const sPane = await evaluate("window.obpterm.tab.active.id");
+
+  // A Task call opens an agent with its kind and description.
+  await injectDev({ pane: sPane, state: "working", session_id: "sess-f", detail: "Delegating", pending_id: null, options: [],
+    agent_id: "t-1", agent_kind: "Explore", agent_task: "Audit upstream consumers", agent_event: "spawned" });
+  await until("window.obpterm.tab.active.agent.fanned.length === 1", "the agent registered");
+  assert.equal(await evaluate("window.obpterm.tab.active.agent.fanned[0].kind"), "Explore");
+  assert.equal(await evaluate("window.obpterm.tab.active.agent.fanned[0].task"), "Audit upstream consumers");
+
+  // Its tool calls feed that agent, and do NOT restate the session's own activity.
+  await injectDev({ pane: sPane, state: "working", session_id: "sess-f", detail: "Searching", pending_id: null, options: [],
+    agent_id: "t-1", agent_event: "tool" });
+  await until("window.obpterm.tab.active.agent.fanned[0].tools === 1", "the agent's tool feed");
+  assert.equal(await evaluate("window.obpterm.tab.active.agent.fanned[0].feed"), "Searching");
+
+  // SubagentStop closes that agent and leaves the session running.
+  await injectDev({ pane: sPane, state: "working", session_id: "sess-f", detail: null, pending_id: null, options: [],
+    agent_id: "t-1", agent_event: "finished" });
+  await until("window.obpterm.tab.active.agent.fanned[0].endedAt !== null", "the agent closed");
+  assert.equal(await evaluate("window.obpterm.tab.active.agent.state"), "working", "the session keeps working");
+
+  // The deck renders the fan under the card, with the ×N chip.
+  await evaluate("window.obpterm.deck.open()");
+  await until("!!document.querySelector('.dcard .dfan .dagent')", "the agent row on the card");
+  assert.equal(await evaluate("document.querySelector('.dcard .dagent .akind').textContent"), "EXPLORE");
+  assert.equal(await evaluate("document.querySelector('.dcard .dcount').textContent"), "×1");
+  await evaluate("window.obpterm.deck.close()");
+
+  // A finished turn ends every agent that belonged to it.
+  await injectDev({ pane: sPane, state: "working", session_id: "sess-f", detail: "Delegating", pending_id: null, options: [],
+    agent_id: "t-2", agent_kind: "general-purpose", agent_task: "Smoke the routes", agent_event: "spawned" });
+  await until("window.obpterm.tab.active.agent.fanned.length === 2", "a second agent");
+  await injectDev({ pane: sPane, state: "done", session_id: "sess-f", detail: "All green.", pending_id: null, options: [] });
+  await until("window.obpterm.tab.active.agent.fanned.every(f => f.endedAt !== null)", "the turn ending closes its agents");
+
+  await evaluate("window.obpterm.tab.active.agent.fanned = []; window.obpterm.paint()");
+  devWs.close();
+}
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

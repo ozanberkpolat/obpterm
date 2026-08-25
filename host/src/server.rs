@@ -227,6 +227,10 @@ OBPTERM_HOOK_TOKEN={}
                             options: e.options,
                             tool: e.tool,
                             tool_input: e.tool_input,
+                            agent_id: e.agent_id,
+                            agent_kind: e.agent_kind,
+                            agent_task: e.agent_task,
+                            agent_event: e.agent_event,
                         });
                     }
                 }

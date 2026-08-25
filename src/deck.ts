@@ -16,6 +16,8 @@ interface Card {
   ask: HTMLElement;
   foot: HTMLElement;
   actions: HTMLElement;
+  /** The agents this session fanned out, rendered under its card. */
+  fan: HTMLElement;
 }
 
 /** Loudest first: what the grid sorts by. */
@@ -197,6 +199,11 @@ export class Deck {
     card.el.classList.toggle("danger", a.state === "blocked" && isDangerous(a));
     card.el.style.setProperty("--card-accent", app.accent(tab));
     set(card.name, pane.claudeTitle ?? app.title(tab));
+    const live = a.fanned.filter((f) => f.endedAt === null).length;
+    const countEl = card.el.querySelector<HTMLElement>(".dcount")!;
+    countEl.hidden = a.fanned.length === 0;
+    set(countEl, `×${a.fanned.length}`);
+    countEl.classList.toggle("live", live > 0);
     const chip = CHIP[state] ?? state;
     const worked = state === "working" && a.workingSince ? Date.now() - a.workingSince : 0;
     set(card.chip, worked >= 60_000 ? `${chip} · ${dur(worked)}` : chip);
@@ -242,21 +249,56 @@ export class Deck {
       mb ? `${Math.round(mb / 1048576)} MB` : null,
       pane.diffstat,
     ].filter(Boolean).join(" · "));
+    this.paintFan(card, pane);
     return card;
+  }
+
+  /** The agents a session fanned out: one row each, entering once as they are spawned. */
+  private paintFan(card: Card, pane: Pane) {
+    const agents = pane.agent.fanned;
+    card.fan.hidden = agents.length === 0;
+    const seen = new Set<string>();
+    for (const a of agents) {
+      seen.add(a.id);
+      let row = card.fan.querySelector<HTMLElement>(`[data-agent="${CSS.escape(a.id)}"]`);
+      if (!row) {
+        row = document.createElement("div");
+        row.className = "dagent enter"; // enter plays exactly once, on the spawn
+        row.dataset.agent = a.id;
+        row.innerHTML = `<span class="adot"></span><span class="akind"></span><span class="atask"></span><span class="afeed"></span>`;
+        card.fan.appendChild(row);
+        window.setTimeout(() => row?.classList.remove("enter"), 500);
+      }
+      const live = a.endedAt === null;
+      row.classList.toggle("live", live);
+      set(row.querySelector<HTMLElement>(".akind")!, a.kind.toUpperCase().slice(0, 14));
+      set(row.querySelector<HTMLElement>(".atask")!, a.task || a.feed || "working");
+      const secs = Math.round(((a.endedAt ?? Date.now()) - a.startedAt) / 1000);
+      set(
+        row.querySelector<HTMLElement>(".afeed")!,
+        [a.feed && a.task ? a.feed : null, secs >= 1 ? `${secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m`}` : null, a.tools ? `${a.tools} tools` : null]
+          .filter(Boolean)
+          .join(" · "),
+      );
+    }
+    for (const row of [...card.fan.children]) {
+      if (!seen.has((row as HTMLElement).dataset.agent!)) row.remove();
+    }
   }
 
   private build(pane: Pane): Card {
     const el = document.createElement("article");
     el.className = "dcard";
     el.innerHTML =
-      `<header><span class="ddot"></span><span class="dname"></span><span class="dchip"></span></header>` +
+      `<header><span class="ddot"></span><span class="dname"></span><span class="dcount" hidden></span><span class="dchip"></span></header>` +
       `<pre class="dtail"></pre>` +
       `<div class="dprog" hidden><i></i></div>` +
       `<div class="dctx" hidden title="How full this session's context window is — at 100% it auto-compacts and loses detail"><span class="k">ctx</span><span class="bar"><i></i></span><span class="v"></span></div>` +
       `<div class="dask" hidden><div class="q"></div><ul class="opts"></ul></div>` +
       `<div class="dactions" hidden><button class="allow">Allow</button><button class="deny">Deny</button><button class="always" title="Allow, and never ask for this command in this project again">Always</button></div>` +
       `<div class="dreply" hidden><input type="text" placeholder="type an answer — Enter sends it to the session" spellcheck="false"></div>` +
-      `<footer class="dfoot"></footer>`;
+      `<footer class="dfoot"></footer>` +
+      `<div class="dfan" hidden></div>`;
     el.addEventListener("click", () => {
       const tab = this.app.tabs.find((t) => this.app.panesOf(t).includes(pane));
       if (tab) this.jump(pane, tab);
@@ -298,6 +340,7 @@ export class Deck {
       ask: el.querySelector(".dask")!,
       foot: el.querySelector(".dfoot")!,
       actions: el.querySelector(".dactions")!,
+      fan: el.querySelector(".dfan")!,
     };
     this.cards.set(pane, card);
     return card;

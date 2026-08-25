@@ -30,6 +30,15 @@ pub struct AgentEvent {
     pub tool: Option<String>,
     /// Its raw input — the full command for Bash — unclipped, unlike `detail`.
     pub tool_input: Option<String>,
+    /// Agent lineage: which agent this event is about, when a session fanned out.
+    /// `agent_id` is Claude's own tool_use id for the Task call, stable start to stop.
+    pub agent_id: Option<String>,
+    /// "Explore", "general-purpose" — the subagent_type the Task named.
+    pub agent_kind: Option<String>,
+    /// The Task's own description: "Audit upstream consumers".
+    pub agent_task: Option<String>,
+    /// spawned | tool | finished — what just happened to that agent.
+    pub agent_event: Option<String>,
 }
 
 /// Maps one hook payload to an event. Pure, so it is testable without HTTP or hooks.
@@ -45,11 +54,44 @@ pub fn normalize(pane: u32, payload: &serde_json::Value) -> Option<AgentEvent> {
         options: Vec::new(),
         tool: None,
         tool_input: None,
+        agent_id: None,
+        agent_kind: None,
+        agent_task: None,
+        agent_event: None,
     };
     Some(match event {
         "UserPromptSubmit" => mk("working", None),
-        "PreToolUse" | "PostToolUse" => mk("working", tool_activity(payload)),
-        "Stop" | "SubagentStop" | "StopFailure" => mk("done", last_message(payload)),
+        // A Task call IS the fan-out: PreToolUse opens an agent, PostToolUse closes it.
+        "PreToolUse" | "PostToolUse" if is_task(payload) => {
+            let mut e = mk("working", tool_activity(payload));
+            e.agent_id = payload.get("tool_use_id").and_then(|v| v.as_str()).map(str::to_string);
+            e.agent_kind = payload.pointer("/tool_input/subagent_type").and_then(|v| v.as_str()).map(str::to_string);
+            e.agent_task = payload
+                .pointer("/tool_input/description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.chars().take(80).collect());
+            e.agent_event = Some(if event == "PreToolUse" { "spawned" } else { "finished" }.into());
+            e
+        }
+        "PreToolUse" | "PostToolUse" => {
+            let mut e = mk("working", tool_activity(payload));
+            // Inside a fan-out, tool calls carry the agent's own id: they are its feed, and
+            // must not read as the parent session working.
+            if let Some(id) = agent_of(payload) {
+                e.agent_id = Some(id);
+                e.agent_event = Some("tool".into());
+            }
+            e
+        }
+        // SubagentStop closes ONE agent; only Stop ends the session's turn. Folding them
+        // together used to mark a still-running parent as done.
+        "SubagentStop" => {
+            let mut e = mk("working", None);
+            e.agent_id = agent_of(payload);
+            e.agent_event = Some("finished".into());
+            e
+        }
+        "Stop" | "StopFailure" => mk("done", last_message(payload)),
         "PermissionRequest" => {
             let mut e = mk("blocked", permission_detail(payload));
             e.pending_id = payload.get("obpterm_pending").and_then(|v| v.as_str()).map(str::to_string);
@@ -76,6 +118,25 @@ pub fn normalize(pane: u32, payload: &serde_json::Value) -> Option<AgentEvent> {
         "SessionEnd" => mk("ended", None),
         _ => return None,
     })
+}
+
+/// True for the Task tool — the call that fans work out to an agent.
+fn is_task(payload: &serde_json::Value) -> bool {
+    matches!(payload.get("tool_name").and_then(|v| v.as_str()), Some("Task") | Some("Agent"))
+}
+
+/// The agent an event belongs to, when Claude marks it as coming from a fan-out. Claude Code
+/// labels sidechain work with the parent Task's tool_use id under several spellings; take the
+/// first that exists rather than guessing one.
+fn agent_of(payload: &serde_json::Value) -> Option<String> {
+    for key in ["agent_id", "subagent_id", "parent_tool_use_id", "tool_use_id"] {
+        if let Some(v) = payload.get(key).and_then(|v| v.as_str()) {
+            if payload.get("isSidechain").and_then(|b| b.as_bool()).unwrap_or(key != "tool_use_id") {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// "Editing foo.rs", "Running cargo check…" — from the tool call, clipped for a rail row.
@@ -151,6 +212,28 @@ mod tests {
         let e = normalize(7, &json!({"hook_event_name": "PermissionRequest", "tool_name": "AskUserQuestion",
             "tool_input": {"questions": [{"options": [{"label": "Yes"}, {"label": "No"}]}]}})).unwrap();
         assert_eq!(e.options, vec!["Yes", "No"]);
+
+        // A fan-out: the Task call opens an agent with its type and description…
+        let e = normalize(7, &json!({"hook_event_name": "PreToolUse", "tool_name": "Task", "tool_use_id": "t-1",
+            "tool_input": {"subagent_type": "Explore", "description": "Audit upstream consumers"}})).unwrap();
+        assert_eq!(e.agent_event.as_deref(), Some("spawned"));
+        assert_eq!(e.agent_id.as_deref(), Some("t-1"));
+        assert_eq!(e.agent_kind.as_deref(), Some("Explore"));
+        assert_eq!(e.agent_task.as_deref(), Some("Audit upstream consumers"));
+
+        // …its own tool calls are the agent's feed, not the session's…
+        let e = normalize(7, &json!({"hook_event_name": "PreToolUse", "tool_name": "Grep", "isSidechain": true,
+            "parent_tool_use_id": "t-1", "tool_input": {}})).unwrap();
+        assert_eq!((e.agent_id.as_deref(), e.agent_event.as_deref()), (Some("t-1"), Some("tool")));
+
+        // …and SubagentStop closes that agent WITHOUT ending the session's turn.
+        let e = normalize(7, &json!({"hook_event_name": "SubagentStop", "agent_id": "t-1", "isSidechain": true})).unwrap();
+        assert_eq!(e.state, "working", "one agent finishing must not mark the session done");
+        assert_eq!((e.agent_id.as_deref(), e.agent_event.as_deref()), (Some("t-1"), Some("finished")));
+
+        // A plain tool call still belongs to the session itself.
+        let e = normalize(7, &json!({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "/x/y.rs"}})).unwrap();
+        assert!(e.agent_id.is_none() && e.agent_event.is_none());
 
         assert!(normalize(7, &json!({"hook_event_name": "SomethingNew"})).is_none());
         assert!(normalize(7, &json!({"no_event": true})).is_none());
