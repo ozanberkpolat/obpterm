@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .mono { font-family: "JetBrains Mono", monospace; }
+    .thread { border: 1px solid rgba(140,160,190,.12); border-radius: 16px;
+      background: linear-gradient(180deg, #141a24, #171e29); overflow: hidden;
+      display: flex; flex-direction: column; }
+    .th { display: flex; align-items: center; gap: 9px; padding: 10px 14px;
+      border-bottom: 1px solid rgba(140,160,190,.1); }
+    .th .name { font-weight: 700; font-size: 13px; }
+    .proj { font: 600 9.5px "JetBrains Mono", monospace; padding: 1px 7px; border-radius: 999px; flex: none; }
+    .msg { padding: 12px 16px; font-size: 12.5px; line-height: 1.65; color: #c3cddb; }
+    .msg .who { font: 700 9.5px "Plus Jakarta Sans"; text-transform: uppercase; letter-spacing: .07em; color: #5b6878; display: block; margin-bottom: 4px; }
+    .msg.you { background: rgba(76,141,255,.05); border-top: 1px solid rgba(140,160,190,.07); color: #9fb4d8; }
+    .replybox { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid rgba(140,160,190,.1); }
+    .replybox input { flex: 1; padding: 7px 14px; border-radius: 999px; background: #0a0e14;
+      border: 1px solid rgba(140,160,190,.22); color: #eaf0f7; font: 12px "Plus Jakarta Sans"; outline: none; }
+    .act { padding: 5px 12px; border-radius: 999px; font-size: 10.5px; font-weight: 700;
+      border: 1px solid rgba(140,160,190,.22); background: none; color: #8b97a8; cursor: pointer; flex: none; }
+    .act.hot { border-color: rgba(255,138,30,.5); color: #ff8a1e; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #0a0e14; display: flex; flex-direction: column; overflow: hidden">
+
+  <div style="flex: none; display: flex; align-items: center; gap: 14px; padding: 14px 22px 12px">
+    <span style="font-size: 17px; font-weight: 800">Threads</span>
+    <span class="mono" style="font-size: 11px; color: #5b6878">Ctrl+T · sessions as conversations: read answers as text, reply inline, fork a thought — the terminal is one ⏎ away</span>
+    <span style="flex: 1"></span>
+    <span class="mono" style="font-size: 11px; color: #76879c">6 threads · 2 waiting on you</span>
+  </div>
+
+  <div style="flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 4px 22px 18px; min-height: 0; align-content: start">
+
+    <div class="thread" style="border-color: rgba(255,138,30,.5)">
+      <div class="th">
+        <span class="name">ntfy tokens</span>
+        <span class="proj" style="background: rgba(76,141,255,.15); color: #4c8dff">iot-stack</span>
+        <span style="flex: 1"></span>
+        <span class="mono" style="font-size: 10px; color: #ff8a1e">waiting on you</span>
+      </div>
+      <div class="msg">
+        <span class="who">Claude · 2m ago</span>
+        The ACL is written. I need to restart the ntfy container to apply it — this drops active subscriptions for a second or two. Proceed?
+        <div class="mono" style="margin-top: 6px; padding: 6px 10px; background: #0a0e14; border-radius: 8px; font-size: 11px; color: #ffb454">docker restart ntfy</div>
+      </div>
+      <div class="replybox">
+        <input placeholder="Reply — or a to allow, d to deny">
+        <button class="act hot">Allow</button>
+        <button class="act">Deny</button>
+      </div>
+    </div>
+
+    <div class="thread">
+      <div class="th">
+        <span class="name">portal resolver</span>
+        <span class="proj" style="background: rgba(76,141,255,.15); color: #4c8dff">iot-stack</span>
+        <span style="flex: 1"></span>
+        <span class="mono" style="font-size: 10px; color: #2fd6a3">working · 12m · ctx 36%</span>
+      </div>
+      <div class="msg">
+        <span class="who">Claude · just now</span>
+        Rewrote both upstreams to the runtime-resolver pattern and the nginx config test passes inside the container. Rebuilding now, then I'll re-run the smoke checks against /brain/ and /finance/.
+      </div>
+      <div class="msg you">
+        <span class="who">You · 14m ago</span>
+        portal 502s after container recreates again — fix it with the resolver pattern this time, not another reload hack.
+      </div>
+      <div class="replybox">
+        <input placeholder="Steer it — Enter sends into the session">
+        <button class="act">Fork</button>
+        <button class="act">Open ⏎</button>
+      </div>
+    </div>
+
+    <div class="thread">
+      <div class="th">
+        <span class="name">grading refactor</span>
+        <span class="proj" style="background: rgba(47,214,163,.15); color: #2fd6a3">invest</span>
+        <span style="flex: 1"></span>
+        <span class="mono" style="font-size: 10px; color: #ffb454">working 41m · quiet 4m · ctx 71%</span>
+      </div>
+      <div class="msg">
+        <span class="who">Claude · 4m ago</span>
+        Migration script handles 578 of 580 rows; two have null maturity dates from the pre-August format. Writing the backfill for those before I touch the grader itself.
+      </div>
+      <div class="replybox">
+        <input placeholder="Steer it…">
+        <button class="act">Fork</button>
+        <button class="act">Open ⏎</button>
+      </div>
+    </div>
+
+    <div class="thread" style="opacity: .8">
+      <div class="th">
+        <span class="name">brain backlinks</span>
+        <span class="proj" style="background: rgba(76,141,255,.15); color: #4c8dff">iot-stack</span>
+        <span style="flex: 1"></span>
+        <span class="mono" style="font-size: 10px; color: #4c8dff">done · +312 −67</span>
+      </div>
+      <div class="msg">
+        <span class="who">Claude · 32m ago</span>
+        Footers are stripped before indexing and their links preserved through _footers — 148 notes now interlinked, up from 3. Tests green. Worth spot-checking the Related sections on a few Knowledge notes.
+      </div>
+      <div class="replybox">
+        <input placeholder="Follow up — resumes the conversation">
+        <button class="act hot">Review diff</button>
+        <button class="act">Fork</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

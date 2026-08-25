@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .mono { font-family: "JetBrains Mono", monospace; }
+    .col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+    .colh { display: flex; align-items: baseline; gap: 8px; font: 700 11px "Plus Jakarta Sans";
+      text-transform: uppercase; letter-spacing: .08em; color: #5b6878; padding: 0 4px; }
+    .card { border: 1px solid rgba(140,160,190,.12); border-radius: 14px;
+      background: linear-gradient(180deg, #141a24, #171e29); padding: 12px 14px;
+      display: flex; flex-direction: column; gap: 8px; }
+    .card .name { font-weight: 700; font-size: 13px; }
+    .card .proj { font: 600 9.5px "JetBrains Mono", monospace; padding: 1px 7px; border-radius: 999px; }
+    .card .body { font-size: 12px; color: #8b97a8; line-height: 1.5; }
+    .card .meta { display: flex; gap: 10px; font: 500 10px "JetBrains Mono", monospace; color: #5b6878; }
+    .btn { padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700; border: 0; cursor: pointer; }
+    .hot { border-color: rgba(255,138,30,.5); box-shadow: 0 0 0 1px rgba(255,138,30,.2); }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #0a0e14; display: flex; flex-direction: column; overflow: hidden">
+
+  <div style="flex: none; display: flex; align-items: center; gap: 14px; padding: 14px 22px 10px">
+    <span style="font-size: 17px; font-weight: 800">Mission Control</span>
+    <span class="mono" style="font-size: 11px; color: #5b6878">Ctrl+Home · the surface you land on; every card opens its terminal on Enter</span>
+    <span style="flex: 1"></span>
+    <span class="mono" style="font-size: 11px; color: #76879c">Mon 14:20 · 5h 22% · wk 41%</span>
+  </div>
+
+  <!-- the day, as a strip: when your agents worked, when they'll run dry -->
+  <div style="flex: none; margin: 0 22px 12px; padding: 10px 14px; border: 1px solid rgba(140,160,190,.12); border-radius: 12px; background: #0e131c">
+    <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 7px">
+      <span style="font: 700 10px 'Plus Jakarta Sans'; text-transform: uppercase; letter-spacing: .08em; color: #5b6878">Today</span>
+      <span class="mono" style="font-size: 10px; color: #5b6878">42 turns · 3 sessions forked · 2 worktrees merged · projected 5h reset survives at this pace</span>
+    </div>
+    <div style="display: flex; gap: 3px; align-items: flex-end; height: 30px">
+      <!-- hour bars: height = agent activity, orange = an ask happened that hour -->
+      <div style="flex:1; height: 20%; background: #223046; border-radius: 3px 3px 0 0"></div>
+      <div style="flex:1; height: 45%; background: #223046; border-radius: 3px 3px 0 0"></div>
+      <div style="flex:1; height: 80%; background: #2fd6a3; opacity:.5; border-radius: 3px 3px 0 0"></div>
+      <div style="flex:1; height: 65%; background: #2fd6a3; opacity:.5; border-radius: 3px 3px 0 0"></div>
+      <div style="flex:1; height: 90%; background: #ff8a1e; opacity:.7; border-radius: 3px 3px 0 0"></div>
+      <div style="flex:1; height: 100%; background: #2fd6a3; opacity:.6; border-radius: 3px 3px 0 0"></div>
+      <div style="flex:1; height: 70%; background: #ff8a1e; opacity:.7; border-radius: 3px 3px 0 0"></div>
+      <div style="flex:1; height: 40%; background: #223046; border-radius: 3px 3px 0 0"></div>
+      <div style="flex:1; height: 12%; background: #1a2230; border-radius: 3px 3px 0 0"></div>
+      <div style="flex:1; height: 6%; background: #1a2230; border-radius: 3px 3px 0 0"></div>
+    </div>
+  </div>
+
+  <div style="flex: 1; display: flex; gap: 16px; padding: 0 22px 18px; min-height: 0">
+
+    <div class="col">
+      <div class="colh"><span style="color: #ff8a1e">● Needs you</span><span style="flex: 1"></span>2</div>
+      <div class="card hot">
+        <div style="display: flex; align-items: center; gap: 8px"><span class="name">ntfy tokens</span><span class="proj" style="background: rgba(76,141,255,.15); color: #4c8dff">iot-stack</span></div>
+        <div class="body">Wants to run <b class="mono" style="color: #ffb454">docker restart ntfy</b> to apply the new ACL.</div>
+        <div style="display: flex; gap: 8px">
+          <button class="btn" style="background: linear-gradient(135deg, #ffa23e, #ff8410); color: #04101f">Allow · a</button>
+          <button class="btn" style="background: none; border: 1px solid rgba(140,160,190,.25); color: #8b97a8">Deny · d</button>
+          <button class="btn" style="background: none; border: 1px solid rgba(140,160,190,.25); color: #8b97a8">Reply · t</button>
+        </div>
+      </div>
+      <div class="card hot">
+        <div style="display: flex; align-items: center; gap: 8px"><span class="name">keep digest</span><span class="proj" style="background: rgba(180,140,255,.15); color: #b48cff">keep</span></div>
+        <div class="body">Asked: "Two reminder formats found — merge into the newer one?" <span class="mono" style="color: #5b6878">options: Yes / Keep both</span></div>
+        <div style="display: flex; gap: 8px">
+          <button class="btn" style="background: none; border: 1px solid rgba(255,138,30,.45); color: #ff8a1e">Open · ⏎</button>
+          <button class="btn" style="background: none; border: 1px solid rgba(140,160,190,.25); color: #8b97a8">Reply · t</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="colh"><span style="color: #2fd6a3">● Running</span><span style="flex: 1"></span>4</div>
+      <div class="card">
+        <div style="display: flex; align-items: center; gap: 8px"><span class="name">portal resolver</span><span class="proj" style="background: rgba(76,141,255,.15); color: #4c8dff">iot-stack</span></div>
+        <div class="body">Rewriting nginx upstreams to the runtime-resolver pattern; container test green.</div>
+        <div class="meta"><span>12m</span><span>ctx 36%</span><span>+214 −38</span><span>412 MB</span></div>
+      </div>
+      <div class="card">
+        <div style="display: flex; align-items: center; gap: 8px"><span class="name">grading refactor</span><span class="proj" style="background: rgba(47,214,163,.15); color: #2fd6a3">invest</span></div>
+        <div class="body">Migrating 580 prediction rows to the new maturity legs.</div>
+        <div class="meta"><span>41m</span><span style="color: #ffb454">quiet 4m</span><span>ctx 71%</span><span>+580 −102</span></div>
+      </div>
+      <div class="card" style="opacity: .75">
+        <div style="display: flex; align-items: center; gap: 8px"><span class="name">tefas parser</span><span class="proj" style="background: rgba(47,214,163,.15); color: #2fd6a3">invest</span></div>
+        <div class="meta"><span>8m</span><span>ctx 12%</span><span>+44 −9</span></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="colh"><span style="color: #4c8dff">● Done today — review queue</span><span style="flex: 1"></span>3</div>
+      <div class="card">
+        <div style="display: flex; align-items: center; gap: 8px"><span class="name">brain backlinks</span><span class="proj" style="background: rgba(76,141,255,.15); color: #4c8dff">iot-stack</span></div>
+        <div class="body">"Footers indexed; 148 notes now linked. Tests green."</div>
+        <div style="display: flex; gap: 8px; align-items: center">
+          <span class="meta"><span style="color: #4c8dff">+312 −67</span></span>
+          <span style="flex: 1"></span>
+          <button class="btn" style="background: none; border: 1px solid rgba(76,141,255,.4); color: #4c8dff">Review diff · y</button>
+        </div>
+      </div>
+      <div class="card">
+        <div style="display: flex; align-items: center; gap: 8px"><span class="name">monitoring loop</span><span class="proj" style="background: rgba(76,141,255,.15); color: #4c8dff">iot-stack</span></div>
+        <div class="body">"24 tests pass; sampler dead-man wired."</div>
+        <div style="display: flex; gap: 8px; align-items: center">
+          <span class="meta"><span style="color: #4c8dff">+96 −31</span></span>
+          <span style="flex: 1"></span>
+          <button class="btn" style="background: none; border: 1px solid rgba(76,141,255,.4); color: #4c8dff">Review diff · y</button>
+        </div>
+      </div>
+      <div class="card" style="opacity: .7">
+        <div style="display: flex; align-items: center; gap: 8px"><span class="name">docs sweep</span><span class="proj" style="background: rgba(180,140,255,.15); color: #b48cff">keep</span></div>
+        <div class="body">"README + CLAUDE.md updated."</div>
+        <div class="meta"><span style="color: #2fd6a3">reviewed ✓ merged</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

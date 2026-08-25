@@ -27,6 +27,10 @@
     {
       "id": "page-9",
       "name": "FINAL \u00b7 pick one per row"
+    },
+    {
+      "id": "page-10",
+      "name": "Beyond the terminal"
     }
   ],
   "artboards": [
@@ -205,6 +209,33 @@
       "h": 600,
       "page": "page-9",
       "title": "3 \u00b7 Agent Deck"
+    },
+    {
+      "file": "MissionControl.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "page": "page-10",
+      "title": "D1 \u00b7 Mission Control"
+    },
+    {
+      "file": "Threads.dc.html",
+      "x": 0,
+      "y": 1030,
+      "w": 1440,
+      "h": 900,
+      "page": "page-10",
+      "title": "D2 \u00b7 Threads"
+    },
+    {
+      "file": "TheWire.dc.html",
+      "x": 0,
+      "y": 2060,
+      "w": 1440,
+      "h": 900,
+      "page": "page-10",
+      "title": "D3 \u00b7 The Wire"
     }
   ],
   "annotations": [
@@ -295,10 +326,18 @@
       "w": 300,
       "page": "page-9",
       "text": "The decision page. Three rows, three options each \u2014 answer with one per row, e.g. \"O2 / O2 / O3\".\n\nMy recommendation: O2 / O2 / O3 \u2014 the tab language, sheen-on-focus, choreographed deck. One consistent vocabulary (the knock means the same thing in the rail and the deck), one-shot flourishes everywhere else, idle stays perfectly still.\n\nEverything here keeps the current layout, projects, colors and the bottom bar untouched. All animations are transform/opacity \u2014 cheap at 10 live tabs.\n\n(The earlier exploration pages for motion and agent views remain in the page menu for reference; the front-page directions were discarded as requested.)"
+    },
+    {
+      "id": "beyond-take",
+      "x": 1520,
+      "y": 40,
+      "w": 320,
+      "page": "page-10",
+      "text": "Three surfaces for 'this is where my day runs', all one keypress from the terminal, none replacing it. All are built from data the host ALREADY has (hooks, transcripts, diffstats, quota) \u2014 no new collection.\n\nD1 MISSION CONTROL (Ctrl+Home) \u2014 the day as a board: Needs you / Running / Done-today review queue, plus an hour-by-hour activity strip with quota projection. The morning and return-to-desk surface. (Steals: Warp's triage columns, Superset's review queue.)\n\nD2 THREADS (Ctrl+T) \u2014 sessions as conversations: Claude's answers as readable text, your reply box inline, Fork on every card. Work through words, not scrollback. (Steals: NodeTerm's branch-a-conversation + reply-without-attaching.)\n\nD3 THE WIRE (Ctrl+E) \u2014 a chronological feed of everything the fleet did (asks, dones, errors, test passes, merges, quota notices) with inline actions and filters. The catch-up surface. (Steals: CI-feed ergonomics nobody has put in a terminal yet.)\n\nMy take: D1 and D3 answer different moments (start of a block vs return from away) \u2014 D2 is the boldest reframe and the closest to how you actually work. If forced to one: THREADS, with the Wire's feed as its left rail later."
     }
   ],
   "launch": {
     "view": "canvas",
-    "page": "page-9"
+    "page": "page-10"
   }
 }
