@@ -35,10 +35,31 @@ export class Deck {
   /** RSS bytes per pane id, refreshed while open. */
   private rss = new Map<number, number>();
   private rssTimer = 0;
+  /** What the header's filter box holds; matched against title, project and task text. */
+  private filter = "";
 
   constructor(private app: App) {
+    const box = $<HTMLInputElement>("#deck .dfilter input");
+    box.addEventListener("input", () => {
+      this.filter = box.value.trim().toLowerCase();
+      this.sel = 0;
+      this.paint();
+    });
+    box.addEventListener("keydown", (e) => {
+      e.stopPropagation(); // typing a filter must not fire the deck's own single-key verbs
+      if (e.code === "Escape") {
+        if (box.value) {
+          box.value = "";
+          this.filter = "";
+          this.paint();
+        }
+        this.grid.focus();
+      }
+      if (e.code === "Enter" || e.code === "ArrowDown") this.grid.focus();
+    });
     this.root.addEventListener("mousedown", (e) => e.target === this.root && this.close());
     $("#deck .dclose").addEventListener("click", () => this.close());
+    $("#deck .dnodes").addEventListener("click", () => this.app.toggleAgentsView());
     this.grid.tabIndex = -1; // focusable, so keystrokes stop leaking to the pane behind
     this.root.addEventListener("keydown", (e) => this.onKey(e));
   }
@@ -98,6 +119,8 @@ export class Deck {
   open() {
     this.isOpen = true;
     this.root.hidden = false;
+    $("#deck .dlist").classList.add("on");
+    $("#deck .dnodes").classList.remove("on");
     this.sel = 0;
     this.paint();
     this.grid.focus();
@@ -148,8 +171,25 @@ export class Deck {
   /** Every Claude pane, loudest first, with the tab it lives in. */
   panes(): { pane: Pane; tab: Tab }[] {
     const all = this.app.tabs.flatMap((tab) => this.app.panesOf(tab).map((pane) => ({ pane, tab })));
+    const q = this.filter;
+    const matches = ({ pane, tab }: { pane: Pane; tab: Tab }) => {
+      if (!q) return true;
+      const hay = [
+        this.app.title(tab),
+        pane.claudeTitle,
+        this.app.project(tab.projectId)?.name,
+        pane.cwd,
+        pane.agent.detail,
+        ...pane.agent.fanned.map((f) => `${f.kind} ${f.task}`),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    };
     return all
       .filter(({ pane }) => isClaudePane(pane))
+      .filter(matches)
       .sort((a, b) => {
         // A dangerous held request outranks everything — it is what the deck exists for.
         const danger = Number(b.pane.agent.state === "blocked" && isDangerous(b.pane.agent)) - Number(a.pane.agent.state === "blocked" && isDangerous(a.pane.agent));
@@ -161,6 +201,8 @@ export class Deck {
     if (!this.isOpen) return;
     const entries = this.panes();
     const counts = this.app.agentCounts();
+    const all = this.app.tabs.flatMap((t) => this.app.panesOf(t)).filter(isClaudePane).length;
+    set($("#deck .dcountall"), this.filter ? `${entries.length}/${all}` : String(all));
     this.summary.replaceChildren();
     const add = (text: string, cls = "") => {
       const s = document.createElement("span");
@@ -187,7 +229,9 @@ export class Deck {
       }
     }
     this.grid.classList.toggle("empty", !entries.length);
-    $("#deck .dempty").hidden = entries.length > 0;
+    const empty = $("#deck .dempty");
+    empty.hidden = entries.length > 0;
+    set(empty, this.filter ? `Nothing matches “${this.filter}”.` : "No Claude sessions running. Open a tab with a claude profile and its state shows up here.");
   }
 
   private patch(pane: Pane, tab: Tab): Card {
@@ -199,6 +243,14 @@ export class Deck {
     card.el.classList.toggle("danger", a.state === "blocked" && isDangerous(a));
     card.el.style.setProperty("--card-accent", app.accent(tab));
     set(card.name, pane.claudeTitle ?? app.title(tab));
+    const project = app.project(tab.projectId);
+    const projEl = card.el.querySelector<HTMLElement>(".dproj")!;
+    projEl.hidden = !project;
+    if (project) {
+      set(projEl, project.name);
+      projEl.style.color = project.color;
+      projEl.style.background = `color-mix(in srgb, ${project.color} 16%, transparent)`;
+    }
     const live = a.fanned.filter((f) => f.endedAt === null).length;
     const countEl = card.el.querySelector<HTMLElement>(".dcount")!;
     countEl.hidden = a.fanned.length === 0;
@@ -207,6 +259,9 @@ export class Deck {
     const chip = CHIP[state] ?? state;
     const worked = state === "working" && a.workingSince ? Date.now() - a.workingSince : 0;
     set(card.chip, worked >= 60_000 ? `${chip} · ${dur(worked)}` : chip);
+    const stateEl = card.el.querySelector<HTMLElement>(".dstate")!;
+    set(stateEl, stateLine(pane));
+    stateEl.dataset.state = state;
     set(card.tail, this.tail(pane));
     // A working agent that has printed nothing for a while is the one to look at.
     const quiet = state === "working" && pane.lastOutput && Date.now() - pane.lastOutput > 60_000
@@ -290,7 +345,8 @@ export class Deck {
     const el = document.createElement("article");
     el.className = "dcard";
     el.innerHTML =
-      `<header><span class="ddot"></span><span class="dname"></span><span class="dcount" hidden></span><span class="dchip"></span></header>` +
+      `<header><span class="ddot"></span><span class="dname"></span><span class="dproj" hidden></span><span class="dcount" hidden></span><span class="dchip"></span></header>` +
+      `<div class="dstate"></div>` +
       `<pre class="dtail"></pre>` +
       `<div class="dprog" hidden><i></i></div>` +
       `<div class="dctx" hidden title="How full this session's context window is — at 100% it auto-compacts and loses detail"><span class="k">ctx</span><span class="bar"><i></i></span><span class="v"></span></div>` +
@@ -375,6 +431,19 @@ const CHIP: Record<string, string> = {
   asleep: "asleep",
   shell: "shell",
 };
+
+/** The one line under the title: what this session is doing, in words. */
+function stateLine(pane: Pane): string {
+  const a = pane.agent;
+  if (pane.eco) return "sleeping to save memory — click to resume";
+  if (pane.asleep) return "asleep — click to wake";
+  if (pane.exited) return `exited${pane.exitCode ? ` with code ${pane.exitCode}` : ""}`;
+  if (a.state === "blocked") return `${a.detail ?? "asking"} · a allow · d deny · w always`;
+  if (a.state === "waiting") return `${a.detail ?? "waiting on you"} · t reply`;
+  if (a.state === "done") return `✓ ${a.detail ?? "done"}`;
+  if (a.state === "working") return a.detail ?? "working";
+  return pane.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? pane.profile.name;
+}
 
 /** "3 files changed, 412 insertions(+), 87 deletions(-)" -> "+412 −87"; "" -> "±0". */
 function shortstat(raw: string | null): string | null {

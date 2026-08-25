@@ -175,6 +175,8 @@ export interface Config {
   ntfy_token: string | null;
   /** Hold the machine out of sleep while any agent is working. */
   keep_awake: boolean;
+  /** Which agents view Ctrl+G opens: the panel or the map. */
+  agents_view: "list" | "nodes";
   quota_5h_tokens: number | null;
   quota_7d_tokens: number | null;
   restore_session: boolean;
@@ -354,6 +356,7 @@ export function withDefaults(config: Partial<Config>): Config {
     ntfy_url: config.ntfy_url ?? null,
     ntfy_token: config.ntfy_token ?? null,
     keep_awake: config.keep_awake ?? true,
+    agents_view: config.agents_view === "nodes" ? "nodes" : "list",
     quota_5h_tokens: config.quota_5h_tokens ?? null,
     quota_7d_tokens: config.quota_7d_tokens ?? null,
     projects: (config.projects ?? []).map((p) => ({
