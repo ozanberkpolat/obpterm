@@ -63,6 +63,10 @@ export class Pane {
   claudeSessionId: string | null = null;
   /** Claude's own name for the conversation, read from the transcript for the Deck. */
   claudeTitle: string | null = null;
+  /** "+412 −87" for this pane's directory, from the Deck's slow lane. */
+  diffstat: string | null = null;
+  /** Rough context-window fill %, from the transcript tail. */
+  ctxPct: number | null = null;
   /** The shell was `/exit`ed on purpose to free the agent's memory; wake resumes it. */
   eco = false;
   /** Cold restore of claude typed into a plain shell: type `claude --resume <this>` once up. */

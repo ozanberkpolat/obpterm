@@ -432,6 +432,34 @@ pub async fn session_title(dir: String, session_id: String) -> Option<String> {
     custom.or(ai)
 }
 
+/// How full this session's context window is, as a rough percentage: the last usage block's
+/// input + cache tokens over a 200k window. Enough to warn before an auto-compact — not
+/// accounting. None when the transcript (or a usage entry) cannot be found.
+#[tauri::command]
+pub async fn session_context(dir: String, session_id: String) -> Option<u8> {
+    let projects = PathBuf::from(expand(&dir)).join("projects");
+    let file = std::fs::read_dir(&projects)
+        .ok()?
+        .flatten()
+        .map(|d| d.path().join(format!("{session_id}.jsonl")))
+        .find(|p| p.exists())?;
+    let text = tail(&file, 256 * 1024)?;
+    let mut last: Option<u64> = None;
+    for line in text.lines() {
+        if !line.contains("\"usage\"") {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        let Some(u) = v.pointer("/message/usage") else { continue };
+        let n = |k: &str| u.get(k).and_then(|x| x.as_u64()).unwrap_or(0);
+        let total = n("input_tokens") + n("cache_read_input_tokens") + n("cache_creation_input_tokens");
+        if total > 0 {
+            last = Some(total);
+        }
+    }
+    last.map(|t| ((t as f64 / 200_000.0) * 100.0).round().clamp(0.0, 100.0) as u8)
+}
+
 fn tail(path: &Path, max: u64) -> Option<String> {
     use std::io::{Seek, SeekFrom};
     let mut f = std::fs::File::open(path).ok()?;

@@ -22,6 +22,7 @@ export const ACTIONS: KeyAction[] = [
   { id: "agents", label: "Agent deck", def: "Ctrl+KeyG", run: (a) => a.deck.toggle() },
   { id: "needs-you", label: "Go to the agent that needs you", def: "Ctrl+Shift+KeyG", run: (a) => a.jumpNeedsYou() },
   { id: "dup-tab", label: "Duplicate tab (same directory)", def: "Ctrl+Shift+KeyD", run: (a) => void a.duplicateTab() },
+  { id: "review", label: "Review changes (git diff in a split)", def: "Ctrl+Shift+KeyY", run: (a) => void a.reviewSplit() },
   { id: "rename", label: "Rename the tab", def: "F2", run: (a) => { if (a.tab) renameTab(a, a.tab); } },
   { id: "close", label: "Close pane, or the tab when it is the last", def: "Ctrl+Shift+KeyW", run: (a) => { if (a.tab) a.closePane(a.tab.active, a.tab); } },
   { id: "close-tab", label: "Close the whole tab", def: "Ctrl+Shift+KeyQ", run: (a) => { if (a.tab) a.closeTab(a.tab); } },

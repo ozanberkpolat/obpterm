@@ -83,6 +83,29 @@ export function tauriTransport(): Transport {
     ntfy: (url, token, title, body) => invoke("ntfy_publish", { url, token, title, body }),
     keepAwake: (on) => invoke("keep_awake", { on }),
     rssFor: (pids) => invoke<number[]>("rss_for", { pids }),
+    gitShortstat: (cwd) => invoke<string | null>("git_shortstat", { cwd }),
+    allowRule: (cwd, rule) => invoke("allow_rule", { cwd, rule }),
+    sessionContext: (dir, sessionId) => invoke<number | null>("session_context", { dir, sessionId }),
+    async readClipboardImage() {
+      // The plugin hands back raw RGBA; a canvas turns it into the PNG the temp file needs.
+      try {
+        const { readImage } = await import("@tauri-apps/plugin-clipboard-manager");
+        const img = await readImage();
+        const size = await img.size();
+        const rgba = await img.rgba();
+        const canvas = document.createElement("canvas");
+        canvas.width = size.width;
+        canvas.height = size.height;
+        const g = canvas.getContext("2d")!;
+        g.putImageData(new ImageData(new Uint8ClampedArray(rgba), size.width, size.height), 0, 0);
+        const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/png"));
+        if (!blob) return null;
+        const png = Array.from(new Uint8Array(await blob.arrayBuffer()));
+        return await invoke<string>("save_clip_image", { png });
+      } catch {
+        return null; // no image on the clipboard, or the platform refused
+      }
+    },
     reveal: (what) => invoke<string>("reveal", { what }),
     sessionLoad: () => invoke<Session>("session_load"),
     sessionSave: (tabs, active, host) => invoke("session_save", { tabs, active, host }),

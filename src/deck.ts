@@ -2,8 +2,9 @@
 // last lines of its screen, and the held permission answerable right here. The rail's badge
 // counts what this view shows; clicking a card jumps to its pane.
 import type { App, Tab } from "./app";
-import { isClaudePane } from "./agent";
+import { isClaudePane, isDangerous } from "./agent";
 import type { Pane } from "./pane";
+import { toast } from "./ui";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 
@@ -47,14 +48,39 @@ export class Deck {
       this.cards.get(this.order[this.sel]?.pane as Pane)?.el.scrollIntoView({ block: "nearest" });
     };
     const entry = this.order[this.sel];
+    const danger = entry ? isDangerous(entry.pane.agent) : false;
     if (e.code === "ArrowDown" || e.code === "KeyJ") move(1);
     else if (e.code === "ArrowUp" || e.code === "KeyK") move(-1);
-    else if (e.code === "KeyA" && entry?.pane.agent.pendingId) void this.app.answerAgent(entry.pane, true);
+    else if (e.code === "KeyA" && entry?.pane.agent.pendingId) {
+      // Muscle-memory `a` must not approve a red card; `y` is the deliberate key.
+      if (danger) toast("That one is dangerous — press y to allow it, d to deny");
+      else void this.app.answerAgent(entry.pane, true);
+    } else if (e.code === "KeyY" && entry?.pane.agent.pendingId && danger) void this.app.answerAgent(entry.pane, true);
     else if (e.code === "KeyD" && entry?.pane.agent.pendingId) void this.app.answerAgent(entry.pane, false);
-    else if (e.code === "Enter" && entry) this.jump(entry.pane, entry.tab);
+    else if (e.code === "KeyW" && entry?.pane.agent.pendingId) void this.alwaysAllow(entry.pane);
+    else if (e.code === "KeyT" && entry && (entry.pane.agent.state === "blocked" || entry.pane.agent.state === "waiting")) {
+      this.cards.get(entry.pane)?.el.querySelector<HTMLInputElement>(".dreply input")?.focus();
+    } else if (e.code === "Enter" && entry) this.jump(entry.pane, entry.tab);
     else return;
     e.preventDefault();
     e.stopPropagation();
+  }
+
+  /** `w`: persist "always allow this" into the project's own Claude settings, then allow. */
+  private async alwaysAllow(pane: Pane) {
+    const a = pane.agent;
+    if (isDangerous(a)) return toast("Not making a standing rule out of a dangerous command");
+    if (a.tool !== "Bash" || !a.toolInput) return toast("Always-allow only knows shell commands so far — Allow it normally");
+    const word = a.toolInput.trim().split(/\s+/)[0];
+    if (!word || !pane.cwd) return toast("No command word or working directory to pin the rule to");
+    const rule = `Bash(${word}:*)`;
+    try {
+      await this.app.tp.allowRule(pane.cwd, rule);
+      await this.app.answerAgent(pane, true);
+      toast(`Allowed, and ${rule} is now always allowed in this project`);
+    } catch (e) {
+      toast(`Rule not saved: ${e}`);
+    }
   }
 
   private jump(pane: Pane, tab: Tab) {
@@ -75,7 +101,10 @@ export class Deck {
     this.grid.focus();
     void this.refreshTitles();
     void this.refreshRss();
-    this.rssTimer = window.setInterval(() => void this.refreshRss(), 3000);
+    this.rssTimer = window.setInterval(() => {
+      void this.refreshRss();
+      void this.refreshTitles();
+    }, 3000);
   }
 
   close() {
@@ -85,17 +114,21 @@ export class Deck {
     this.app.tab?.active.focus();
   }
 
-  /** Claude names every conversation; the cards should use those names. */
+  /** Claude names every conversation; the cards should use those names — plus the context
+   *  fill and the diffstat, all from the same slow lane. */
   private async refreshTitles() {
     for (const { pane, tab } of this.order) {
+      if (pane.cwd) {
+        const stat = await this.app.tp.gitShortstat(pane.cwd).catch(() => null);
+        pane.diffstat = shortstat(stat);
+      }
       if (!pane.claudeSessionId) continue;
       const dir = this.app.account(tab.accountId)?.claude_dir ?? "~/.claude";
       const title = await this.app.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
-      if (title && title !== pane.claudeTitle) {
-        pane.claudeTitle = title;
-        this.paint();
-      }
+      if (title && title !== pane.claudeTitle) pane.claudeTitle = title;
+      pane.ctxPct = await this.app.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
     }
+    this.paint();
   }
 
   /** What each session's process tree weighs — the number Eco decisions need. */
@@ -115,7 +148,11 @@ export class Deck {
     const all = this.app.tabs.flatMap((tab) => this.app.panesOf(tab).map((pane) => ({ pane, tab })));
     return all
       .filter(({ pane }) => isClaudePane(pane))
-      .sort((a, b) => ORDER.indexOf(a.pane.agent.state) - ORDER.indexOf(b.pane.agent.state));
+      .sort((a, b) => {
+        // A dangerous held request outranks everything — it is what the deck exists for.
+        const danger = Number(b.pane.agent.state === "blocked" && isDangerous(b.pane.agent)) - Number(a.pane.agent.state === "blocked" && isDangerous(a.pane.agent));
+        return danger || ORDER.indexOf(a.pane.agent.state) - ORDER.indexOf(b.pane.agent.state);
+      });
   }
 
   paint() {
@@ -157,6 +194,7 @@ export class Deck {
     const a = pane.agent;
     const state = pane.eco ? "eco" : pane.asleep ? "asleep" : (a.state ?? "shell");
     card.el.dataset.state = state;
+    card.el.classList.toggle("danger", a.state === "blocked" && isDangerous(a));
     card.el.style.setProperty("--card-accent", app.accent(tab));
     set(card.name, pane.claudeTitle ?? app.title(tab));
     const chip = CHIP[state] ?? state;
@@ -187,13 +225,17 @@ export class Deck {
     }
     card.ask.hidden = !ask;
     card.actions.hidden = !(a.state === "blocked" && a.pendingId);
+    card.el.querySelector<HTMLElement>(".dreply")!.hidden = !(a.state === "blocked" || a.state === "waiting");
     const mb = this.rss.get(pane.id);
     set(card.foot, [
       pane.profile.name,
       pane.cwd?.split(/[\\/]/).filter(Boolean).pop(),
       quiet,
       mb ? `${Math.round(mb / 1048576)} MB` : null,
+      pane.ctxPct !== null ? `ctx ${pane.ctxPct}%` : null,
+      pane.diffstat,
     ].filter(Boolean).join(" · "));
+    card.foot.classList.toggle("ctx-high", (pane.ctxPct ?? 0) >= 80);
     return card;
   }
 
@@ -205,7 +247,8 @@ export class Deck {
       `<pre class="dtail"></pre>` +
       `<div class="dprog" hidden><i></i></div>` +
       `<div class="dask" hidden><div class="q"></div><ul class="opts"></ul></div>` +
-      `<div class="dactions" hidden><button class="allow">Allow</button><button class="deny">Deny</button></div>` +
+      `<div class="dactions" hidden><button class="allow">Allow</button><button class="deny">Deny</button><button class="always" title="Allow, and never ask for this command in this project again">Always</button></div>` +
+      `<div class="dreply" hidden><input type="text" placeholder="type an answer — Enter sends it to the session" spellcheck="false"></div>` +
       `<footer class="dfoot"></footer>`;
     el.addEventListener("click", () => {
       const tab = this.app.tabs.find((t) => this.app.panesOf(t).includes(pane));
@@ -215,8 +258,31 @@ export class Deck {
       e.stopPropagation();
       fn();
     };
-    el.querySelector<HTMLButtonElement>(".allow")!.onclick = stopThen(() => void this.app.answerAgent(pane, true));
+    el.querySelector<HTMLButtonElement>(".allow")!.onclick = stopThen(() => {
+      if (isDangerous(pane.agent)) toast("That one is dangerous — press y (or this card's Deny)");
+      else void this.app.answerAgent(pane, true);
+    });
     el.querySelector<HTMLButtonElement>(".deny")!.onclick = stopThen(() => void this.app.answerAgent(pane, false));
+    el.querySelector<HTMLButtonElement>(".always")!.onclick = stopThen(() => void this.alwaysAllow(pane));
+    const reply = el.querySelector<HTMLInputElement>(".dreply input")!;
+    reply.addEventListener("click", (e) => e.stopPropagation());
+    reply.addEventListener("keydown", (e) => {
+      e.stopPropagation(); // the deck's own keys (and the app's) must not fire while typing
+      if (e.code === "Escape") {
+        reply.value = "";
+        this.grid.focus();
+      } else if (e.code === "Enter" && reply.value.trim()) {
+        // The answer lands in the pty as if typed in the pane; the settle timer will flip the
+        // state once the session reacts.
+        void this.app.tp.write(pane.id, reply.value + "\r").catch(() => {});
+        pane.agent.state = "working";
+        pane.agent.workingSince = Date.now();
+        pane.agent.pendingId = null;
+        reply.value = "";
+        this.grid.focus();
+        this.app.paint();
+      }
+    });
     const card: Card = {
       el,
       name: el.querySelector(".dname")!,
@@ -259,6 +325,15 @@ const CHIP: Record<string, string> = {
   asleep: "asleep",
   shell: "shell",
 };
+
+/** "3 files changed, 412 insertions(+), 87 deletions(-)" -> "+412 −87"; "" -> "±0". */
+function shortstat(raw: string | null): string | null {
+  if (raw === null) return null;
+  if (!raw) return "±0";
+  const ins = /(\d+) insertion/.exec(raw)?.[1] ?? "0";
+  const del = /(\d+) deletion/.exec(raw)?.[1] ?? "0";
+  return `+${ins} −${del}`;
+}
 
 /** 90000 -> "1m", 3720000 -> "1h 2m". Coarse on purpose — it repaints once a second. */
 function dur(ms: number): string {

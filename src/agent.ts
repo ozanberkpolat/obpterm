@@ -14,6 +14,9 @@ export interface AgentState {
   /** Set while a permission request is held open for the rail's verdict. */
   pendingId: string | null;
   options: string[];
+  /** The tool a held permission request is about ("Bash"), and its raw input. */
+  tool: string | null;
+  toolInput: string | null;
   /** A Stop arrived while you were elsewhere and you have not looked yet. */
   unread: boolean;
   lastToolAt: number;
@@ -26,6 +29,8 @@ export const blank = (): AgentState => ({
   sessionId: null,
   pendingId: null,
   options: [],
+  tool: null,
+  toolInput: null,
   unread: false,
   lastToolAt: 0,
   workingSince: 0,
@@ -42,6 +47,8 @@ export interface AgentUpdate {
   detail: string | null;
   pending_id: string | null;
   options: string[];
+  tool?: string | null;
+  tool_input?: string | null;
 }
 
 /** Applies one hook event. Returns what the app should do beyond repainting. */
@@ -59,6 +66,8 @@ export function reduce(a: AgentState, u: AgentUpdate, focused: boolean): "notify
       a.lastToolAt = Date.now();
       a.pendingId = null;
       a.options = [];
+      a.tool = null;
+      a.toolInput = null;
       if (u.detail) a.detail = u.detail;
       return null;
     }
@@ -76,6 +85,8 @@ export function reduce(a: AgentState, u: AgentUpdate, focused: boolean): "notify
       a.detail = u.detail ?? a.detail;
       a.pendingId = u.pending_id;
       a.options = u.options;
+      a.tool = u.tool ?? null;
+      a.toolInput = u.tool_input ?? null;
       // The user is already looking at this pane: pass the held request straight through so
       // the normal in-pane prompt appears without the 40-second wait.
       if (u.state === "blocked" && focused && u.pending_id) return "auto-pass";
@@ -147,6 +158,31 @@ export function installAgentEvents(app: App) {
       }
     }, INTERRUPT_SETTLE_MS);
   });
+}
+
+/** Commands whose approval should never be muscle memory. Graded on the RAW command the
+ *  hook carried (or the detail line when that is all there is). */
+const DANGER: RegExp[] = [
+  /\brm\s+(-[a-z]*[rf][a-z]*\s+)+/i,       // rm -rf and friends
+  /\bgit\s+push\s+.*(--force|-f\b)/i,
+  /\bgit\s+reset\s+--hard/i,
+  /\bgit\s+clean\s+-[a-z]*f/i,
+  /\bgit\s+checkout\s+\.\s*$/i,
+  /\b(curl|wget)\b[^|]*\|\s*(ba|z|fi)?sh\b/i, // curl | bash
+  /\bdel\s+\/[sq]/i,
+  /\brmdir\s+\/s/i,
+  /\bRemove-Item\b.*-Recurse/i,
+  /\bformat\s+[a-z]:/i,
+  /\bdrop\s+(table|database)\b/i,
+  /\bchmod\s+-R\s+777/i,
+  /\bmkfs\b|\bdd\s+if=/i,
+  /--no-verify\b/i,
+];
+
+/** True when this held request deserves a red card and a deliberate key. */
+export function isDangerous(a: AgentState): boolean {
+  const hay = a.toolInput ?? a.detail ?? "";
+  return !!hay && DANGER.some((re) => re.test(hay));
 }
 
 /** True when this pane runs Claude Code — the exe or an arg says so. */
