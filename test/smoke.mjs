@@ -798,6 +798,18 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
 }
 
+
+// ---- v0.16.1: the update chip idles on the version and self-checks quietly ----------------
+await until("/^v\\d+\\.\\d+\\.\\d+/.test(document.querySelector('#update-chip').textContent)", "the version on the chip");
+await evaluate("(() => { window.obpterm.tp.updateCheck = async () => ({ newer: false, version: '0.0.0', name: 'x', url: '' }); window.obpterm.config.update_repo = 'x/y'; })()");
+await evaluate("void window.obpterm.status.checkUpdates(true)");
+await new Promise((r) => setTimeout(r, 300));
+assert.match(await evaluate("document.querySelector('#update-chip').textContent"), /^v\d+\.\d+\.\d+/, "a quiet no-update check keeps the version");
+await evaluate("(() => { window.obpterm.tp.updateCheck = async () => ({ newer: true, version: '99.0.0', name: 'obpterm 99', url: '' }); })()");
+await evaluate("void window.obpterm.status.checkUpdates(true)");
+await until("document.querySelector('#update-chip').textContent === 'Update to 99.0.0'", "a found update changes the chip");
+await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.querySelector('#update-chip').classList.remove('has-update'); window.obpterm.config.update_repo = null; })()");
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

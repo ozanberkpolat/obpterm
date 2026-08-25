@@ -82,9 +82,11 @@ async function main() {
       if (gone) console.info(`obpterm: pruned ${gone} capture files, ${freed} bytes`);
     }, 6000);
   }
-  if (config.update_check_on_launch && !updatedTo) {
-    // Quietly, and never installing on its own.
-    window.setTimeout(() => void app.status.checkUpdates(), 4000);
+  if (config.update_check_on_launch) {
+    // Quietly, never installing on its own — and again once a day, because the window now
+    // stays open for weeks (that is what the session host is for).
+    if (!updatedTo) window.setTimeout(() => void app.status.checkUpdates(true), 4000);
+    window.setInterval(() => void app.status.checkUpdates(true), 24 * 3_600_000);
   }
 }
 
