@@ -902,6 +902,28 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   devWs.close();
 }
 
+
+// ---- v0.18.0: the Agents panel chrome ------------------------------------------------------
+await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; p.agent.fanned = []; }), window.obpterm.paint()");
+await evaluate("(() => { const p = window.obpterm.tab.active; p.agent.state = 'working'; p.agent.detail = 'Editing pty.rs'; p.claudeTitle = 'resolver work'; window.obpterm.paint(); })()");
+await evaluate("window.obpterm.deck.open()");
+await until("!!document.querySelector('#deck .dstate')", "the state line");
+assert.equal(await evaluate("document.querySelector('#deck .dstate').textContent"), "Editing pty.rs", "the state is written in words");
+assert.match(await evaluate("document.querySelector('#deck .dcountall').textContent"), /^\d+$/, "the session count");
+// The filter narrows by title, and reports shown/total.
+await evaluate("(() => { const i = document.querySelector('#deck .dfilter input'); i.value = 'resolver'; i.dispatchEvent(new Event('input')); })()");
+await until("document.querySelectorAll('#deck .dcard').length >= 1", "the matching card stays");
+assert.match(await evaluate("document.querySelector('#deck .dcountall').textContent"), /^\d+\/\d+$/, "shown/total while filtering");
+await evaluate("(() => { const i = document.querySelector('#deck .dfilter input'); i.value = 'zzz-no-match'; i.dispatchEvent(new Event('input')); })()");
+await until("!document.querySelector('#deck .dempty').hidden", "the empty state for a filter with no hits");
+assert.match(await evaluate("document.querySelector('#deck .dempty').textContent"), /Nothing matches/, "the filter's own empty text");
+// Typing in the filter must not fire the deck's single-key verbs.
+await evaluate("(() => { const i = document.querySelector('#deck .dfilter input'); i.value = ''; i.dispatchEvent(new Event('input')); i.focus(); i.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD', key: 'd', bubbles: true, cancelable: true })); })()");
+await new Promise((r) => setTimeout(r, 200));
+assert.ok(await evaluate("window.obpterm.deck.isOpen"), "the deck survives typing d in the filter");
+await evaluate("window.obpterm.deck.close()");
+await evaluate("(() => { const p = window.obpterm.tab.active; p.agent.state = null; p.agent.detail = null; p.claudeTitle = null; window.obpterm.paint(); })()");
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");
