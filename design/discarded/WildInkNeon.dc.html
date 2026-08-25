@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #030405; color: #edf1f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .term { font: 12px/1.6 "JetBrains Mono", monospace; white-space: pre; color: #a9b4c6; overflow: hidden; }
+    /* structure is LINES of light, not boxes */
+    .hair { border: 0; border-top: 1px solid rgba(255,138,30,.22); }
+    .edge-v { width: 1px; background: linear-gradient(180deg, transparent, rgba(255,138,30,.35) 20%, rgba(255,138,30,.35) 80%, transparent); }
+    .edge-h { height: 1px; background: linear-gradient(90deg, transparent, rgba(255,138,30,.3) 15%, rgba(255,138,30,.3) 85%, transparent); }
+    .tabx { display: flex; align-items: baseline; gap: 10px; padding: 9px 4px; color: #5a6577; position: relative; }
+    .tabx .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-weight: 700; font-size: 14px; letter-spacing: -.01em; }
+    .tabx .s { font: 500 10px "JetBrains Mono", monospace; color: #3c4452; }
+    .tabx.on { color: #edf1f7; }
+    .tabx.on::after { content: ""; position: absolute; left: 0; right: 24px; bottom: 2px; height: 2px; border-radius: 999px;
+      background: linear-gradient(90deg, #ff8a1e, rgba(255,138,30,.1));
+      box-shadow: 0 2px 12px rgba(255,138,30,.55); }
+    .tabx.ask { color: #ffd9ae; }
+    .tabx.ask::before { content: ""; position: absolute; left: -14px; top: 50%; width: 6px; height: 6px; border-radius: 999px;
+      transform: translateY(-50%); background: #ff8a1e; box-shadow: 0 0 10px rgba(255,138,30,.9); }
+    .num { font: 500 10px "JetBrains Mono", monospace; color: #3c4452; width: 16px; flex: none; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: radial-gradient(900px 500px at 85% 110%, rgba(255,138,30,.05) 0%, transparent 60%), #030405; overflow: hidden">
+
+  <!-- header is a single line of light -->
+  <div style="flex: none; display: flex; align-items: center; gap: 16px; padding: 14px 22px 12px">
+    <span style="font: 800 13px 'Plus Jakarta Sans'; letter-spacing: .16em; color: #edf1f7">OBP<span style="color: #ff8a1e; text-shadow: 0 0 14px rgba(255,138,30,.7)">TERM</span></span>
+    <span style="font: 500 11px 'Plus Jakarta Sans'; color: #3c4452">Shell &nbsp; Panes &nbsp; Project &nbsp; View</span>
+    <span style="flex: 1"></span>
+    <span style="font: 600 10.5px 'JetBrains Mono', monospace; color: #5a6577">5h 22 &nbsp;·&nbsp; wk 41 &nbsp;·&nbsp; ctx 36 &nbsp;·&nbsp; <span style="color: #ff8a1e">2 waiting</span></span>
+  </div>
+  <div class="edge-h" style="flex: none; margin: 0 16px"></div>
+
+  <div style="flex: 1; display: flex; min-height: 0; padding: 8px 0 16px">
+
+    <!-- rail: pure typography. Names ARE the interface. -->
+    <div style="width: 264px; flex: none; display: flex; flex-direction: column; padding: 14px 10px 8px 36px; gap: 0">
+      <div class="tabx" style="padding-bottom: 12px">
+        <span class="t" style="font-size: 11px; letter-spacing: .12em; color: #ff8a1e; text-shadow: 0 0 10px rgba(255,138,30,.5)">AGENTS — 2 WAITING</span>
+      </div>
+      <div class="tabx on"><span class="num">1</span><span class="t">portal resolver</span><span class="s" style="color: #b07a3c">12m</span></div>
+      <div class="tabx ask"><span class="num">2</span><span class="t">ntfy tokens</span><span class="s" style="color: #ff8a1e">ask</span></div>
+      <div class="tabx"><span class="num">3</span><span class="t" style="color: #8b97a8">monitoring loop</span><span class="s">3m</span></div>
+      <div class="tabx"><span class="num">4</span><span class="t" style="color: #8b97a8">grading refactor</span><span class="s">41m</span></div>
+      <div class="tabx"><span class="num">5</span><span class="t" style="color: #8b97a8">reminder digest</span><span class="s">17m</span></div>
+      <div class="tabx"><span class="num">6</span><span class="t">brain backlinks</span><span class="s">done</span></div>
+      <div class="tabx"><span class="num">7</span><span class="t">tefas parser</span></div>
+      <div class="tabx"><span class="num">8</span><span class="t">ssh · vps</span></div>
+      <div class="tabx"><span class="num">9</span><span class="t">journal check</span><span class="s">zZ</span></div>
+      <div class="tabx"><span class="num">0</span><span class="t">pwsh</span></div>
+      <span style="flex: 1"></span>
+      <div class="tabx" style="color: #3c4452"><span class="t" style="font-size: 11.5px; font-weight: 600">+ tab &nbsp;·&nbsp; + worktree</span></div>
+    </div>
+
+    <div class="edge-v" style="flex: none; margin: 10px 0"></div>
+
+    <!-- panes: separated by light, not boxed -->
+    <div style="flex: 1; display: flex; min-width: 0">
+      <div style="flex: 1.5; display: flex; flex-direction: column; min-width: 0; padding: 10px 8px 0 22px">
+        <div style="display: flex; align-items: baseline; gap: 12px; padding-bottom: 10px">
+          <span style="font-weight: 800; font-size: 15px">portal resolver</span>
+          <span style="font: 500 10.5px 'JetBrains Mono', monospace; color: #5b82c9">wt/portal-fix</span>
+          <span style="font: 500 10.5px 'JetBrains Mono', monospace; color: #3c4452">+214 −38 · ctx 36%</span>
+          <span style="flex: 1"></span>
+          <span style="width: 46px; height: 3px; border-radius: 999px; background: rgba(140,160,190,.14); overflow: hidden"><i style="display: block; width: 36%; height: 100%; background: #ff8a1e; box-shadow: 0 0 8px rgba(255,138,30,.8); border-radius: 999px"></i></span>
+        </div>
+        <div class="term" style="flex: 1; font-size: 12.5px; color: #c3cddb">⏺ The runtime resolver pattern needs the variable
+  declared before the location block. Rewriting:
+
+    resolver 127.0.0.11 valid=10s;
+    set $upstream http://portal:3000;
+
+⏺ Editing nginx.conf… <span style="color: #37e0ab">✓</span>
+⏺ Running docker exec portal nginx -t
+  nginx: configuration file test is successful
+
+<span style="color: #3c4452">tests 6/6 green · rebuilding container…</span>
+
+<span style="color: #ff8a1e; text-shadow: 0 0 8px rgba(255,138,30,.9)">▊</span></div>
+      </div>
+
+      <div class="edge-v" style="flex: none; margin: 10px 0"></div>
+
+      <div style="flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 10px 18px 0 22px; gap: 0">
+        <div style="flex: 1; display: flex; flex-direction: column; min-height: 0">
+          <div style="display: flex; align-items: baseline; gap: 12px; padding-bottom: 8px">
+            <span style="font-weight: 700; font-size: 13px; color: #ffd9ae">ntfy tokens</span>
+            <span style="flex: 1"></span>
+            <span style="font: 700 10px 'JetBrains Mono', monospace; color: #ff8a1e; text-shadow: 0 0 8px rgba(255,138,30,.6)">⏸ ASKING</span>
+          </div>
+          <div class="term" style="flex: 1; font-size: 11.5px">⏺ I need to restart the ntfy container.
+
+<span style="color: #ffb454">Permission: docker restart ntfy
+  a allow · d deny · w always</span></div>
+        </div>
+        <div class="edge-h" style="flex: none; margin: 4px 0 12px"></div>
+        <div style="flex: 1; display: flex; flex-direction: column; min-height: 0">
+          <div style="display: flex; align-items: baseline; gap: 12px; padding-bottom: 8px">
+            <span style="font-weight: 700; font-size: 13px; color: #8b97a8">monitoring loop</span>
+            <span style="flex: 1"></span>
+            <span style="font: 600 10px 'JetBrains Mono', monospace; color: #37e0ab">working</span>
+          </div>
+          <div class="term" style="flex: 1; font-size: 11.5px">........................ <span style="color: #37e0ab">24 passed</span> in 8.41s
+<span style="color: #3c4452">PS></span> ▊</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

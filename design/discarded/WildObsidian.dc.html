@@ -1,0 +1,129 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #06080c; color: #e8edf5;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .term { font: 12px/1.6 "JetBrains Mono", monospace; white-space: pre; color: #aeb9cb; overflow: hidden; }
+    /* machined surface: top-lit bevel, inner depth */
+    .mill { background: linear-gradient(180deg, #131820 0%, #0d1118 100%);
+      border: 1px solid #05070a;
+      box-shadow: inset 0 1px 0 rgba(180,200,230,.09), inset 0 -1px 0 rgba(0,0,0,.6), 0 10px 30px rgba(0,0,0,.5); }
+    .well { background: #05070b;
+      box-shadow: inset 0 2px 8px rgba(0,0,0,.8), inset 0 1px 0 rgba(0,0,0,.9), inset 0 -1px 0 rgba(180,200,230,.05); }
+    .tab { display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 6px 12px;
+      border-radius: 10px; color: #79859a; font-size: 12.5px; }
+    .tab .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+    .tab .s { font: 500 10px "JetBrains Mono", monospace; color: #4a5568; }
+    /* the accent is LIGHT: it blooms and reflects */
+    .lit { background: linear-gradient(180deg, #1a1410 0%, #120d08 100%);
+      box-shadow: inset 0 1px 0 rgba(255,170,80,.25), inset 0 0 18px rgba(255,138,30,.14),
+        0 0 22px rgba(255,138,30,.18), 0 1px 0 rgba(0,0,0,.7);
+      border: 1px solid rgba(255,138,30,.35); color: #ffcf9e; }
+    .led { width: 7px; height: 7px; border-radius: 999px; flex: none; }
+    .led.amber { background: #ff9d36; box-shadow: 0 0 8px rgba(255,157,54,.9), 0 0 20px rgba(255,138,30,.4); }
+    .led.green { background: #37e0ab; box-shadow: 0 0 7px rgba(55,224,171,.8); }
+    .led.off { background: #232b38; box-shadow: inset 0 1px 2px rgba(0,0,0,.8); }
+    .grain { position: relative; }
+    .grain::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+      background-image: repeating-conic-gradient(rgba(255,255,255,.012) 0% .25%, transparent .25% .5%); }
+  </style>
+</helmet>
+
+<div class="grain" style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: radial-gradient(1400px 800px at 50% -10%, #0c1017 0%, #06080c 55%); overflow: hidden">
+
+  <!-- faceplate header -->
+  <div class="mill" style="flex: none; height: 42px; display: flex; align-items: center; gap: 14px; padding: 0 16px; border-radius: 0">
+    <div style="width: 18px; height: 18px; border-radius: 6px; background: #0a0d12; box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 0 10px rgba(255,138,30,.25); display: flex; align-items: center; justify-content: center">
+      <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="#ff9d36" stroke-width="3" stroke-linecap="round" style="filter: drop-shadow(0 0 3px rgba(255,157,54,.9))"><polyline points="8 6 14 12 8 18"/></svg>
+    </div>
+    <span style="font: 800 12px 'Plus Jakarta Sans'; letter-spacing: .12em; color: #8b97a8">OBPTERM</span>
+    <span style="font: 500 11px 'Plus Jakarta Sans'; color: #4a5568">Shell &nbsp; Panes &nbsp; Project &nbsp; View</span>
+    <span style="flex: 1"></span>
+    <span class="well" style="display: inline-flex; align-items: center; gap: 8px; padding: 5px 14px; border-radius: 999px; font: 600 10.5px 'JetBrains Mono', monospace; color: #79859a">5h 22% · wk 41% · ctx 36%</span>
+    <span class="well" style="padding: 5px 12px; border-radius: 999px; font: 600 10.5px 'JetBrains Mono', monospace; color: #4a5568">Ctrl+K</span>
+  </div>
+
+  <div style="flex: 1; display: flex; min-height: 0; padding: 12px; gap: 12px">
+
+    <!-- rail: a milled panel, LEDs as real lights -->
+    <div class="mill" style="width: 246px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 10px 8px; border-radius: 14px">
+      <div class="tab lit" style="min-height: 34px; margin-bottom: 6px">
+        <span style="width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 8px solid #ff9d36; filter: drop-shadow(0 0 4px rgba(255,157,54,.8))"></span>
+        <span class="t">Agents</span>
+        <span style="font: 700 10px 'JetBrains Mono', monospace; color: #ffcf9e">2 waiting</span>
+      </div>
+      <div class="tab lit"><span class="led amber"></span><span class="t">portal resolver</span><span class="s" style="color: #cf9a5c">12m</span></div>
+      <div class="tab"><span class="led amber"></span><span class="t" style="color: #d7dee9">ntfy tokens</span><span class="s" style="color: #ff9d36">asking</span></div>
+      <div class="tab"><span class="led green"></span><span class="t">monitoring loop</span><span class="s">3m</span></div>
+      <div class="tab"><span class="led green"></span><span class="t">grading refactor</span><span class="s">41m</span></div>
+      <div class="tab"><span class="led green"></span><span class="t">reminder digest</span><span class="s">17m</span></div>
+      <div class="tab"><span class="led off"></span><span class="t">brain backlinks</span><span class="s">done</span></div>
+      <div class="tab"><span class="led off"></span><span class="t">tefas parser</span><span class="s">idle</span></div>
+      <div class="tab"><span class="led off"></span><span class="t">ssh · vps</span></div>
+      <div class="tab"><span class="led off"></span><span class="t">journal check</span><span class="s">zZ</span></div>
+      <div class="tab"><span class="led off"></span><span class="t">pwsh</span></div>
+      <span style="flex: 1"></span>
+      <div class="well" style="display: flex; align-items: center; justify-content: center; gap: 12px; padding: 8px; border-radius: 10px; font: 600 10.5px 'Plus Jakarta Sans'; color: #4a5568">+ Tab &nbsp;·&nbsp; + Worktree</div>
+    </div>
+
+    <!-- panes: recessed glass wells in the faceplate -->
+    <div style="flex: 1; display: flex; gap: 12px; min-width: 0">
+      <div class="well" style="flex: 1.5; display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; box-shadow: inset 0 2px 10px rgba(0,0,0,.85), 0 0 0 1px rgba(255,138,30,.28), 0 0 30px rgba(255,138,30,.07)">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-bottom: 1px solid rgba(255,157,54,.14)">
+          <span style="font-weight: 700; color: #ffcf9e; text-shadow: 0 0 12px rgba(255,157,54,.4)">portal resolver</span>
+          <span style="font: 500 10.5px 'JetBrains Mono', monospace; color: #5b82c9">wt/portal-fix · +214 −38</span>
+          <span style="flex: 1"></span>
+          <span style="font: 600 10.5px 'JetBrains Mono', monospace; color: #4a5568">ctx 36% · 412 MB</span>
+        </div>
+        <div class="term" style="flex: 1; padding: 14px 18px; font-size: 12.5px">⏺ The runtime resolver pattern needs the variable
+  declared before the location block. Rewriting:
+
+    resolver 127.0.0.11 valid=10s;
+    set $upstream http://portal:3000;
+
+⏺ Editing nginx.conf… <span style="color: #37e0ab">✓</span>
+⏺ Running docker exec portal nginx -t
+  nginx: configuration file test is successful
+
+<span style="color: #4a5568">tests 6/6 green · rebuilding container…</span>
+
+<span style="color: #ff9d36; text-shadow: 0 0 8px rgba(255,157,54,.9)">▊</span></div>
+      </div>
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0">
+        <div class="well" style="flex: 1; display: flex; flex-direction: column; border-radius: 14px; overflow: hidden">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid rgba(140,160,190,.08)">
+            <span style="font-weight: 600; font-size: 12px; color: #aeb9cb">ntfy tokens</span>
+            <span style="flex: 1"></span>
+            <span class="led amber"></span>
+          </div>
+          <div class="term" style="flex: 1; padding: 12px 14px; font-size: 11.5px">⏺ I need to restart the ntfy container.
+
+<span style="color: #ffb454">Permission: docker restart ntfy
+  a allow · d deny · w always</span></div>
+        </div>
+        <div class="well" style="flex: 1; display: flex; flex-direction: column; border-radius: 14px; overflow: hidden">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid rgba(140,160,190,.08)">
+            <span style="font-weight: 600; font-size: 12px; color: #aeb9cb">monitoring loop</span>
+            <span style="flex: 1"></span>
+            <span class="led green"></span>
+          </div>
+          <div class="term" style="flex: 1; padding: 12px 14px; font-size: 11.5px">........................ <span style="color: #37e0ab">24 passed</span> in 8.41s
+<span style="color: #4a5568">PS></span> ▊</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

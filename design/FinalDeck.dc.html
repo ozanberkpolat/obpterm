@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .deck { display: flex; gap: 10px; padding: 12px; border-radius: 14px;
+      background: rgba(20,26,36,.5); border: 1px solid rgba(140,160,190,.14); }
+    .card { flex: 1; border: 1px solid rgba(140,160,190,.12); border-radius: 12px; min-width: 0;
+      background: linear-gradient(180deg, #141a24, #171e29); overflow: hidden; }
+    .card.hot { border-color: rgba(255,138,30,.55); }
+    .chead { display: flex; align-items: center; gap: 7px; padding: 8px 11px;
+      border-bottom: 1px solid rgba(140,160,190,.12); font-weight: 700; font-size: 11.5px; }
+    .chip { font: 600 9px "Plus Jakarta Sans"; text-transform: uppercase; letter-spacing: .06em;
+      padding: 2px 7px; border-radius: 999px; flex: none; }
+    .chip.o { background: rgba(255,138,30,.16); color: #ff8a1e; }
+    .chip.g { background: rgba(47,214,163,.14); color: #2fd6a3; }
+    .chip.b { background: rgba(76,141,255,.16); color: #4c8dff; }
+    .bar { display: flex; align-items: center; gap: 6px; padding: 9px 11px 11px; }
+    .bar .t { flex: 1; height: 4px; border-radius: 999px; background: rgba(140,160,190,.18); overflow: hidden; }
+    .bar .t i { display: block; height: 100%; border-radius: 999px; background: #2fd6a3; }
+    .h { font-weight: 800; font-size: 14px; }
+    .cap { font-size: 12px; color: #76879c; line-height: 1.6; }
+    .cap b { color: #eaf0f7; }
+
+    /* O2: stagger-in */
+    .stagger .card { opacity: 0; animation: enter 2.8s cubic-bezier(.2,.8,.3,1) infinite; }
+    .stagger .card:nth-child(2) { animation-delay: .09s; }
+    .stagger .card:nth-child(3) { animation-delay: .18s; }
+    @keyframes enter { 0% { opacity: 0; transform: translateY(14px) scale(.98); } 14%, 88% { opacity: 1; transform: none; } 100% { opacity: 1; } }
+
+    /* O3: stagger + choreography — knock on the hot card, ctx fills and morphs */
+    .o3 .card { opacity: 0; animation: enter 3.6s cubic-bezier(.2,.8,.3,1) infinite; }
+    .o3 .card:nth-child(2) { animation-delay: .09s; }
+    .o3 .card:nth-child(3) { animation-delay: .18s; }
+    .o3 .card.hot { animation: enter 3.6s cubic-bezier(.2,.8,.3,1) infinite, knock 3.6s ease-in-out infinite; }
+    @keyframes knock {
+      0%, 55%, 100% { transform: none; }
+      58% { transform: translateX(3px); } 61% { transform: translateX(0); }
+      64% { transform: translateX(3px); } 67% { transform: translateX(0); }
+    }
+    .o3 .bar .t i { width: 0; animation: fill 3.6s cubic-bezier(.2,.8,.2,1) infinite; }
+    .o3 .card.hot .bar .t i { animation-name: fillwarn; }
+    @keyframes fill { 0%, 12% { width: 0; } 40%, 100% { width: 34%; } }
+    @keyframes fillwarn { 0%, 12% { width: 0; background: #2fd6a3; } 30% { background: #2fd6a3; } 38% { background: #ffb454; } 42%, 100% { width: 84%; background: #ff6b73; } }
+  </style>
+</helmet>
+
+<div style="width: 1360px; height: 600px; background: #0a0e14; padding: 24px 30px; display: flex; flex-direction: column; gap: 16px">
+  <div style="display: flex; align-items: baseline; gap: 14px">
+    <span style="font-size: 17px; font-weight: 800">3 · Agent Deck (Ctrl+G)</span>
+    <span class="cap" style="max-width: 800px">How the deck arrives and how its cards speak. (Loops here so you can watch; in the app each plays once per open/event.)</span>
+  </div>
+
+  <div style="flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px; align-content: start">
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div><div class="h">O1 · Instant</div><div class="cap">The deck simply appears, cards already in place. <b>Fastest feel, zero theatre.</b></div></div>
+      <div class="deck">
+        <div class="card hot"><div class="chead"><span style="flex:1">ntfy tokens</span><span class="chip o">needs you</span></div><div class="bar"><span class="t"><i style="width:84%; background:#ff6b73"></i></span></div></div>
+        <div class="card"><div class="chead"><span style="flex:1">portal resolver</span><span class="chip g">working</span></div><div class="bar"><span class="t"><i style="width:34%"></i></span></div></div>
+        <div class="card"><div class="chead"><span style="flex:1">brain backlinks</span><span class="chip b">done</span></div><div class="bar"><span class="t"><i style="width:12%"></i></span></div></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div><div class="h">O2 · Stagger-in</div><div class="cap">Cards enter loudest-first at 90ms steps — the triage order is animated into you. Then still. <b>One flourish, then quiet.</b></div></div>
+      <div class="deck stagger">
+        <div class="card hot"><div class="chead"><span style="flex:1">ntfy tokens</span><span class="chip o">needs you</span></div><div class="bar"><span class="t"><i style="width:84%; background:#ff6b73"></i></span></div></div>
+        <div class="card"><div class="chead"><span style="flex:1">portal resolver</span><span class="chip g">working</span></div><div class="bar"><span class="t"><i style="width:34%"></i></span></div></div>
+        <div class="card"><div class="chead"><span style="flex:1">brain backlinks</span><span class="chip b">done</span></div><div class="bar"><span class="t"><i style="width:12%"></i></span></div></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div><div class="h">O3 · Choreographed</div><div class="cap">Stagger <b>plus</b>: ctx bars fill and morph green→amber→red, and the card that needs you <b>knocks</b> — the same word the rail speaks. <b>Richest read, one language everywhere.</b></div></div>
+      <div class="deck o3">
+        <div class="card hot"><div class="chead"><span style="flex:1">ntfy tokens</span><span class="chip o">needs you</span></div><div class="bar"><span class="t"><i></i></span></div></div>
+        <div class="card"><div class="chead"><span style="flex:1">portal resolver</span><span class="chip g">working</span></div><div class="bar"><span class="t"><i></i></span></div></div>
+        <div class="card"><div class="chead"><span style="flex:1">brain backlinks</span><span class="chip b">done</span></div><div class="bar"><span class="t"><i></i></span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

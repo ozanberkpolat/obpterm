@@ -650,11 +650,25 @@ export class App implements PaneHost {
     for (const p of L.panes(tab.root)) p.term.fit();
   }
 
+  /** The pane the sheen last acknowledged, so it plays once per focus change. */
+  private lastFocusPane: Pane | null = null;
+
   private paintFocus(tab: Tab) {
     const many = L.panes(tab.root).length > 1;
     for (const p of L.panes(tab.root)) {
       p.el.classList.toggle("focused", many && p === tab.active);
+      // While this pane's agent holds a question, its border light orbits until answered.
+      p.el.classList.toggle("asking", p.agent.state === "blocked" || p.agent.state === "waiting");
       p.el.style.setProperty("--pane-accent", this.accent(tab));
+    }
+    // One sweep of light when focus arrives somewhere new — acknowledged, then still.
+    if (tab.active !== this.lastFocusPane) {
+      this.lastFocusPane = tab.active;
+      const el = tab.active.el;
+      el.classList.remove("sheen");
+      void el.offsetWidth; // restart the animation when re-added
+      el.classList.add("sheen");
+      window.setTimeout(() => el.classList.remove("sheen"), 950);
     }
   }
 
@@ -768,6 +782,13 @@ export class App implements PaneHost {
     }
     renderRail(this);
     this.deck?.paint();
+    // The orbit rim must follow the agent state without a full repaint.
+    const tab = this.tab;
+    if (tab) {
+      for (const p of L.panes(tab.root)) {
+        p.el.classList.toggle("asking", p.agent.state === "blocked" || p.agent.state === "waiting");
+      }
+    }
   }
 
   /**

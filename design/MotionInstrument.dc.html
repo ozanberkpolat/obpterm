@@ -1,0 +1,116 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .tab { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 10px;
+      border-radius: 999px; color: #8b97a8; cursor: pointer;
+      transition: background .16s ease, transform .16s ease, color .16s ease; }
+    .tab:hover { background: rgba(140,160,190,.1); transform: translateX(2px); color: #eaf0f7; }
+    .tab.active { background: linear-gradient(135deg, #ffa23e, #ff8410); color: #04101f;
+      animation: settle .22s cubic-bezier(.2, .9, .3, 1.25); }
+    @keyframes settle { from { transform: scale(.965); } to { transform: scale(1); } }
+    .dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+    .dot.working { background: #2fd6a3; animation: breathe 2.4s ease-in-out infinite; }
+    @keyframes breathe { 50% { opacity: .45; transform: scale(.82); } }
+    .badge { font: 700 10.5px "JetBrains Mono", monospace; min-width: 20px; height: 18px;
+      display: inline-flex; align-items: center; justify-content: center; border-radius: 999px;
+      background: #ff8a1e; color: #04101f; overflow: hidden; }
+    .badge i { font-style: normal; display: block; animation: roll .3s cubic-bezier(.2,.8,.3,1); }
+    @keyframes roll { from { transform: translateY(90%); opacity: 0; } }
+    .card { border: 1px solid rgba(140,160,190,.12); border-radius: 14px; width: 300px;
+      background: linear-gradient(180deg, #141a24, #171e29); overflow: hidden; cursor: pointer;
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+    .card:hover { transform: translateY(-2px); border-color: rgba(255,138,30,.35);
+      box-shadow: 0 10px 28px rgba(0,0,0,.4); }
+    .chead { display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+      border-bottom: 1px solid rgba(140,160,190,.12); font-weight: 700; font-size: 12.5px; }
+    .chip { font: 600 9.5px "Plus Jakarta Sans"; text-transform: uppercase; letter-spacing: .06em;
+      padding: 2px 8px; border-radius: 999px; background: rgba(47,214,163,.14); color: #2fd6a3; }
+    .tail { padding: 10px 12px; font: 10.5px/1.6 "JetBrains Mono", monospace; color: #8b97a8;
+      background: #0a0e14; height: 64px; }
+    .prog { height: 3px; margin: 0 12px 10px; border-radius: 999px; background: rgba(140,160,190,.18); overflow: hidden; }
+    .prog i { display: block; height: 100%; width: 62%; border-radius: 999px;
+      background: linear-gradient(90deg, #ff8410, #ffa23e, #ff8410); background-size: 200% 100%;
+      animation: shimmer 1.8s linear 2; }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+    .spec { font-size: 12px; color: #76879c; line-height: 1.7; }
+    .spec b { color: #eaf0f7; }
+    .spec code { font: 11px "JetBrains Mono", monospace; color: #ffa23e; }
+    .replay { padding: 7px 18px; border-radius: 999px; border: 1px solid rgba(255,138,30,.5);
+      background: none; color: #ff8a1e; font: 700 12px "Plus Jakarta Sans"; cursor: pointer;
+      transition: background .16s ease; }
+    .replay:hover { background: rgba(255,138,30,.12); }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 780px; background: #0a0e14; padding: 26px 30px; display: flex; flex-direction: column; gap: 18px">
+
+  <div style="display: flex; align-items: baseline; gap: 14px">
+    <span style="font-size: 18px; font-weight: 800">A · Instrument</span>
+    <span class="spec" style="max-width: 640px">Micro-motion only. Every control answers the hand in under 220ms; the only perpetual motion is a working agent breathing. The app never moves unless you or an agent did.</span>
+    <span style="flex: 1"></span>
+    <button class="replay" onClick="{{ replay }}">Replay</button>
+  </div>
+
+  <sc-if value="{{ playing }}" hint-placeholder-val="{{ true }}">
+  <div style="display: flex; gap: 40px; align-items: flex-start">
+    <div style="width: 232px; display: flex; flex-direction: column; gap: 3px; padding: 10px 8px; background: linear-gradient(180deg, #141a24, #0e131c); border: 1px solid rgba(140,160,190,.12); border-radius: 14px">
+      <div style="display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 5px 10px; color: #8b97a8">
+        <span style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 9px solid #ff8a1e"></span>
+        <span style="font-weight: 700; color: #eaf0f7; flex: 1">Agents</span>
+        <span class="badge"><i>2</i></span>
+      </div>
+      <div class="tab active"><span class="dot" style="background: #04101f"></span><span style="font-weight: 600">claude · deck</span></div>
+      <div class="tab"><span class="dot working"></span><span>invest refactor</span></div>
+      <div class="tab"><span class="dot working" style="animation-delay: .8s"></span><span>keep tests</span></div>
+      <div class="tab"><span class="dot" style="background: #4c8dff"></span><span>docs sweep</span></div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span style="flex: 1">invest refactor</span><span class="chip">working · 12m</span></div>
+      <div class="tail">⏺ Rewriting the grading loop…
+  tests 14/22 green</div>
+      <div class="prog"><i></i></div>
+    </div>
+
+    <div class="spec" style="width: 380px">
+      <b>The rules</b><br>
+      Hover: <code>160ms ease</code>, 2px nudge — the row leans toward the click.<br>
+      Activate: <code>220ms cubic-bezier(.2,.9,.3,1.25)</code> — a settle, not a bounce.<br>
+      Badge count: digits <b>roll in</b> from below on change, <code>300ms</code>.<br>
+      Working dot: <b>breathes</b> at 2.4s — the one perpetual motion, per the working state only. Idle stays perfectly still.<br>
+      Progress: shimmer sweeps <b>twice on change</b>, then holds still.<br>
+      Deck card hover: 2px lift + shadow, <code>180ms</code>.<br><br>
+      <b>Tradeoff:</b> the quietest option — premium restraint, no theatre. Nothing to show off in a screenshot.
+    </div>
+  </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      playing: this.state.playing !== false,
+      replay: () => {
+        this.setState({ playing: false });
+        setTimeout(() => this.setState({ playing: true }), 60);
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

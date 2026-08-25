@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .mono { font-family: "JetBrains Mono", monospace; }
+    .row { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 4px 8px;
+      border-radius: 999px; color: #8b97a8; font-size: 12px; }
+    .row .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+    .row .m { font: 500 9.5px "JetBrains Mono", monospace; color: #5b6878; flex: none; }
+    .dot { width: 7px; height: 7px; border-radius: 999px; flex: none; }
+    .ghead { display: flex; align-items: center; gap: 7px; padding: 3px 8px; font: 700 10px "Plus Jakarta Sans";
+      text-transform: uppercase; letter-spacing: .07em; color: #5b6878; }
+    .term { font: 11.5px/1.55 "JetBrains Mono", monospace; white-space: pre; color: #aab6c8; overflow: hidden; }
+    .pframe { display: flex; flex-direction: column; border: 1px solid rgba(140,160,190,.12); border-radius: 10px;
+      background: #0a0e14; overflow: hidden; min-width: 0; }
+    .pstrip { display: flex; align-items: center; gap: 8px; padding: 4px 10px; flex: none;
+      background: rgba(20,26,36,.7); border-bottom: 1px solid rgba(140,160,190,.1);
+      font: 500 10px "JetBrains Mono", monospace; color: #5b6878; }
+    .pstrip .br { color: #4c8dff; }
+    .microbar { width: 40px; height: 3px; border-radius: 999px; background: rgba(140,160,190,.2); overflow: hidden; }
+    .microbar i { display: block; height: 100%; border-radius: 999px; }
+    .g { display: flex; align-items: center; gap: 4px; font: 600 9.5px "JetBrains Mono", monospace; color: #76879c; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #0a0e14; overflow: hidden">
+
+  <!-- slim header: 30px, menus fold into one glyph until hover -->
+  <div style="flex: none; height: 30px; display: flex; align-items: center; gap: 10px; padding: 0 10px; background: #0e131c; border-bottom: 1px solid rgba(140,160,190,.1)">
+    <div style="width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid #ff8a1e; display: flex; align-items: center; justify-content: center">
+      <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#ff8a1e" stroke-width="3" stroke-linecap="round"><polyline points="8 6 14 12 8 18"/></svg>
+    </div>
+    <span style="font: 800 10.5px 'Plus Jakarta Sans'; letter-spacing: .05em; color: #76879c">OBPTERM</span>
+    <span class="mono" style="font-size: 10px; color: #3d4654">Shell · Panes · Project · View</span>
+    <span style="flex: 1"></span>
+    <span class="g"><span class="microbar"><i style="width: 22%; background: #2fd6a3"></i></span>5h 22%</span>
+    <span class="g"><span class="microbar"><i style="width: 41%; background: #2fd6a3"></i></span>wk 41%</span>
+    <span class="mono" style="font-size: 10px; color: #5b6878">Ctrl+K</span>
+  </div>
+
+  <div style="flex: 1; display: flex; min-height: 0">
+
+    <!-- rail: every row is an instrument line — state · name · time · diffstat -->
+    <div style="width: 248px; flex: none; display: flex; flex-direction: column; background: linear-gradient(180deg, #10151e, #0c1119); border-right: 1px solid rgba(140,160,190,.12); padding: 8px 6px; gap: 2px">
+      <div class="row" style="background: rgba(255,138,30,.1); box-shadow: inset 0 0 0 1px rgba(255,138,30,.3); min-height: 30px">
+        <span style="width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 8px solid #ff8a1e"></span>
+        <span class="t" style="color: #eaf0f7">Agents</span>
+        <span class="m">4 wk</span>
+        <span style="font: 700 10px 'JetBrains Mono', monospace; background: #ff8a1e; color: #04101f; min-width: 18px; height: 16px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center">2</span>
+      </div>
+      <div class="ghead"><span class="dot" style="background: #4c8dff"></span>iot-stack<span style="flex: 1"></span>5</div>
+      <div class="row" style="background: linear-gradient(135deg, #ffa23e, #ff8410); color: #04101f">
+        <span class="dot" style="background: #04101f"></span><span class="t">portal resolver</span><span class="m" style="color: rgba(4,16,31,.6)">12m · +214 −38</span>
+      </div>
+      <div class="row"><span class="dot" style="background: #ff8a1e; box-shadow: 0 0 6px rgba(255,138,30,.8)"></span><span class="t" style="color: #eaf0f7">ntfy tokens</span><span class="m" style="color: #ff8a1e">needs you</span></div>
+      <div class="row"><span class="dot" style="background: #2fd6a3"></span><span class="t">monitoring loop</span><span class="m">3m · +12 −4</span></div>
+      <div class="row"><span class="dot" style="background: #4c8dff"></span><span class="t">brain backlinks</span><span class="m">done · ±0</span></div>
+      <div class="row"><span class="dot" style="background: #3d4654"></span><span class="t">ssh · vps</span><span class="m">idle</span></div>
+      <div class="ghead"><span class="dot" style="background: #2fd6a3"></span>invest<span style="flex: 1"></span>3</div>
+      <div class="row"><span class="dot" style="background: #2fd6a3"></span><span class="t">grading refactor</span><span class="m">41m · +580 −102</span></div>
+      <div class="row"><span class="dot" style="background: #2fd6a3"></span><span class="t">tefas parser</span><span class="m">8m · +44 −9</span></div>
+      <div class="row"><span class="dot" style="background: #76879c"></span><span class="t">journal check</span><span class="m">sleeping</span></div>
+      <div class="ghead"><span class="dot" style="background: #b48cff"></span>keep<span style="flex: 1"></span>2</div>
+      <div class="row"><span class="dot" style="background: #2fd6a3"></span><span class="t">reminder digest</span><span class="m">17m · +96 −31</span></div>
+      <div class="row"><span class="dot" style="background: #3d4654"></span><span class="t">pwsh</span><span class="m">idle</span></div>
+      <span style="flex: 1"></span>
+      <div class="row" style="min-height: 26px"><span class="m" style="color: #3d4654">+ Tab · + Project · + Worktree</span></div>
+    </div>
+
+    <!-- panes: every frame carries its own instrument strip -->
+    <div style="flex: 1; display: flex; gap: 6px; padding: 6px; min-width: 0">
+      <div class="pframe" style="flex: 1.4; box-shadow: inset 0 0 0 1px rgba(255,138,30,.35)">
+        <div class="pstrip">
+          <span style="color: #ffa23e">claude · portal resolver</span>
+          <span class="br">wt/portal-fix</span>
+          <span>~/iot-stack-portal-fix</span>
+          <span style="flex: 1"></span>
+          <span class="g">ctx <span class="microbar"><i style="width: 36%; background: #2fd6a3"></i></span>36%</span>
+          <span class="g">412 MB</span>
+        </div>
+        <div class="term" style="flex: 1; padding: 10px 12px">⏺ The runtime resolver pattern needs the variable
+  declared before the location block. Rewriting:
+
+    resolver 127.0.0.11 valid=10s;
+    set $upstream http://portal:3000;
+
+⏺ Editing nginx.conf… <span style="color: #2fd6a3">✓</span>
+⏺ Running docker exec portal nginx -t
+  nginx: configuration file test is successful
+
+<span style="color: #76879c">tests 6/6 green · rebuilding container…</span>
+<span style="color: #ff8a1e">▊</span></div>
+      </div>
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0">
+        <div class="pframe" style="flex: 1">
+          <div class="pstrip"><span>claude · ntfy tokens</span><span class="br">master</span><span style="flex: 1"></span><span class="g" style="color: #ff8a1e">⏸ permission</span></div>
+          <div class="term" style="flex: 1; padding: 10px 12px">⏺ I need to restart the ntfy container to
+  apply the new ACL.
+
+<span style="color: #ffb454">Permission: docker restart ntfy
+  a · allow    d · deny    w · always</span></div>
+        </div>
+        <div class="pframe" style="flex: 1">
+          <div class="pstrip"><span>pwsh · monitoring loop</span><span style="flex: 1"></span><span class="g">62%</span></div>
+          <div class="term" style="flex: 1; padding: 10px 12px"><span style="color: #5b6878">PS C:\OBP\iot-stack></span> python -m pytest -q
+........................ <span style="color: #2fd6a3">24 passed</span> in 8.41s
+<span style="color: #5b6878">PS C:\OBP\iot-stack></span> ▊</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- status: one dense instrument row -->
+  <div style="flex: none; height: 26px; display: flex; align-items: center; gap: 14px; padding: 0 12px; background: #0e131c; border-top: 1px solid rgba(140,160,190,.1); font: 500 10px 'JetBrains Mono', monospace; color: #5b6878">
+    <span style="color: #76879c">obp@main</span>
+    <span class="g">ctx <span class="microbar"><i style="width: 36%; background: #2fd6a3"></i></span></span>
+    <span class="g">cpu <span class="microbar"><i style="width: 31%; background: #4c8dff"></i></span></span>
+    <span class="g">ram <span class="microbar"><i style="width: 72%; background: #ffb454"></i></span></span>
+    <span style="flex: 1"></span>
+    <span>☕ awake</span><span>2 asleep</span><span style="color: #76879c">v0.17.0</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
