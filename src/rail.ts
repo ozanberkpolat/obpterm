@@ -1,7 +1,6 @@
 // The vertical rail: tabs grouped by project, each group in its own colour, each row carrying
 // what its shell is doing. Rows are cached per tab and patched in place — a rebuild on every
 // title and cwd report would throw away an open rename and churn thirty rows a second.
-import { ACTIVE_MS } from "./pane";
 import { isDangerous } from "./agent";
 import type { Activity, App, Tab } from "./app";
 import { COLORS, openMenu } from "./menu";
@@ -132,7 +131,6 @@ function rowFor(app: App, tab: Tab): Row {
   li.innerHTML =
     `<span class="num"></span>` +
     `<span class="label"><span class="title"></span><span class="sub"></span></span>` +
-    `<span class="eq" hidden title="printing right now"><i></i><i></i><i></i></span>` +
     `<span class="badge" hidden></span><span class="rec" hidden title="capturing to a log file">●</span>` +
     `<span class="st"></span>` +
     `<button class="close" title="Close this tab (Ctrl+Shift+Q)">×</button>`;
@@ -198,18 +196,14 @@ function patchRow(app: App, tab: Tab) {
   set(row.badge, panes.length > 1 ? String(panes.length) : "");
   row.rec.hidden = !panes.some((p) => p.logPath);
   // The motion language: one word per row, priority ordered, and stillness is a state too.
-  const now = Date.now();
   const motion = panes.some((p) => p.agent.state === "blocked" && isDangerous(p.agent))
     ? "danger"
     : state === "bell"
       ? "ask"
-      : panes.some((p) => !p.asleep && !p.exited && now - p.lastOutput < ACTIVE_MS)
-        ? "printing"
-        : panes.some((p) => p.agent.state === "working")
-          ? "working"
-          : "still";
+      : panes.some((p) => p.agent.state === "working")
+        ? "working"
+        : "still";
   if (row.li.dataset.motion !== motion) row.li.dataset.motion = motion;
-  row.li.querySelector<HTMLElement>(".eq")!.hidden = motion !== "printing";
   // OSC 9;4 progress, parsed for a long time and finally drawn: a sliver along the row's foot.
   const progress = panes.map((p) => p.progress).find((v) => v !== null) ?? null;
   row.li.classList.toggle("has-prog", progress !== null);
