@@ -810,6 +810,51 @@ await evaluate("void window.obpterm.status.checkUpdates(true)");
 await until("document.querySelector('#update-chip').textContent === 'Update to 99.0.0'", "a found update changes the chip");
 await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.querySelector('#update-chip').classList.remove('has-update'); window.obpterm.config.update_repo = null; })()");
 
+
+// ---- v0.17.0: the motion language ---------------------------------------------------------
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const injectDev = (update) =>
+    new Promise((r) => {
+      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
+      setTimeout(r, 150);
+    });
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; }), window.obpterm.paint()");
+  await evaluate("void window.obpterm.newTab()");
+  await until("window.obpterm.tabs.length >= 2", "a tab for motion");
+  const mPane = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])"); // unfocused, or blocked injects auto-pass and clear the pending id
+  const row = `document.querySelectorAll('#rail-body .tab')[1]`;
+
+  // working, not printing: sonar state on the row
+  await injectDev({ pane: mPane, state: "working", session_id: "sess-m", detail: "Thinking", pending_id: null, options: [] });
+  await evaluate(`(() => { const p = window.obpterm.panesOf(window.obpterm.tabs[1])[0]; p.lastOutput = Date.now() - 10000; window.obpterm.paint(); })()`);
+  await until(`${row}?.dataset.motion === 'working'`, "the working motion word");
+  // fresh bytes: printing, the meter shows
+  await evaluate(`(() => { const p = window.obpterm.panesOf(window.obpterm.tabs[1])[0]; p.lastOutput = Date.now(); window.obpterm.paint(); })()`);
+  await until(`${row}?.dataset.motion === 'printing' && !${row}.querySelector('.eq').hidden`, "the printing meter");
+  // a benign ask: the knock
+  await injectDev({ pane: mPane, state: "blocked", session_id: "sess-m", detail: "Running npm test", pending_id: "p-170", options: [], tool: "Bash", tool_input: "npm test" });
+  await evaluate(`(() => { const p = window.obpterm.panesOf(window.obpterm.tabs[1])[0]; p.lastOutput = Date.now() - 10000; window.obpterm.paint(); })()`);
+  await until(`${row}?.dataset.motion === 'ask'`, "the knock word");
+  // a dangerous ask: the red word
+  await injectDev({ pane: mPane, state: "blocked", session_id: "sess-m", detail: "Running rm -rf build", pending_id: "p-171", options: [], tool: "Bash", tool_input: "rm -rf build" });
+  await until(`${row}?.dataset.motion === 'danger'`, "the danger word");
+
+  // the orbit rim on the asking pane in the CURRENT tab, and the sheen on focus arrival
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[1])");
+  await until("!!document.querySelector('.pane.asking')", "the orbit rim while asking");
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[1])");
+  assert.ok(await evaluate("!!document.querySelector('.pane.sheen')"), "the sheen acknowledges the focus change");
+  await evaluate(`void window.obpterm.answerAgent(window.obpterm.panesOf(window.obpterm.tabs[1])[0], true)`); // allow -> working; deny would leave it waiting (still asking)
+  await until("document.querySelector('.pane.asking') === null", "the rim gone once answered");
+
+  await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
+  devWs.close();
+}
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

@@ -15,6 +15,18 @@
     {
       "id": "page-4",
       "name": "Agent pane \u00b7 directions"
+    },
+    {
+      "id": "page-5",
+      "name": "Motion \u00b7 directions"
+    },
+    {
+      "id": "page-8",
+      "name": "Tab motion \u00b7 the language"
+    },
+    {
+      "id": "page-9",
+      "name": "FINAL \u00b7 pick one per row"
     }
   ],
   "artboards": [
@@ -134,6 +146,65 @@
       "h": 640,
       "page": "page-4",
       "title": "Agents entry \u00b7 rail badge"
+    },
+    {
+      "file": "MotionInstrument.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1180,
+      "h": 780,
+      "page": "page-5"
+    },
+    {
+      "file": "MotionSignal.dc.html",
+      "x": 0,
+      "y": 900,
+      "w": 1180,
+      "h": 780,
+      "page": "page-5"
+    },
+    {
+      "file": "MotionAurora.dc.html",
+      "x": 0,
+      "y": 1800,
+      "w": 1180,
+      "h": 780,
+      "page": "page-5"
+    },
+    {
+      "file": "TabMotion.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1360,
+      "h": 860,
+      "page": "page-8"
+    },
+    {
+      "file": "FinalTabs.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1360,
+      "h": 620,
+      "page": "page-9",
+      "title": "1 \u00b7 Tab rows"
+    },
+    {
+      "file": "FinalPane.dc.html",
+      "x": 0,
+      "y": 750,
+      "w": 1360,
+      "h": 560,
+      "page": "page-9",
+      "title": "2 \u00b7 Focused pane"
+    },
+    {
+      "file": "FinalDeck.dc.html",
+      "x": 0,
+      "y": 1440,
+      "w": 1360,
+      "h": 600,
+      "page": "page-9",
+      "title": "3 \u00b7 Agent Deck"
     }
   ],
   "annotations": [
@@ -208,10 +279,26 @@
       "y": -130,
       "w": 520,
       "text": "They compose: B is the home, C is the motion (Ctrl+J works from anywhere), A is the glanceable summary that stays when the Deck tab is not open.\n\nIf you want one: build B, add C in the same release (it is the same data with a different frame), skip A."
+    },
+    {
+      "id": "motion-take",
+      "x": 1260,
+      "y": 40,
+      "w": 300,
+      "page": "page-5",
+      "text": "The pick, honestly:\nA is the safe premium floor. B is the one that makes 10-agent supervision FEEL better, not just look better. C photographs best but fights the flat Sentinel doctrine.\n\nA + B compose: ship A's micro-motion as the base layer and B's event choreography on top. C's sheen could be borrowed as a one-off for tab activation only.\n\nEach board has a Replay button \u2014 hover things too."
+    },
+    {
+      "id": "final-take",
+      "x": 1440,
+      "y": 40,
+      "w": 300,
+      "page": "page-9",
+      "text": "The decision page. Three rows, three options each \u2014 answer with one per row, e.g. \"O2 / O2 / O3\".\n\nMy recommendation: O2 / O2 / O3 \u2014 the tab language, sheen-on-focus, choreographed deck. One consistent vocabulary (the knock means the same thing in the rail and the deck), one-shot flourishes everywhere else, idle stays perfectly still.\n\nEverything here keeps the current layout, projects, colors and the bottom bar untouched. All animations are transform/opacity \u2014 cheap at 10 live tabs.\n\n(The earlier exploration pages for motion and agent views remain in the page menu for reference; the front-page directions were discarded as requested.)"
     }
   ],
   "launch": {
     "view": "canvas",
-    "page": "page-4"
+    "page": "page-9"
   }
 }

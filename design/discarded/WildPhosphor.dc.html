@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #05070a; color: #e8edf5;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    /* phosphor glass: glow text, scanline veil, curved bezel */
+    .glass { position: relative; background: radial-gradient(120% 130% at 50% 0%, #0c1208 0%, #070a06 60%);
+      border-radius: 16px; border: 1px solid #1a2013;
+      box-shadow: inset 0 0 40px rgba(0,0,0,.7), inset 0 0 4px rgba(180,255,140,.05), 0 8px 30px rgba(0,0,0,.6); }
+    .glass.amber { background: radial-gradient(120% 130% at 50% 0%, #14100a 0%, #0a0806 60%); border-color: #241a10; }
+    .glass::after { content: ""; position: absolute; inset: 0; border-radius: 16px; pointer-events: none;
+      background: repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px); }
+    .glass::before { content: ""; position: absolute; inset: 0; border-radius: 16px; pointer-events: none;
+      background: linear-gradient(165deg, rgba(255,255,255,.05) 0%, transparent 24%); }
+    .term { font: 12px/1.62 "JetBrains Mono", monospace; white-space: pre; overflow: hidden; }
+    .p-green { color: #9ee88a; text-shadow: 0 0 6px rgba(140,230,110,.45); }
+    .p-amber { color: #ffb35c; text-shadow: 0 0 7px rgba(255,160,60,.5); }
+    .p-dim { color: #55684d; }
+    .tab { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 6px 11px;
+      border-radius: 999px; color: #6d7a8c; font-size: 12.5px; }
+    .tab .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600;
+      font-family: "JetBrains Mono", monospace; font-size: 11.5px; letter-spacing: .01em; }
+    .tab .s { font: 500 10px "JetBrains Mono", monospace; color: #46525f; }
+    .neon { color: #ffb35c; text-shadow: 0 0 8px rgba(255,160,60,.7); }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: linear-gradient(180deg, #080b10 0%, #05070a 100%); overflow: hidden">
+
+  <div style="flex: none; height: 40px; display: flex; align-items: center; gap: 14px; padding: 0 18px; border-bottom: 1px solid rgba(255,160,60,.12)">
+    <span class="neon" style="font: 700 13px 'JetBrains Mono', monospace">▲ OBPTERM</span>
+    <span style="font: 500 11px 'JetBrains Mono', monospace; color: #46525f">SHELL · PANES · PROJECT · VIEW</span>
+    <span style="flex: 1"></span>
+    <span style="font: 600 11px 'JetBrains Mono', monospace; color: #6d7a8c">5H <span class="p-green">▮▮▯▯▯▯▯▯</span> 22% &nbsp; WK <span class="p-green">▮▮▮▯▯▯▯</span> 41%</span>
+  </div>
+
+  <div style="flex: 1; display: flex; min-height: 0; padding: 14px; gap: 14px">
+
+    <!-- rail: backlit index card -->
+    <div style="width: 244px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 10px 8px; background: #090c11; border: 1px solid rgba(255,160,60,.1); border-radius: 16px">
+      <div class="tab" style="border: 1px solid rgba(255,160,60,.4); box-shadow: 0 0 16px rgba(255,160,60,.12), inset 0 0 12px rgba(255,160,60,.06); margin-bottom: 6px">
+        <span class="neon" style="font-size: 11px">▲</span>
+        <span class="t neon">AGENTS</span>
+        <span class="s neon">2 WAITING</span>
+      </div>
+      <div class="tab" style="background: rgba(255,160,60,.1)"><span class="p-amber">●</span><span class="t" style="color: #ffd9a8">portal-resolver</span><span class="s" style="color: #b07a3c">12m</span></div>
+      <div class="tab"><span class="p-amber" style="animation: none">◐</span><span class="t" style="color: #c3cddb">ntfy-tokens</span><span class="s neon">ASK</span></div>
+      <div class="tab"><span class="p-green">●</span><span class="t">monitoring-loop</span><span class="s">3m</span></div>
+      <div class="tab"><span class="p-green">●</span><span class="t">grading-refactor</span><span class="s">41m</span></div>
+      <div class="tab"><span class="p-green">●</span><span class="t">reminder-digest</span><span class="s">17m</span></div>
+      <div class="tab"><span class="p-dim">○</span><span class="t" style="color: #55684d">brain-backlinks</span><span class="s">done</span></div>
+      <div class="tab"><span class="p-dim">○</span><span class="t" style="color: #55684d">tefas-parser</span></div>
+      <div class="tab"><span class="p-dim">○</span><span class="t" style="color: #55684d">ssh-vps</span></div>
+      <div class="tab"><span class="p-dim">◌</span><span class="t" style="color: #55684d">journal-check</span><span class="s">zZ</span></div>
+      <div class="tab"><span class="p-dim">○</span><span class="t" style="color: #55684d">pwsh</span></div>
+      <span style="flex: 1"></span>
+      <div class="tab" style="justify-content: center; border: 1px dashed rgba(255,160,60,.2)"><span class="s" style="color: #6d7a8c">+ TAB · + WORKTREE</span></div>
+    </div>
+
+    <!-- panes: real phosphor tubes. Focused = amber tube, others green -->
+    <div style="flex: 1; display: flex; gap: 14px; min-width: 0">
+      <div class="glass amber" style="flex: 1.5; display: flex; flex-direction: column; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-bottom: 1px solid rgba(255,160,60,.15); position: relative; z-index: 1">
+          <span class="p-amber" style="font: 700 12px 'JetBrains Mono', monospace">PORTAL-RESOLVER</span>
+          <span style="font: 500 10.5px 'JetBrains Mono', monospace; color: #7a6a4a">wt/portal-fix +214 −38</span>
+          <span style="flex: 1"></span>
+          <span style="font: 600 10.5px 'JetBrains Mono', monospace; color: #7a6a4a">CTX 36%</span>
+        </div>
+        <div class="term p-amber" style="flex: 1; padding: 16px 20px; position: relative; z-index: 1; font-size: 12.5px">⏺ The runtime resolver pattern needs the variable
+  declared before the location block. Rewriting:
+
+    resolver 127.0.0.11 valid=10s;
+    set $upstream http://portal:3000;
+
+⏺ Editing nginx.conf… ✓
+⏺ Running docker exec portal nginx -t
+  nginx: configuration file test is successful
+
+<span style="color: #7a6a4a; text-shadow: none">tests 6/6 green · rebuilding container…</span>
+
+▊</div>
+      </div>
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 14px; min-width: 0">
+        <div class="glass" style="flex: 1; display: flex; flex-direction: column; overflow: hidden">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-bottom: 1px solid rgba(140,230,110,.12); position: relative; z-index: 1">
+            <span class="p-green" style="font: 700 11px 'JetBrains Mono', monospace">NTFY-TOKENS</span>
+            <span style="flex: 1"></span>
+            <span class="neon" style="font: 700 10px 'JetBrains Mono', monospace">⏸ ASKING</span>
+          </div>
+          <div class="term p-green" style="flex: 1; padding: 12px 16px; position: relative; z-index: 1; font-size: 11.5px">⏺ I need to restart the ntfy container.
+
+<span class="p-amber">PERMISSION: docker restart ntfy
+  a allow · d deny · w always</span></div>
+        </div>
+        <div class="glass" style="flex: 1; display: flex; flex-direction: column; overflow: hidden">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-bottom: 1px solid rgba(140,230,110,.12); position: relative; z-index: 1">
+            <span class="p-green" style="font: 700 11px 'JetBrains Mono', monospace">MONITORING-LOOP</span>
+            <span style="flex: 1"></span>
+            <span class="p-green" style="font: 600 10px 'JetBrains Mono', monospace">RUN</span>
+          </div>
+          <div class="term p-green" style="flex: 1; padding: 12px 16px; position: relative; z-index: 1; font-size: 11.5px">........................ 24 passed in 8.41s
+<span class="p-dim">PS></span> ▊</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

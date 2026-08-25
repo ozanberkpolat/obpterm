@@ -1,0 +1,168 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+
+    /* ---- the rail exactly as it is today ---- */
+    .tab { display: flex; align-items: center; gap: 8px; min-height: 40px;
+      padding: 6px 8px 6px 10px; border-radius: 999px; color: #8b97a8; position: relative; }
+    .tab .label { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; flex: 1; }
+    .tab .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #eaf0f7; }
+    .tab .sub { font-size: 11px; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ghead { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 10px;
+      color: #8b97a8; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    .gdot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+    .glist { display: flex; flex-direction: column; gap: 3px; margin-left: 13px; padding-left: 6px; }
+    .st { width: 9px; height: 9px; border-radius: 999px; flex: none; position: relative; }
+
+    /* ---- THE MOTION LANGUAGE — one signature per state, nothing else moves ---- */
+
+    /* WORKING: sonar. A ring leaves the dot every 2.4s — the engine is turning. */
+    .st.working { background: #2fd6a3; }
+    .st.working::after { content: ""; position: absolute; inset: -1px; border-radius: 999px;
+      border: 1.5px solid #2fd6a3; animation: sonar 2.4s ease-out infinite; }
+    @keyframes sonar { from { transform: scale(1); opacity: .8; } to { transform: scale(2.6); opacity: 0; } }
+
+    /* PRINTING: a 3-bar meter next to the name — bytes are flowing right now. */
+    .eq { display: inline-flex; align-items: flex-end; gap: 1.5px; height: 10px; flex: none; }
+    .eq i { width: 2.5px; border-radius: 999px; background: #2fd6a3; animation: eq .8s ease-in-out infinite; }
+    .eq i:nth-child(1) { height: 5px; }
+    .eq i:nth-child(2) { height: 9px; animation-delay: .15s; }
+    .eq i:nth-child(3) { height: 6px; animation-delay: .3s; }
+    @keyframes eq { 50% { transform: scaleY(.4); } }
+
+    /* NEEDS YOU: the knock. Two taps, then a polite 3.5s rest, again. Unmistakable rhythm. */
+    .tab.ask { color: #eaf0f7; }
+    .tab.ask .st { background: #ff8a1e; box-shadow: 0 0 8px rgba(255,138,30,.8); }
+    .tab.ask { animation: knock 4s ease-in-out infinite; }
+    @keyframes knock {
+      0%, 88%, 100% { transform: translateX(0); }
+      90% { transform: translateX(3px); } 92% { transform: translateX(0); }
+      94% { transform: translateX(3px); } 96% { transform: translateX(0); }
+    }
+    .tab.ask::before { content: ""; position: absolute; inset: 0; border-radius: 999px;
+      box-shadow: inset 0 0 0 1px rgba(255,138,30,.45); animation: askglow 4s ease-in-out infinite; }
+    @keyframes askglow { 0%, 84%, 100% { opacity: .5; } 90% { opacity: 1; } }
+
+    /* DANGER ASK: a sharp red double-blink every 3s — different pulse, different color. */
+    .tab.danger::before { content: ""; position: absolute; inset: 0; border-radius: 999px;
+      box-shadow: inset 0 0 0 1.5px rgba(255,107,115,.7); animation: blink 3s linear infinite; }
+    .tab.danger .st { background: #ff6b73; box-shadow: 0 0 8px rgba(255,107,115,.9); }
+    @keyframes blink { 0%, 8%, 16%, 100% { opacity: .45; } 4%, 12% { opacity: 1; } }
+
+    /* DONE, UNREAD: one soft pop when it lands, then a still blue dot. Done is calm. */
+    .st.done { background: #4c8dff; animation: pop .5s cubic-bezier(.2,.9,.3,1.4) 1; }
+    @keyframes pop { from { transform: scale(0); } 70% { transform: scale(1.35); } to { transform: scale(1); } }
+
+    /* PROGRESS: the sliver under the row fills — position IS the message. Already shipped. */
+    .prog { position: absolute; left: 10px; right: 10px; bottom: 2px; height: 2px; border-radius: 999px;
+      background: rgba(140,160,190,.18); overflow: hidden; }
+    .prog i { display: block; height: 100%; width: 62%; border-radius: 999px; background: var(--pc, #ff8a1e);
+      animation: creep 8s ease-out infinite; }
+    @keyframes creep { from { width: 30%; } to { width: 78%; } }
+
+    /* IDLE, SLEEPING, DONE-READ: perfectly still. Stillness is a state too. */
+    .st.idle { background: #3d4654; }
+
+    .legend { font-size: 12.5px; color: #76879c; line-height: 1.75; }
+    .legend b { color: #eaf0f7; }
+    .legend .k { display: inline-block; width: 96px; font: 700 10.5px "Plus Jakarta Sans"; text-transform: uppercase; letter-spacing: .06em; }
+    .legend .green { color: #2fd6a3; } .legend .orange { color: #ff8a1e; }
+    .legend .red { color: #ff6b73; } .legend .blue { color: #4c8dff; }
+  </style>
+</helmet>
+
+<div style="width: 1360px; height: 860px; background: #0a0e14; padding: 26px 30px; display: flex; flex-direction: column; gap: 16px">
+
+  <div style="display: flex; align-items: baseline; gap: 14px">
+    <span style="font-size: 18px; font-weight: 800">The tab motion language</span>
+    <span class="legend" style="max-width: 720px">Everything else stays exactly as it is — projects, colors, the bottom bar. Only the rows that are DOING something move, and every movement is a word: you read the rail from the corner of your eye without focusing on it.</span>
+  </div>
+
+  <div style="flex: 1; display: flex; gap: 44px; align-items: flex-start">
+
+    <!-- the rail, live, current styling -->
+    <div style="width: 248px; flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 8px; background: linear-gradient(180deg, #141a24, #0e131c); border: 1px solid rgba(140,160,190,.12); border-radius: 14px">
+
+      <div style="display: flex; flex-direction: column; gap: 3px">
+        <div class="ghead"><span class="gdot" style="background: #4c8dff; box-shadow: 0 0 0 3px rgba(76,141,255,.22)"></span><span style="flex: 1">iot-stack</span><span style="font: 600 10px 'JetBrains Mono', monospace; color: #5b6878">5</span></div>
+        <div class="glist" style="border-left: 2px solid rgba(76,141,255,.4)">
+          <div class="tab" style="background: linear-gradient(135deg, color-mix(in srgb, #4c8dff 88%, white), #4c8dff); color: #04101f">
+            <span class="label"><span class="title" style="color: #04101f">portal resolver</span><span class="sub" style="color: rgba(4,16,31,.7)">Editing nginx.conf · 12m</span></span>
+            <span class="eq"><i style="background:#04101f"></i><i style="background:#04101f"></i><i style="background:#04101f"></i></span>
+            <span class="prog" style="--pc: #04101f"><i></i></span>
+          </div>
+          <div class="tab ask">
+            <span class="label"><span class="title">ntfy tokens</span><span class="sub" style="color: #ffa23e; opacity: 1">docker restart ntfy?</span></span>
+            <span class="st"></span>
+          </div>
+          <div class="tab danger">
+            <span class="label"><span class="title">cleanup script</span><span class="sub" style="color: #ff9ba1; opacity: 1">rm -rf build ?</span></span>
+            <span class="st"></span>
+          </div>
+          <div class="tab">
+            <span class="label"><span class="title">monitoring loop</span><span class="sub">Running pytest · 3m</span></span>
+            <span class="st working"></span>
+          </div>
+          <div class="tab">
+            <span class="label"><span class="title">brain backlinks</span><span class="sub">done · 148 notes linked</span></span>
+            <span class="st done"></span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 3px">
+        <div class="ghead"><span class="gdot" style="background: #2fd6a3; box-shadow: 0 0 0 3px rgba(47,214,163,.22)"></span><span style="flex: 1">invest</span><span style="font: 600 10px 'JetBrains Mono', monospace; color: #5b6878">3</span></div>
+        <div class="glist" style="border-left: 2px solid rgba(47,214,163,.4)">
+          <div class="tab">
+            <span class="label"><span class="title">grading refactor</span><span class="sub">quiet 2m — deep in it · 41m</span></span>
+            <span class="st working" style="animation: none"></span>
+          </div>
+          <div class="tab">
+            <span class="label"><span class="title">tefas parser</span><span class="sub">idle</span></span>
+            <span class="st idle"></span>
+          </div>
+          <div class="tab" style="opacity: .55">
+            <span class="label"><span class="title">journal check</span><span class="sub">sleeping</span></span>
+            <span class="st idle"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- the bottom bar the user likes: untouched, shown so nobody worries -->
+      <div style="margin-top: 4px; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-top: 1px solid rgba(140,160,190,.12); font: 500 9.5px 'JetBrains Mono', monospace; color: #5b6878">
+        <span>obp@main</span><span>5h 22%</span><span>wk 41%</span><span>ctx 36%</span><span style="flex: 1"></span><span>☕</span>
+      </div>
+    </div>
+
+    <!-- the dictionary -->
+    <div class="legend" style="flex: 1; max-width: 620px">
+      <b style="font-size: 14px">Six words, one glance</b><br><br>
+      <span class="k green">printing</span>a tiny <b>3-bar meter</b> dances beside the name — bytes are flowing <i>right now</i>. Stops the instant output stops.<br>
+      <span class="k green">working</span>a <b>sonar ring</b> leaves the dot every 2.4s — the agent is thinking even when the screen is quiet. A working row that stops ringing = the "quiet Nm" you should look at.<br>
+      <span class="k orange">needs you</span>the <b>knock</b>: the whole row taps twice, rests ~3.5s, taps again — the rhythm of someone at your door, impossible to confuse with work.<br>
+      <span class="k red">danger ask</span>a <b>sharp red double-blink</b> — different color, faster pulse. Your eye learns the difference between "may I?" and "are you sure?" without reading a word.<br>
+      <span class="k blue">done</span>one soft <b>pop</b> when it lands, then perfectly still blue. Done is calm — it never loops.<br>
+      <span class="k">progress</span>the sliver under the row <b>creeps forward</b> — position is the message (already shipped, kept).<br><br>
+      <b>The grammar</b><br>
+      · Idle, sleeping and read rows are <b>perfectly still</b> — stillness is a state too, so motion always means something changed.<br>
+      · Every animation is transform/opacity only — GPU-cheap with 10 tabs live.<br>
+      · Each state owns a <b>rhythm</b>, not just a color: sonar ≈ 2.4s, knock ≈ 4s, danger ≈ 3s — distinguishable in peripheral vision, slow enough to never feel busy.<br>
+      · Projects, colors, grouping, the bottom bar: <b>untouched</b>.
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

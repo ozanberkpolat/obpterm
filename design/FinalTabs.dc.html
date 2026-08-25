@@ -1,0 +1,105 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .rail { width: 236px; position: relative; display: flex; flex-direction: column; gap: 3px;
+      padding: 10px 8px; background: linear-gradient(180deg, #141a24, #0e131c);
+      border: 1px solid rgba(140,160,190,.12); border-radius: 14px; overflow: hidden; }
+    .tab { display: flex; align-items: center; gap: 8px; min-height: 40px;
+      padding: 6px 8px 6px 10px; border-radius: 999px; color: #8b97a8; position: relative; }
+    .tab .label { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; flex: 1; }
+    .tab .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #eaf0f7; }
+    .tab .sub { font-size: 11px; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .st { width: 9px; height: 9px; border-radius: 999px; flex: none; position: relative; }
+    .st.g { background: #2fd6a3; } .st.o { background: #ff8a1e; } .st.b { background: #4c8dff; } .st.i { background: #3d4654; }
+
+    /* O1: dots only */
+    .o1 .st.g { animation: dotpulse 2.2s ease-in-out infinite; }
+    .o1 .st.o { animation: dotblink 1.4s ease-in-out infinite; box-shadow: 0 0 7px rgba(255,138,30,.8); }
+    @keyframes dotpulse { 50% { opacity: .4; } }
+    @keyframes dotblink { 50% { opacity: .3; } }
+
+    /* O2: the language */
+    .o2 .st.g::after { content: ""; position: absolute; inset: -1px; border-radius: 999px;
+      border: 1.5px solid #2fd6a3; animation: sonar 2.4s ease-out infinite; }
+    @keyframes sonar { from { transform: scale(1); opacity: .8; } to { transform: scale(2.6); opacity: 0; } }
+    .eq { display: inline-flex; align-items: flex-end; gap: 1.5px; height: 10px; flex: none; }
+    .eq i { width: 2.5px; border-radius: 999px; background: #2fd6a3; animation: eq .8s ease-in-out infinite; }
+    .eq i:nth-child(2) { animation-delay: .15s; } .eq i:nth-child(3) { animation-delay: .3s; }
+    @keyframes eq { 50% { transform: scaleY(.4); } }
+    .tab.knock { color: #eaf0f7; animation: knock 4s ease-in-out infinite; }
+    .tab.knock .st { background: #ff8a1e; box-shadow: 0 0 8px rgba(255,138,30,.8); }
+    .tab.knock::before { content: ""; position: absolute; inset: 0; border-radius: 999px;
+      box-shadow: inset 0 0 0 1px rgba(255,138,30,.45); }
+    @keyframes knock {
+      0%, 88%, 100% { transform: translateX(0); }
+      90% { transform: translateX(3px); } 92% { transform: translateX(0); }
+      94% { transform: translateX(3px); } 96% { transform: translateX(0); }
+    }
+
+    /* O3: language + the rail edge pulse on a new event */
+    .pulse { position: absolute; left: 0; top: 10px; width: 3px; height: 26px; border-radius: 999px;
+      background: #ff8a1e; box-shadow: 0 0 12px rgba(255,138,30,.9); animation: travel 3.5s cubic-bezier(.3,.7,.3,1) infinite; }
+    @keyframes travel { 0% { top: 10px; opacity: 0; } 8% { opacity: 1; } 22% { top: 62px; opacity: 1; } 30%, 100% { top: 62px; opacity: 0; } }
+    .tab.ring3 { animation: ring3 3.5s ease-in-out infinite; }
+    @keyframes ring3 { 22% { box-shadow: 0 0 0 2px rgba(255,138,30,.9); } 45%, 100% { box-shadow: 0 0 0 2px rgba(255,138,30,0); } }
+
+    .h { font-weight: 800; font-size: 14px; }
+    .cap { font-size: 12px; color: #76879c; line-height: 1.6; max-width: 236px; }
+    .cap b { color: #eaf0f7; }
+  </style>
+</helmet>
+
+<div style="width: 1360px; height: 620px; background: #0a0e14; padding: 24px 30px; display: flex; flex-direction: column; gap: 16px">
+  <div style="display: flex; align-items: baseline; gap: 14px">
+    <span style="font-size: 17px; font-weight: 800">1 · Tab rows</span>
+    <span class="cap" style="max-width: 800px">How much a live row moves. Projects, colors, grouping and the bottom bar stay untouched in all three.</span>
+  </div>
+
+  <div style="flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px">
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div><div class="h">O1 · Dots only</div><div class="cap">Only the state dot animates — pulse for working, blink for asking. The rows themselves never move. <b>Quietest.</b></div></div>
+      <div class="rail o1">
+        <div class="tab"><span class="label"><span class="title">portal resolver</span><span class="sub">Editing nginx.conf · 12m</span></span><span class="st g"></span></div>
+        <div class="tab"><span class="label"><span class="title">ntfy tokens</span><span class="sub" style="color:#ffa23e;opacity:1">docker restart ntfy?</span></span><span class="st o"></span></div>
+        <div class="tab"><span class="label"><span class="title">brain backlinks</span><span class="sub">done</span></span><span class="st b"></span></div>
+        <div class="tab" style="opacity:.6"><span class="label"><span class="title">pwsh</span><span class="sub">idle</span></span><span class="st i"></span></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div><div class="h">O2 · The language</div><div class="cap">Each state owns a signature: sonar = thinking, 3-bar meter = printing, the <b>knock</b> = needs you. Readable from peripheral vision. <b>The designed middle.</b></div></div>
+      <div class="rail o2">
+        <div class="tab"><span class="label"><span class="title">portal resolver</span><span class="sub">Editing nginx.conf · 12m</span></span><span class="eq"><i></i><i></i><i></i></span></div>
+        <div class="tab knock"><span class="label"><span class="title">ntfy tokens</span><span class="sub" style="color:#ffa23e;opacity:1">docker restart ntfy?</span></span><span class="st"></span></div>
+        <div class="tab"><span class="label"><span class="title">monitoring loop</span><span class="sub">Running pytest · 3m</span></span><span class="st g"></span></div>
+        <div class="tab" style="opacity:.6"><span class="label"><span class="title">pwsh</span><span class="sub">idle</span></span><span class="st i"></span></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div><div class="h">O3 · Full signal</div><div class="cap">The language <b>plus</b> an orange pulse that travels the rail edge to the row when a new event lands — your eye is led there. <b>Loudest, most informative.</b></div></div>
+      <div class="rail o2">
+        <div class="pulse"></div>
+        <div class="tab"><span class="label"><span class="title">portal resolver</span><span class="sub">Editing nginx.conf · 12m</span></span><span class="eq"><i></i><i></i><i></i></span></div>
+        <div class="tab ring3"><span class="label"><span class="title">ntfy tokens</span><span class="sub" style="color:#ffa23e;opacity:1">docker restart ntfy?</span></span><span class="st o" style="box-shadow: 0 0 8px rgba(255,138,30,.8)"></span></div>
+        <div class="tab"><span class="label"><span class="title">monitoring loop</span><span class="sub">Running pytest · 3m</span></span><span class="st g"></span></div>
+        <div class="tab" style="opacity:.6"><span class="label"><span class="title">pwsh</span><span class="sub">idle</span></span><span class="st i"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

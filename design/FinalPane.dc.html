@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .term { font: 11px/1.6 "JetBrains Mono", monospace; white-space: pre; color: #aab6c8; overflow: hidden; }
+    .pane { display: flex; flex-direction: column; border-radius: 10px; background: #0a0e14;
+      border: 1px solid rgba(140,160,190,.12); overflow: hidden; height: 240px; position: relative; }
+    .h { font-weight: 800; font-size: 14px; }
+    .cap { font-size: 12px; color: #76879c; line-height: 1.6; }
+    .cap b { color: #eaf0f7; }
+
+    /* O1: static accent ring on the focused pane (current behavior, slightly warmer) */
+    .o1 { box-shadow: inset 0 0 0 1px rgba(255,138,30,.4); }
+
+    /* O2: sheen sweeps once when the pane gains focus */
+    .o2 { box-shadow: inset 0 0 0 1px rgba(255,138,30,.4); }
+    .o2::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(115deg, transparent 35%, rgba(255,190,120,.14) 50%, transparent 65%);
+      transform: translateX(-120%); animation: sheen 3s ease infinite; }
+    @keyframes sheen { 0% { transform: translateX(-120%); } 30% { transform: translateX(120%); } 100% { transform: translateX(120%); } }
+
+    /* O3: while THIS pane's agent asks, the border light orbits */
+    .o3wrap { position: relative; border-radius: 11.5px; padding: 1.5px; height: 240px;
+      background: linear-gradient(var(--a, 120deg), rgba(255,138,30,.75), rgba(255,138,30,.05) 40%, rgba(255,162,62,.5) 75%, rgba(255,138,30,.75));
+      animation: orbit 6s linear infinite; }
+    @property --a { syntax: "<angle>"; initial-value: 120deg; inherits: false; }
+    @keyframes orbit { to { --a: 480deg; } }
+    .o3wrap .pane { height: 100%; border: 0; border-radius: 10px; }
+  </style>
+</helmet>
+
+<div style="width: 1360px; height: 560px; background: #0a0e14; padding: 24px 30px; display: flex; flex-direction: column; gap: 16px">
+  <div style="display: flex; align-items: baseline; gap: 14px">
+    <span style="font-size: 17px; font-weight: 800">2 · Focused pane</span>
+    <span class="cap" style="max-width: 800px">How the pane you are in (or the one asking for you) announces itself.</span>
+  </div>
+
+  <div style="flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px; align-content: start">
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div><div class="h">O1 · Accent ring</div><div class="cap">A still orange inner ring marks focus — exactly today, slightly warmer. <b>Zero motion.</b></div></div>
+      <div class="pane o1">
+        <div style="padding: 8px 14px; border-bottom: 1px solid rgba(140,160,190,.1); font-weight: 700; font-size: 12px; color: #ffcf9e">portal resolver</div>
+        <div class="term" style="flex: 1; padding: 12px 14px">⏺ Editing nginx.conf… <span style="color:#2fd6a3">✓</span>
+⏺ Running nginx -t
+  test is successful
+<span style="color:#ff8a1e">▊</span></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div><div class="h">O2 · Sheen on focus</div><div class="cap">The ring, plus a soft band of light sweeps across <b>once</b> when the pane gains focus — the app acknowledges the switch, then goes still. (Looping here so you can see it.)</div></div>
+      <div class="pane o2">
+        <div style="padding: 8px 14px; border-bottom: 1px solid rgba(140,160,190,.1); font-weight: 700; font-size: 12px; color: #ffcf9e">portal resolver</div>
+        <div class="term" style="flex: 1; padding: 12px 14px">⏺ Editing nginx.conf… <span style="color:#2fd6a3">✓</span>
+⏺ Running nginx -t
+  test is successful
+<span style="color:#ff8a1e">▊</span></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div><div class="h">O3 · Orbit while asking</div><div class="cap">Sheen on focus <b>plus</b>: while a pane's agent holds a question, its border light slowly orbits until you answer. Perpetual — but only while something waits on you.</div></div>
+      <div class="o3wrap">
+        <div class="pane">
+          <div style="padding: 8px 14px; border-bottom: 1px solid rgba(140,160,190,.1); display: flex; gap: 10px"><span style="font-weight: 700; font-size: 12px; color: #ffcf9e">ntfy tokens</span><span style="flex:1"></span><span style="font: 700 10px 'JetBrains Mono', monospace; color: #ff8a1e">⏸ ASKING</span></div>
+          <div class="term" style="flex: 1; padding: 12px 14px">⏺ I need to restart the ntfy container.
+
+<span style="color: #ffb454">Permission: docker restart ntfy
+  a allow · d deny · w always</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
