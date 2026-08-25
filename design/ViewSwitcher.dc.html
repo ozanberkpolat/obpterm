@@ -1,0 +1,162 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .mono { font-family: "JetBrains Mono", monospace; }
+    /* the rail, exactly as it is today */
+    .rail { width: 232px; display: flex; flex-direction: column; gap: 3px; padding: 10px 8px;
+      background: linear-gradient(180deg, #141a24, #0e131c);
+      border: 1px solid rgba(140,160,190,.12); border-radius: 14px; }
+    .entry { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 5px 10px;
+      border-radius: 999px; color: #76879c; background: none; border: 0; text-align: left; width: 100%; }
+    .entry .spark { width: 0; height: 0; flex: none;
+      border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 9px solid currentColor; }
+    .alabel { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; flex: 1; }
+    .atitle { font-weight: 700; color: #eaf0f7; font-size: 12.5px; }
+    .asub { font-size: 11px; color: #ff8a1e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .awork { font: 600 10.5px "JetBrains Mono", monospace; color: #76879c; flex: none; }
+    .abadge { font: 700 10.5px "JetBrains Mono", monospace; min-width: 20px; height: 18px;
+      display: inline-flex; align-items: center; justify-content: center; padding: 0 6px;
+      border-radius: 999px; flex: none; background: #ff8a1e; color: #04101f; }
+    .alert { background: rgba(255,138,30,.12); box-shadow: inset 0 0 0 1px rgba(255,138,30,.35); }
+    .alert .spark { color: #ff8a1e; }
+    .tab { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 8px 6px 10px;
+      border-radius: 999px; color: #8b97a8; font-size: 12.5px; }
+    .tab .t { flex: 1; font-weight: 600; color: #eaf0f7; }
+    .dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+    .sect { font-weight: 700; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #5b6878; padding: 6px 6px 2px; }
+
+    /* option chrome */
+    .h { font-weight: 800; font-size: 14px; }
+    .cap { font-size: 12px; color: #76879c; line-height: 1.6; }
+    .cap b { color: #eaf0f7; }
+
+    /* A — segmented control inside the entry */
+    .seg { display: inline-flex; border-radius: 999px; overflow: hidden; flex: none;
+      box-shadow: inset 0 0 0 1px rgba(140,160,190,.22); }
+    .seg span { padding: 3px 9px; font: 700 9.5px "Plus Jakarta Sans"; color: #5b6878; }
+    .seg .on { background: rgba(140,160,190,.16); color: #eaf0f7; }
+    .alert .seg .on { background: #ff8a1e; color: #04101f; }
+
+    /* B — icon pair */
+    .icons { display: inline-flex; gap: 2px; flex: none; }
+    .ico { width: 24px; height: 22px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: #5b6878; }
+    .ico.on { background: rgba(140,160,190,.16); color: #eaf0f7; }
+    .alert .ico.on { background: rgba(255,138,30,.22); color: #ffcf9e; }
+    .ico svg { width: 13px; height: 13px; }
+
+    /* C — two entries */
+    .entry.sub { min-height: 30px; margin-left: 16px; }
+    .entry.sub .atitle { font-size: 12px; font-weight: 600; color: #8b97a8; }
+    .entry.sub.on { background: rgba(140,160,190,.12); }
+    .entry.sub.on .atitle { color: #eaf0f7; font-weight: 700; }
+  </style>
+</helmet>
+
+<div style="width: 1320px; height: 700px; background: #0a0e14; padding: 26px 30px; display: flex; flex-direction: column; gap: 18px">
+
+  <div style="display: flex; align-items: baseline; gap: 14px">
+    <span style="font-size: 17px; font-weight: 800">The Agents entry becomes a view switcher</span>
+    <span class="cap" style="max-width: 720px">Same pinned row, same badge behaviour — it now also says which view Ctrl+G opens, and lets you pick without opening anything. Shown in both states: quiet, and two waiting.</span>
+  </div>
+
+  <div style="flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 34px">
+
+    <!-- A -->
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div><div class="h">A · Segmented</div><div class="cap">Two words inside the row. The lit half is what Ctrl+G opens; clicking either opens that view directly. Reads without decoding an icon.</div></div>
+      <div class="rail">
+        <button class="entry">
+          <span class="spark" style="color: #5b6878"></span>
+          <span class="alabel"><span class="atitle">Agents</span></span>
+          <span class="awork">4 working</span>
+          <span class="seg"><span class="on">List</span><span>Nodes</span></span>
+        </button>
+        <div class="sect">Sessions</div>
+        <div class="tab" style="background: rgba(140,160,190,.12)"><span class="dot" style="background:#2fd6a3"></span><span class="t">portal resolver</span></div>
+        <div class="tab"><span class="dot" style="background:#3d4654"></span><span class="t" style="color:#8b97a8">pwsh</span></div>
+      </div>
+      <div class="rail">
+        <button class="entry alert">
+          <span class="spark"></span>
+          <span class="alabel"><span class="atitle">Agents</span><span class="asub">portal resolver · nginx -s reload?</span></span>
+          <span class="seg"><span class="on">List</span><span>Nodes</span></span>
+          <span class="abadge">2</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- B -->
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div><div class="h">B · Icon pair</div><div class="cap">Two 24px glyphs — rows and a small graph. Narrowest, keeps room for the subtitle at full width; costs one learning moment.</div></div>
+      <div class="rail">
+        <button class="entry">
+          <span class="spark" style="color: #5b6878"></span>
+          <span class="alabel"><span class="atitle">Agents</span></span>
+          <span class="awork">4 working</span>
+          <span class="icons">
+            <span class="ico on" title="List"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></span>
+            <span class="ico" title="Nodes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2.6"/><circle cx="6" cy="18" r="2.6"/><circle cx="18" cy="18" r="2.6"/><path d="M12 7.6 L7 15.4M12 7.6 L17 15.4" stroke-linecap="round"/></svg></span>
+          </span>
+        </button>
+        <div class="sect">Sessions</div>
+        <div class="tab" style="background: rgba(140,160,190,.12)"><span class="dot" style="background:#2fd6a3"></span><span class="t">portal resolver</span></div>
+        <div class="tab"><span class="dot" style="background:#3d4654"></span><span class="t" style="color:#8b97a8">pwsh</span></div>
+      </div>
+      <div class="rail">
+        <button class="entry alert">
+          <span class="spark"></span>
+          <span class="alabel"><span class="atitle">Agents</span><span class="asub">portal resolver · nginx -s reload?</span></span>
+          <span class="icons">
+            <span class="ico on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></span>
+            <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2.6"/><circle cx="6" cy="18" r="2.6"/><circle cx="18" cy="18" r="2.6"/><path d="M12 7.6 L7 15.4M12 7.6 L17 15.4" stroke-linecap="round"/></svg></span>
+          </span>
+          <span class="abadge">2</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- C -->
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div><div class="h">C · Two destinations</div><div class="cap">Agents stays a header carrying the badge; List and Nodes become their own rows beneath it, like a project's tabs. Most discoverable, tallest.</div></div>
+      <div class="rail">
+        <button class="entry">
+          <span class="spark" style="color: #5b6878"></span>
+          <span class="alabel"><span class="atitle">Agents</span></span>
+          <span class="awork">4 working</span>
+        </button>
+        <button class="entry sub on"><span class="alabel"><span class="atitle">List</span></span></button>
+        <button class="entry sub"><span class="alabel"><span class="atitle">Nodes</span></span></button>
+        <div class="sect">Sessions</div>
+        <div class="tab" style="background: rgba(140,160,190,.12)"><span class="dot" style="background:#2fd6a3"></span><span class="t">portal resolver</span></div>
+      </div>
+      <div class="rail">
+        <button class="entry alert">
+          <span class="spark"></span>
+          <span class="alabel"><span class="atitle">Agents</span><span class="asub">portal resolver · nginx -s reload?</span></span>
+          <span class="abadge">2</span>
+        </button>
+        <button class="entry sub on"><span class="alabel"><span class="atitle">List</span></span></button>
+        <button class="entry sub"><span class="alabel"><span class="atitle">Nodes</span></span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap" style="border-top: 1px solid rgba(140,160,190,.12); padding-top: 12px">
+    All three keep: the badge (orange = waiting on you, blue = unread done), the loudest-hold subtitle, the collapsed-rail circle, and Ctrl+G / Ctrl+M. <b>Collapsed rail:</b> A and B fall back to the 30px circle with the count; C shows the circle plus a 2px underline in the active view's position.
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

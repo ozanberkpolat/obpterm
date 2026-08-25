@@ -131,6 +131,7 @@ function rowFor(app: App, tab: Tab): Row {
   li.innerHTML =
     `<span class="num"></span>` +
     `<span class="label"><span class="title"></span><span class="sub"></span></span>` +
+    `<span class="fan" hidden title="agents this session fanned out"></span>` +
     `<span class="badge" hidden></span><span class="rec" hidden title="capturing to a log file">●</span>` +
     `<span class="st"></span>` +
     `<button class="close" title="Close this tab (Ctrl+Shift+Q)">×</button>`;
@@ -195,6 +196,13 @@ function patchRow(app: App, tab: Tab) {
   row.badge.hidden = panes.length < 2;
   set(row.badge, panes.length > 1 ? String(panes.length) : "");
   row.rec.hidden = !panes.some((p) => p.logPath);
+  // The ×N chip belongs in the rail too: it is where the eye already is.
+  const fanned = panes.flatMap((p) => p.agent.fanned);
+  const liveFan = fanned.filter((f) => f.endedAt === null).length;
+  const fanEl = row.li.querySelector<HTMLElement>(".fan")!;
+  fanEl.hidden = fanned.length === 0;
+  set(fanEl, `×${fanned.length}`);
+  fanEl.classList.toggle("live", liveFan > 0);
   // The motion language: one word per row, priority ordered, and stillness is a state too.
   const motion = panes.some((p) => p.agent.state === "blocked" && isDangerous(p.agent))
     ? "danger"

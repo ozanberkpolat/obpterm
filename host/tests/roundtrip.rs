@@ -198,3 +198,66 @@ async fn a_hook_event_reaches_the_window_and_the_answer_reaches_the_hook() {
     let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// The fan-out, end to end, using payloads CAPTURED FROM A LIVE CLAUDE CODE SESSION on
+/// 2026-08-26 rather than invented ones. The first version of this feature shipped green
+/// against made-up shapes and did nothing in the real app; this test is the reason that
+/// cannot happen again. Change these literals only by capturing new ones.
+#[tokio::test]
+async fn a_real_fan_out_reaches_the_window_as_agent_events() {
+    use obpterm_host::client::AgentUpdate;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), "test"));
+    let dir = std::env::temp_dir().join(format!("obpterm-fan-{}", obpterm_host::random_hex(4)));
+    std::fs::create_dir_all(&dir).unwrap();
+    host.start_hooks(&dir).await.unwrap();
+    let advert = host.advert.clone();
+    let server = tokio::spawn(Arc::clone(&host).serve());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let env = std::fs::read_to_string(dir.join("hook-endpoint.env")).unwrap();
+    let get = |k: &str| env.lines().find_map(|l| l.strip_prefix(&format!("{k}="))).unwrap().to_string();
+    let (port, token) = (get("OBPTERM_HOOK_PORT").parse::<u16>().unwrap(), get("OBPTERM_HOOK_TOKEN"));
+
+    let c = Client::connect(&advert).await.unwrap();
+    let (atx, mut agents) = mpsc::unbounded_channel::<AgentUpdate>();
+    c.watch_agents(atx);
+
+    async fn post(port: u16, token: &str, body: &str) {
+        let mut s = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        let req = format!("POST /hook/{token}/7 HTTP/1.1\r\nhost: x\r\ncontent-length: {}\r\n\r\n{body}", body.len());
+        s.write_all(req.as_bytes()).await.unwrap();
+        let mut out = String::new();
+        let _ = s.read_to_string(&mut out).await;
+    }
+
+    // 1. The session delegates. Note the tool is named "Agent" and the id is tool_use_id.
+    post(port, &token, r#"{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_use_id":"t-1","session_id":"s1","cwd":"/x","permission_mode":"default","prompt_id":"p1","tool_input":{"description":"Trigger a real Task hook","prompt":"probe","subagent_type":"general-purpose","model":"haiku"}}"#).await;
+    let u = tokio::time::timeout(Duration::from_secs(3), agents.recv()).await.unwrap().unwrap();
+    assert_eq!(u.agent_event.as_deref(), Some("spawned"), "a delegation opens an agent");
+    assert_eq!(u.agent_id.as_deref(), Some("t-1"));
+    assert_eq!(u.agent_kind.as_deref(), Some("general-purpose"));
+    assert_eq!(u.agent_task.as_deref(), Some("Trigger a real Task hook"));
+
+    // 2. The agent's own tool call — marked with agent_id + agent_type, no isSidechain flag.
+    post(port, &token, r#"{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"b-2","agent_id":"t-1","agent_type":"general-purpose","session_id":"s1","tool_input":{"command":"echo hook-probe"}}"#).await;
+    let u = tokio::time::timeout(Duration::from_secs(3), agents.recv()).await.unwrap().unwrap();
+    assert_eq!((u.agent_id.as_deref(), u.agent_event.as_deref()), (Some("t-1"), Some("tool")));
+    assert_eq!(u.detail.as_deref(), Some("Running echo hook-probe"), "the feed line belongs to the agent");
+
+    // 3. SubagentStop closes that agent and leaves the session working.
+    post(port, &token, r#"{"hook_event_name":"SubagentStop","agent_id":"t-1","agent_type":"general-purpose","agent_transcript_path":"/x.jsonl","last_assistant_message":"Output: hook-probe","session_id":"s1","stop_hook_active":false}"#).await;
+    let u = tokio::time::timeout(Duration::from_secs(3), agents.recv()).await.unwrap().unwrap();
+    assert_eq!((u.agent_id.as_deref(), u.agent_event.as_deref()), (Some("t-1"), Some("finished")));
+    assert_eq!(u.state, "working", "one agent finishing must never end the session's turn");
+
+    // 4. The session's OWN tool call carries no agent at all.
+    post(port, &token, r#"{"hook_event_name":"PreToolUse","tool_name":"Read","tool_use_id":"r-3","session_id":"s1","tool_input":{"file_path":"/x/y.rs"}}"#).await;
+    let u = tokio::time::timeout(Duration::from_secs(3), agents.recv()).await.unwrap().unwrap();
+    assert!(u.agent_id.is_none() && u.agent_event.is_none(), "the parent's work is not an agent's");
+
+    c.shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
+    let _ = std::fs::remove_dir_all(dir);
+}

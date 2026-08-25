@@ -991,6 +991,44 @@ await evaluate("(() => { const p = window.obpterm.tab.active; p.agent.state = nu
   devWs.close();
 }
 
+
+// ---- v0.19.1: the fan-out reaches the rail, and the map shows only what is awake -----------
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const injectDev = (update) =>
+    new Promise((r) => {
+      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
+      setTimeout(r, 150);
+    });
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.fanned = []; }), window.obpterm.paint()");
+  const rPane = await evaluate("window.obpterm.tab.active.id");
+  // The shape the host now sends for a real fan-out (tool named Agent, agent_type on its events).
+  await injectDev({ pane: rPane, state: "working", session_id: "sess-r", detail: "Delegating", pending_id: null, options: [],
+    agent_id: "a-1", agent_kind: "general-purpose", agent_task: "Trigger a real hook", agent_event: "spawned" });
+  await until("!document.querySelector('#rail-body .tab .fan').hidden", "the ×N chip in the rail");
+  assert.equal(await evaluate("document.querySelector('#rail-body .tab .fan').textContent"), "×1");
+  assert.ok(await evaluate("document.querySelector('#rail-body .tab .fan').classList.contains('live')"), "live while the agent runs");
+  await injectDev({ pane: rPane, state: "working", session_id: "sess-r", detail: null, pending_id: null, options: [],
+    agent_id: "a-1", agent_kind: "general-purpose", agent_event: "finished" });
+  await until("!document.querySelector('#rail-body .tab .fan').classList.contains('live')", "the chip cools when it ends");
+
+  // Node view leaves resting panes out and says how many it left.
+  await evaluate("void window.obpterm.newTab()");
+  await until("window.obpterm.tabs.length >= 2", "a tab to rest");
+  await evaluate("(() => { const p = window.obpterm.panesOf(window.obpterm.tabs[1])[0]; p.eco = true; window.obpterm.paint(); })()");
+  await evaluate("window.obpterm.nodes.open()");
+  const nodeIds = await evaluate("[...document.querySelectorAll('#nodemap .nnode')].map(n => n.dataset.id).join(',')");
+  const restingId = await evaluate("'p' + window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
+  assert.ok(!nodeIds.split(",").includes(restingId), "a resting pane gets no node");
+  assert.match(await evaluate("document.querySelector('#nodemap .nsummary').textContent"), /resting/, "the map says what it left out");
+  await evaluate("window.obpterm.nodes.close()");
+  await evaluate("(() => { const p = window.obpterm.panesOf(window.obpterm.tabs[1])[0]; p.eco = false; })()");
+  await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
+  await evaluate("window.obpterm.tab.active.agent.fanned = []; window.obpterm.paint()");
+  devWs.close();
+}
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

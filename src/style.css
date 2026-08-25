@@ -792,3 +792,12 @@ button.chip:hover { background: var(--border); color: var(--ink); }
   from { opacity: 0; translate: var(--from-x, 0px) var(--from-y, 0px); scale: .9; }
   to { opacity: 1; translate: 0 0; scale: 1; }
 }
+
+/* the ×N agents chip, in the rail row */
+.tab .fan {
+  font: 700 9.5px var(--mono); padding: 1px 6px; border-radius: 999px; flex: none;
+  background: var(--border); color: var(--faint);
+}
+.tab .fan.live { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+.tab.active .fan { background: rgba(0, 0, 0, .22); color: #04101f; }
+#rail.collapsed .tab .fan { display: none; }

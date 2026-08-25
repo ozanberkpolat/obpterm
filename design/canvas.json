@@ -35,6 +35,10 @@
     {
       "id": "page-11",
       "name": "Session lineage"
+    },
+    {
+      "id": "page-12",
+      "name": "View switcher"
     }
   ],
   "artboards": [
@@ -258,6 +262,14 @@
       "h": 860,
       "page": "page-11",
       "title": "List View"
+    },
+    {
+      "file": "ViewSwitcher.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1320,
+      "h": 700,
+      "page": "page-12"
     }
   ],
   "annotations": [
@@ -364,10 +376,18 @@
       "w": 320,
       "page": "page-11",
       "text": "The two views, final naming:\n\nLIST VIEW \u2014 the better-visualized evolution of today's rail: filter + count, square dots, ctx% pill per row, state in words, and the \u00d7N chip unfolding each session's agents inline with their live tool feeds. The daily driver.\n\nNODE VIEW \u2014 the other level: sessions as state-tinted nodes (RUNNING / NEEDS YOU / DONE), the permission prompt answerable ON the node, AGENT cards with live tool feeds hanging off computed edges (bottom-center of parent to top-center of child \u2014 always attached, they follow the cards through layout and zoom), dashed ORIGIN node, minimap + zoom + quota chrome. Auto-layout, pan/zoom, no dragging.\n\nCtrl+M toggles. Same data feed, same answer keys. Build order: List View first (it upgrades the rail you use all day), Node View second on the same plumbing. Run Ledger discarded.\n\nAnswers settled 2026-08-26: nodes are LIVE (answer/reply/scroll on the node; click promotes to a real terminal in place); nodes are born from events with one-shot entrance motion (edge draws itself, node scales in from the parent's anchor); node types v1 = SESSION / AGENT / SHELL / ORIGIN, later DIFF / NOTE / TRIGGER. Ctrl+G opens the surface (replacing the deck), Ctrl+M flips the view."
+    },
+    {
+      "id": "switcher-take",
+      "x": 1400,
+      "y": 40,
+      "w": 300,
+      "page": "page-12",
+      "text": "Replacing the Agents button with something that both OPENS and SWITCHES.\n\nA \u00b7 Segmented \u2014 words, no learning curve, the lit half tells you what Ctrl+G will open. Costs ~64px of row width, so the loudest-hold subtitle truncates sooner in the alert state.\n\nB \u00b7 Icon pair \u2014 narrowest (48px), subtitle keeps its width, but 'which glyph is which' takes one look to learn.\n\nC \u00b7 Two destinations \u2014 most discoverable and matches how projects already expand into rows; adds two rows of rail height permanently.\n\nMy pick: A. The row is a switcher only in appearance \u2014 the badge, subtitle and Ctrl+G behaviour are untouched, and words beat glyphs on a control you touch a few times a day. If the alert subtitle feels cramped in practice, B is the same design with the labels swapped for glyphs."
     }
   ],
   "launch": {
     "view": "canvas",
-    "page": "page-11"
+    "page": "page-12"
   }
 }

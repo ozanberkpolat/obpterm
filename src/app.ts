@@ -57,6 +57,14 @@ function presetTree(preset: Preset, p: Pane[]): L.Node {
 let nextTabId = 1;
 
 /** A copy of a claude profile must mint its own session — never share or resume the source's. */
+/** Semantic-ish compare, enough for x.y.z release tags. */
+function olderThan(a: string, b: string): boolean {
+  const parse = (v: string) => v.split(".").map((n) => parseInt(n, 10) || 0);
+  const [x, y] = [parse(a), parse(b)];
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0);
+  return false;
+}
+
 function stripSessionArgs(args: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -1157,6 +1165,16 @@ export class App implements PaneHost {
     const info = await this.tp.hostInfo().catch(() => null);
     this.hostInstance = info?.connected ? info.instance : null;
     if (!this.hostInstance) return;
+    // The host deliberately outlives an update — which means a new window can be talking to a
+    // host that predates the features it is drawing (agent fan-out arrived in 0.18). Say so,
+    // and offer the one action that fixes it: end the shells, restart on the new host.
+    const mine = await this.tp.appVersion().catch(() => "");
+    if (info && mine && olderThan(info.version, mine)) {
+      toast(`Shells are still on the older session host ${info.version} — agents stay invisible until it restarts`, {
+        label: "Restart host",
+        run: () => void this.quitAll(),
+      });
+    }
     const sessions = await this.tp.listSessions().catch(() => []);
     this.held = new Map(sessions.map((s) => [s.id, s]));
   }

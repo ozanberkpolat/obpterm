@@ -79,6 +79,7 @@ pub fn normalize(pane: u32, payload: &serde_json::Value) -> Option<AgentEvent> {
             // must not read as the parent session working.
             if let Some(id) = agent_of(payload) {
                 e.agent_id = Some(id);
+                e.agent_kind = agent_type_of(payload);
                 e.agent_event = Some("tool".into());
             }
             e
@@ -86,8 +87,9 @@ pub fn normalize(pane: u32, payload: &serde_json::Value) -> Option<AgentEvent> {
         // SubagentStop closes ONE agent; only Stop ends the session's turn. Folding them
         // together used to mark a still-running parent as done.
         "SubagentStop" => {
-            let mut e = mk("working", None);
+            let mut e = mk("working", last_message(payload));
             e.agent_id = agent_of(payload);
+            e.agent_kind = agent_type_of(payload);
             e.agent_event = Some("finished".into());
             e
         }
@@ -125,18 +127,17 @@ fn is_task(payload: &serde_json::Value) -> bool {
     matches!(payload.get("tool_name").and_then(|v| v.as_str()), Some("Task") | Some("Agent"))
 }
 
-/// The agent an event belongs to, when Claude marks it as coming from a fan-out. Claude Code
-/// labels sidechain work with the parent Task's tool_use id under several spellings; take the
-/// first that exists rather than guessing one.
+/// The agent an event belongs to. Verified against real payloads: work done INSIDE a fan-out
+/// carries `agent_id` (plus `agent_type`); the parent session's own tool calls carry neither.
+/// There is no `isSidechain` flag in hook payloads — an earlier guess at one is why this
+/// never fired in practice.
 fn agent_of(payload: &serde_json::Value) -> Option<String> {
-    for key in ["agent_id", "subagent_id", "parent_tool_use_id", "tool_use_id"] {
-        if let Some(v) = payload.get(key).and_then(|v| v.as_str()) {
-            if payload.get("isSidechain").and_then(|b| b.as_bool()).unwrap_or(key != "tool_use_id") {
-                return Some(v.to_string());
-            }
-        }
-    }
-    None
+    payload.get("agent_id").and_then(|v| v.as_str()).map(str::to_string)
+}
+
+/// The agent's kind, as the payload spells it on its own events ("general-purpose").
+fn agent_type_of(payload: &serde_json::Value) -> Option<String> {
+    payload.get("agent_type").and_then(|v| v.as_str()).map(str::to_string)
 }
 
 /// "Editing foo.rs", "Running cargo check…" — from the tool call, clipped for a rail row.
@@ -213,26 +214,33 @@ mod tests {
             "tool_input": {"questions": [{"options": [{"label": "Yes"}, {"label": "No"}]}]}})).unwrap();
         assert_eq!(e.options, vec!["Yes", "No"]);
 
-        // A fan-out: the Task call opens an agent with its type and description…
-        let e = normalize(7, &json!({"hook_event_name": "PreToolUse", "tool_name": "Task", "tool_use_id": "t-1",
-            "tool_input": {"subagent_type": "Explore", "description": "Audit upstream consumers"}})).unwrap();
+        // The shapes below are copied from payloads captured off a LIVE Claude Code session
+        // (2026-08-26) — the tool is named "Agent", the fan-out's own work is marked with
+        // agent_id + agent_type, and there is no isSidechain flag anywhere.
+        let e = normalize(7, &json!({"hook_event_name": "PreToolUse", "tool_name": "Agent", "tool_use_id": "t-1",
+            "cwd": "/home/obp/iot-stack", "session_id": "s1", "permission_mode": "default", "prompt_id": "p1",
+            "tool_input": {"subagent_type": "Explore", "description": "Audit upstream consumers", "model": "haiku", "prompt": "…"}})).unwrap();
         assert_eq!(e.agent_event.as_deref(), Some("spawned"));
         assert_eq!(e.agent_id.as_deref(), Some("t-1"));
         assert_eq!(e.agent_kind.as_deref(), Some("Explore"));
         assert_eq!(e.agent_task.as_deref(), Some("Audit upstream consumers"));
 
         // …its own tool calls are the agent's feed, not the session's…
-        let e = normalize(7, &json!({"hook_event_name": "PreToolUse", "tool_name": "Grep", "isSidechain": true,
-            "parent_tool_use_id": "t-1", "tool_input": {}})).unwrap();
+        let e = normalize(7, &json!({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "b-9",
+            "agent_id": "t-1", "agent_type": "general-purpose", "tool_input": {"command": "echo hi"}})).unwrap();
         assert_eq!((e.agent_id.as_deref(), e.agent_event.as_deref()), (Some("t-1"), Some("tool")));
+        assert_eq!(e.agent_kind.as_deref(), Some("general-purpose"), "the kind rides its own events too");
 
         // …and SubagentStop closes that agent WITHOUT ending the session's turn.
-        let e = normalize(7, &json!({"hook_event_name": "SubagentStop", "agent_id": "t-1", "isSidechain": true})).unwrap();
+        let e = normalize(7, &json!({"hook_event_name": "SubagentStop", "agent_id": "t-1",
+            "agent_type": "general-purpose", "agent_transcript_path": "/x.jsonl",
+            "last_assistant_message": "Output: hook-probe", "stop_hook_active": false})).unwrap();
         assert_eq!(e.state, "working", "one agent finishing must not mark the session done");
         assert_eq!((e.agent_id.as_deref(), e.agent_event.as_deref()), (Some("t-1"), Some("finished")));
 
-        // A plain tool call still belongs to the session itself.
-        let e = normalize(7, &json!({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "/x/y.rs"}})).unwrap();
+        // A plain tool call still belongs to the session itself: no agent_id in its payload.
+        let e = normalize(7, &json!({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_use_id": "r-1",
+            "tool_input": {"file_path": "/x/y.rs"}})).unwrap();
         assert!(e.agent_id.is_none() && e.agent_event.is_none());
 
         assert!(normalize(7, &json!({"hook_event_name": "SomethingNew"})).is_none());

@@ -70,9 +70,13 @@ export class Nodes {
     for (const tab of this.app.tabs) {
       for (const pane of this.app.panesOf(tab)) {
         const id = `p${pane.id}`;
+        // The map is for what is awake. Sleeping, eco'd and exited panes are still in the
+        // rail; here they would only cost space the live work needs.
+        const dormant = pane.asleep || pane.eco || pane.exited;
         if (isClaudePane(pane)) {
-          sessions.push({ id, kind: "session", pane, tab, parent: null, x: 0, y: 0, w: SESSION_W, h: SESSION_H });
-        } else {
+          if (!dormant) sessions.push({ id, kind: "session", pane, tab, parent: null, x: 0, y: 0, w: SESSION_W, h: SESSION_H });
+        } else if (!dormant && (pane.agent.state !== null || Date.now() - pane.lastOutput < 5 * 60_000)) {
+          // …and a plain shell earns its node by having done something recently.
           shells.push({ id, kind: "shell", pane, tab, parent: null, x: 0, y: 0, w: SHELL_W, h: SHELL_H });
         }
       }
@@ -134,7 +138,8 @@ export class Nodes {
       }
     }
     this.drawEdges();
-    set($("#nodemap .nsummary"), summary(this.app));
+    const hidden = this.app.tabs.flatMap((t) => this.app.panesOf(t)).filter((p) => p.asleep || p.eco || p.exited).length;
+    set($("#nodemap .nsummary"), [summary(this.app), hidden ? `${hidden} resting` : null].filter(Boolean).join(" · "));
   }
 
   /** Creates a node's element once; its entrance animation therefore plays exactly once. */
