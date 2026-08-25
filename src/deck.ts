@@ -59,6 +59,7 @@ export class Deck {
     });
     this.root.addEventListener("mousedown", (e) => e.target === this.root && this.close());
     $("#deck .dclose").addEventListener("click", () => this.close());
+    $("#deck .dnodes").addEventListener("click", () => this.app.toggleAgentsView());
     this.grid.tabIndex = -1; // focusable, so keystrokes stop leaking to the pane behind
     this.root.addEventListener("keydown", (e) => this.onKey(e));
   }
@@ -118,6 +119,8 @@ export class Deck {
   open() {
     this.isOpen = true;
     this.root.hidden = false;
+    $("#deck .dlist").classList.add("on");
+    $("#deck .dnodes").classList.remove("on");
     this.sel = 0;
     this.paint();
     this.grid.focus();

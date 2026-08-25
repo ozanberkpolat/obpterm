@@ -79,6 +79,7 @@ export class App implements PaneHost {
   palette!: import("./palette").Palette;
   settings!: import("./settings-panel").Settings;
   deck!: import("./deck").Deck;
+  nodes!: import("./nodes").Nodes;
   private panesEl = $("#panes");
   private sessionTimer = 0;
   /** Most recently used first. Only ever read through `recent()`. */
@@ -975,6 +976,25 @@ export class App implements PaneHost {
     void this.tp.keepAwake(on).catch(() => {});
   }
 
+  /** The agents surface, in whichever view was last used. */
+  openAgents() {
+    if (this.config.agents_view === "nodes") this.nodes.open();
+    else this.deck.open();
+  }
+
+  toggleAgentsView() {
+    const toNodes = !this.nodes.isOpen;
+    this.config.agents_view = toNodes ? "nodes" : "list";
+    this.persistConfig();
+    if (toNodes) {
+      this.deck.close();
+      this.nodes.open();
+    } else {
+      this.nodes.close();
+      this.deck.open();
+    }
+  }
+
   /** Ctrl+Shift+G: the next Claude session that waits on the user, cycling. */
   jumpNeedsYou() {
     const list: { pane: Pane; tab: Tab }[] = [];
@@ -1052,6 +1072,7 @@ export class App implements PaneHost {
   paint() {
     renderRail(this);
     this.deck?.paint();
+    this.nodes?.paint();
     const counts = this.agentCounts();
     this.syncBadge(counts.needsYou);
     this.syncAwake(counts.working > 0);

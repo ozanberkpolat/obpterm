@@ -102,6 +102,7 @@
             <span class="dtitle">Agents</span>
             <span class="dsummary"></span>
             <span class="grow"></span>
+            <span class="nviews dviews"><button class="dlist on">List</button><button class="dnodes">Nodes</button></span>
             <label class="dfilter">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.2" y2="16.2"/></svg>
               <input type="text" placeholder="Filter sessions" spellcheck="false" aria-label="Filter sessions" />
@@ -111,6 +112,22 @@
           </header>
           <div class="dgrid"></div>
           <div class="dempty" hidden>No Claude sessions running. Open a tab with a claude profile and its state shows up here.</div>
+        </div>
+      </div>
+      <div id="nodemap" hidden>
+        <div class="nchrome ntop">
+          <span class="ntitle">Agents</span>
+          <span class="nsummary"></span>
+          <span class="grow"></span>
+          <span class="nviews"><button class="nlist">List</button><button class="nnodes on">Nodes</button></span>
+          <button class="nclose" title="Close (Esc)" aria-label="Close">×</button>
+        </div>
+        <div class="nworld"><svg class="nedges" width="6000" height="4000"></svg></div>
+        <div class="nchrome nbottom">
+          <button class="nzoom-out" aria-label="Zoom out">−</button>
+          <span class="nlevel">100%</span>
+          <button class="nzoom-in" aria-label="Zoom in">+</button>
+          <button class="nfit">fit</button>
         </div>
       </div>
       <div id="palette" hidden>

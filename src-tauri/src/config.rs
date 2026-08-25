@@ -156,6 +156,8 @@ pub struct Config {
     pub ntfy_token: Option<String>,
     /// Hold the machine out of sleep while any agent is working.
     pub keep_awake: bool,
+    /// "list" | "nodes" — which agents view Ctrl+G opens.
+    pub agents_view: String,
     /// Every config save is mirrored to `<this folder>/obpterm-config.json` (tokens stripped).
     /// Point it at a OneDrive / Google Drive folder and the cloud client does the transport.
     pub backup_dir: Option<String>,
@@ -215,6 +217,7 @@ impl Default for Config {
             ntfy_url: None,
             ntfy_token: None,
             keep_awake: true,
+            agents_view: "list".into(),
         }
     }
 }

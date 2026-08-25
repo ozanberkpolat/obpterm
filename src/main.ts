@@ -9,6 +9,7 @@ import { installHeader } from "./header";
 import { installPalette } from "./palette";
 import { installSettings } from "./settings-panel";
 import { Deck } from "./deck";
+import { Nodes } from "./nodes";
 import { installAgentEvents } from "./agent";
 import "./settings.css";
 import { toast } from "./ui";
@@ -30,6 +31,7 @@ async function main() {
   app.palette = installPalette(app);
   app.settings = installSettings(app);
   app.deck = new Deck(app);
+  app.nodes = new Nodes(app);
   installHeader(app);
   app.applyRailWidth();
   app.applyConfig();

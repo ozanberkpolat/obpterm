@@ -80,7 +80,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt989si4",
+      "id": "hmt98juf9",
       "name": "New host",
       "host": "",
       "user": null,
@@ -105,6 +105,7 @@
   "ntfy_url": null,
   "ntfy_token": null,
   "keep_awake": true,
+  "agents_view": "list",
   "quota_5h_tokens": null,
   "quota_7d_tokens": null,
   "projects": [
@@ -1271,6 +1272,24 @@
     },
     {
       "id": "pmt989cuv",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt98ignv",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt98jec9",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,

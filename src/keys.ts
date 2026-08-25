@@ -43,6 +43,10 @@ export function installKeys(app: App) {
       if (e.code === "F5" && e.ctrlKey) return stop(e);
       if (e.code === "Escape") {
         closeMenu();
+        if (app.nodes.isOpen) {
+          app.nodes.close();
+          return stop(e);
+        }
         if (app.deck.isOpen) {
           app.deck.close();
           return stop(e);
