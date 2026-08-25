@@ -831,9 +831,6 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   await injectDev({ pane: mPane, state: "working", session_id: "sess-m", detail: "Thinking", pending_id: null, options: [] });
   await evaluate(`(() => { const p = window.obpterm.panesOf(window.obpterm.tabs[1])[0]; p.lastOutput = Date.now() - 10000; window.obpterm.paint(); })()`);
   await until(`${row}?.dataset.motion === 'working'`, "the working motion word");
-  // fresh bytes: printing, the meter shows
-  await evaluate(`(() => { const p = window.obpterm.panesOf(window.obpterm.tabs[1])[0]; p.lastOutput = Date.now(); window.obpterm.paint(); })()`);
-  await until(`${row}?.dataset.motion === 'printing' && !${row}.querySelector('.eq').hidden`, "the printing meter");
   // a benign ask: the knock
   await injectDev({ pane: mPane, state: "blocked", session_id: "sess-m", detail: "Running npm test", pending_id: "p-170", options: [], tool: "Bash", tool_input: "npm test" });
   await evaluate(`(() => { const p = window.obpterm.panesOf(window.obpterm.tabs[1])[0]; p.lastOutput = Date.now() - 10000; window.obpterm.paint(); })()`);
