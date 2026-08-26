@@ -28,15 +28,6 @@ export interface PaneHost {
   onPaneSelection(text: string): void;
 }
 
-/** DEC private modes that make a terminal report the pointer. */
-const MOUSE_MODES = new Set([1000, 1001, 1002, 1003, 1005, 1006, 1015, 1016]);
-const MOUSE_DECODER = new TextDecoder("latin1");
-/** SGR (`\x1b[<b;x;yM`), urxvt (`\x1b[b;x;yM`) and X10 (`\x1b[M` + 3 bytes) reports. */
-const MOUSE_REPORT = /^\x1b\[(<?\d+;\d+;\d+[Mm]|M[\s\S]{3})$/;
-function isMouseReport(data: string): boolean {
-  return data.length >= 4 && data.charCodeAt(0) === 27 && MOUSE_REPORT.test(data);
-}
-
 export class Pane {
   readonly el = document.createElement("div");
   term: Term;
@@ -86,10 +77,6 @@ export class Pane {
   logPath: string | null = null;
   /** Restore hint: come back asleep instead of attaching. Set for tabs that are not on screen. */
   startAsleep = false;
-  /** Whether the PROGRAM has asked for the mouse since this pane last attached. Nothing else
-   *  may arm it: a report sent to a program that is not in mouse mode is typed into it as
-   *  text, and a pointer moving over the pane does that thirty times a second. */
-  private mouseArmed = false;
 
   constructor(
     public host: PaneHost,
@@ -152,8 +139,6 @@ export class Pane {
         if (d === "r" || d === "R") return host.onPaneRespawn(this);
         return host.onPaneExit(this, 0); // any other key closes an exited pane
       }
-      if (!this.mouseArmed && isMouseReport(d)) return; // nobody asked for these
-
       void host.tp.write(this.id, d).catch(() => {
         // Typing that goes nowhere is the worst failure this app can have: say so.
         this.linkLost = true;
@@ -193,20 +178,6 @@ export class Pane {
     this.teardown();
   }
 
-  /** Reads the program's own `CSI ? … h/l` out of its output and arms the mouse accordingly.
-   *  Only what arrives on the live stream counts — a replayed record does not. */
-  private trackMouseMode(bytes: Uint8Array) {
-    // Cheap gate: almost no chunk contains this, and the terminal parses the rest anyway.
-    if (bytes.length < 6 || bytes.indexOf(0x1b) < 0) return;
-    const text = MOUSE_DECODER.decode(bytes, { stream: false });
-    for (const m of text.matchAll(/\x1b\[\?([\d;]+)([hl])/g)) {
-      const on = m[2] === "h";
-      for (const n of m[1]!.split(";")) {
-        if (MOUSE_MODES.has(Number(n))) this.mouseArmed = on;
-      }
-    }
-  }
-
   /** Drops the terminal and puts the placeholder in its place. The shell is not touched. */
   private teardown() {
     this.term.dispose();
@@ -221,14 +192,12 @@ export class Pane {
     if (!this.asleep) return;
     this.asleep = false;
     this.heldState = null;
-    this.mouseArmed = false; // a new terminal knows nothing until the program says so
     this.el.replaceChildren();
     this.term = this.buildTerm();
     const t = this.term.term;
     this.term.fit();
     const onData = (bytes: Uint8Array) => {
       this.lastOutput = Date.now();
-      this.trackMouseMode(bytes);
       t.write(bytes);
     };
     const onExit = (code: number | null) => {
@@ -256,7 +225,6 @@ export class Pane {
     const onData = (bytes: Uint8Array) => {
       const wasIdle = Date.now() - this.lastOutput > ACTIVE_MS;
       this.lastOutput = Date.now();
-      this.trackMouseMode(bytes);
       if (wasIdle) {
         this.busySince = Date.now();
         this.host.onPaneActivity();

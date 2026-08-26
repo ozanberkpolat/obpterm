@@ -60,23 +60,10 @@ impl Modes {
         let _ = last_esc;
     }
 
-    /// Mouse tracking. Never replayed, and this is not a detail: re-asserting it tells a
-    /// freshly built terminal to report the pointer to a program that may have left mouse mode
-    /// long ago — every movement then types `\x1b[<35;43;16M` into that program, which echoes
-    /// it as text, which is output, which repaints. That loop is what made the window seize
-    /// after v0.21.12 taught panes to sleep and re-attach many times an hour. A program that
-    /// still wants the mouse switches it on again in the repaint the attach resize triggers.
-    const INPUT_MODES: &[u16] = &[1000, 1001, 1002, 1003, 1005, 1006, 1015, 1016];
-
-    /// `CSI ? n h` for the DISPLAY modes that are on, in one string — what to write before a
-    /// replay. Display state (bracketed paste, alt screen, wrap, cursor) is what the ring no
-    /// longer holds; input state belongs to the program, not to our record of it.
+    /// `CSI ? n h` for every mode that is on, in one string — what to write before a replay.
     pub fn reassert(&self) -> Vec<u8> {
         let mut out = Vec::new();
         for m in &self.on {
-            if Self::INPUT_MODES.contains(m) {
-                continue;
-            }
             out.extend_from_slice(format!("\x1b[?{m}h").as_bytes());
         }
         out
@@ -92,20 +79,6 @@ mod tests {
     use super::Modes;
 
     #[test]
-    fn mouse_tracking_is_tracked_but_never_replayed() {
-        // The seize: a replayed `\x1b[?1002h` arms the new terminal, the program is not in
-        // mouse mode any more, and every pointer movement is typed into it as text.
-        let mut m = Modes::default();
-        m.track(b"\x1b[?2004h\x1b[?1002;1006h\x1b[?1049h");
-        assert!(m.is_on(1002) && m.is_on(1006), "we still KNOW what the program asked for");
-        let replay = String::from_utf8(m.reassert()).unwrap();
-        assert!(replay.contains("\x1b[?2004h") && replay.contains("\x1b[?1049h"), "display modes come back");
-        for mouse in ["1000", "1001", "1002", "1003", "1005", "1006", "1015", "1016"] {
-            assert!(!replay.contains(&format!("\x1b[?{mouse}h")), "{mouse} must never be replayed: {replay:?}");
-        }
-    }
-
-    #[test]
     fn tracks_set_and_reset_including_across_a_chunk_boundary() {
         let mut m = Modes::default();
         m.track(b"hello \x1b[?2004h\x1b[?1000;1006h world");
@@ -116,7 +89,7 @@ mod tests {
         m.track(b"text \x1b[?10");
         m.track(b"49h more");
         assert!(m.is_on(1049), "a sequence split across reads still counts");
-        assert_eq!(String::from_utf8(m.reassert()).unwrap(), "\x1b[?1049h\x1b[?2004h");
+        assert_eq!(String::from_utf8(m.reassert()).unwrap(), "\x1b[?1006h\x1b[?1049h\x1b[?2004h");
         m.track(b"\x1b[?2004l\x1b[?1049l\x1b[?1006l");
         assert!(m.reassert().is_empty());
     }

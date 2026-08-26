@@ -271,57 +271,18 @@ export class App implements PaneHost {
    */
   ecoSweep() {
     const minutes = this.config.eco_after_minutes;
-    const cutoff = Date.now() - (minutes || 0) * 60_000;
-    // Eligible: a Claude session with a conversation to come back to, not on screen, not mid-
-    // turn and not holding a question. A SLEEPING pane counts — that was the hole. Sleep frees
-    // a terminal (a few MB); the ~400 MB is the `claude` process, and skipping asleep panes
-    // meant eighteen of them held about seven gigabytes that nothing was ever going to reclaim.
-    // Writing to a detached pane is fine: the host owns the pty either way.
-    const eligible = () =>
-      this.tabs
-        .filter((t) => t !== this.tab)
-        .flatMap((t) => L.panes(t.root))
-        .filter(
-          (p) =>
-            !p.eco &&
-            !p.exited &&
-            p.id > 0 &&
-            p.claudeSessionId &&
-            (p.agent.state === "done" || p.agent.state === null) &&
-            !p.agent.fanned.some((f) => f.endedAt === null),
-        );
-
-    if (minutes) {
-      for (const pane of eligible()) {
-        if (pane.agent.state !== "done") continue; // the timed path stays as it was: finished only
+    if (!minutes) return;
+    const cutoff = Date.now() - minutes * 60_000;
+    for (const tab of this.tabs) {
+      if (tab === this.tab) continue;
+      for (const pane of L.panes(tab.root)) {
+        if (pane.eco || pane.exited || pane.asleep) continue;
+        if (pane.agent.state !== "done" || !pane.claudeSessionId) continue;
         if (pane.lastOutput > cutoff || pane.lastVisited > cutoff) continue;
-        this.eco(pane);
+        pane.eco = true;
+        void this.tp.write(pane.id, "/exit\r").catch(() => {});
       }
     }
-
-    // Memory pressure. The machine running out of RAM is what actually freezes this window —
-    // it thrashes on swap and everything stalls for minutes — and the sessions holding it are
-    // idle ones nobody is reading. Above the threshold, the oldest of them are exited early;
-    // the tab stays, and clicking it resumes the same conversation.
-    const pct = this.config.eco_memory_pct;
-    const m = this.status?.memoryPct() ?? null;
-    if (!pct || m === null || m < pct) return;
-    const queue = eligible().sort((a, b) => a.lastVisited - b.lastVisited);
-    let freed = 0;
-    for (const pane of queue) {
-      if (freed >= 3) break; // a few per sweep, then look again — never a stampede
-      this.eco(pane);
-      freed++;
-    }
-    if (freed) {
-      toast(`Memory at ${Math.round(m)}% — ${freed} idle session${freed > 1 ? "s" : ""} exited to free it; click a tab to resume`);
-    }
-  }
-
-  /** `/exit` a session and mark the tab: clicking it runs `claude --resume` on the same id. */
-  private eco(pane: Pane) {
-    pane.eco = true;
-    void this.tp.write(pane.id, "/exit\r").catch(() => {});
   }
 
   /**

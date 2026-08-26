@@ -130,6 +130,10 @@ pub struct Config {
     /// 15 by default: with every tab a Claude session, idle ones are the memory bill.
     /// The tab stays; clicking it runs `claude --resume`. 0 = never.
     pub eco_after_minutes: u32,
+    /// Percent of system RAM above which idle Claude sessions are `/exit`ed early, oldest
+    /// first, however recently they were used. 0 = never. This is the one that keeps the
+    /// machine responsive: ~400 MB per idle session, and a box at 98% RAM thrashes on swap.
+    pub eco_memory_pct: u32,
     /// Desktop notification when an unfocused pane rings or asks for something.
     pub notify_bell: bool,
     /// Desktop notification when a busy pane goes quiet. A guess for shells that cannot report;
@@ -202,6 +206,7 @@ impl Default for Config {
             sleep_after_seconds: 60,
             max_live_panes: 8,
             eco_after_minutes: 15,
+            eco_memory_pct: 85,
             notify_bell: true,
             notify_silence: false,
             silence_seconds: 20,

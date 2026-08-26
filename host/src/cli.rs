@@ -72,9 +72,14 @@ pub fn hook() {
     if std::io::stdin().read_to_end(&mut body).is_err() {
         return;
     }
+    // Only a permission request can be HELD by the window (see `hooks.rs`): everything else is
+    // told, not asked. Waiting for a reply on those is what made `UserPromptSubmit hook timed
+    // out after 15s` happen on a machine under memory pressure — the event had already been
+    // delivered, and Claude Code sat there for its whole timeout for nothing.
+    let decides = decides(&body);
     let Ok(mut stream) = std::net::TcpStream::connect(("127.0.0.1", port.parse::<u16>().unwrap_or(0))) else { return };
-    // A blocked request is held open while the rail decides; the shell version allowed 50s.
-    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(50)));
+    let wait = if decides { 50 } else { 2 };
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(wait)));
     let head = format!(
         "POST /hook/{token}/{pane} HTTP/1.1\r\nhost: 127.0.0.1\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
         body.len()
@@ -83,10 +88,15 @@ pub fn hook() {
         return;
     }
     let mut response = Vec::new();
-    if stream.read_to_end(&mut response).is_err() {
-        return;
-    }
+    // A read that times out still returns what arrived; a request nobody can answer just ends.
+    let _ = stream.read_to_end(&mut response);
     let _ = std::io::stdout().write_all(http_body(&response));
+}
+
+/// Whether this event can be ANSWERED, and so is worth waiting on. Only a permission request is
+/// held open by the window (`hooks.rs`); everything else is told, not asked.
+pub fn decides(body: &[u8]) -> bool {
+    std::str::from_utf8(body).is_ok_and(|b| b.contains("PermissionRequest"))
 }
 
 /// `KEY=value` lines, the way the host writes `hook-endpoint.env`.
@@ -141,6 +151,16 @@ mod tests {
         let env = parse_env("OBPTERM_HOOK_PORT=51234\nOBPTERM_HOOK_TOKEN=abc123\n");
         assert_eq!(env.get("OBPTERM_HOOK_PORT").map(String::as_str), Some("51234"));
         assert_eq!(env.get("OBPTERM_HOOK_TOKEN").map(String::as_str), Some("abc123"));
+    }
+
+    #[test]
+    fn only_a_permission_request_is_worth_waiting_for() {
+        // Waiting on the rest is what produced "UserPromptSubmit hook timed out after 15s":
+        // the event had already been delivered and Claude Code sat there for nothing.
+        assert!(decides(br#"{"hook_event_name":"PermissionRequest","tool_name":"Bash"}"#));
+        for told in ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "SubagentStop"] {
+            assert!(!decides(format!(r#"{{"hook_event_name":"{told}"}}"#).as_bytes()), "{told} is told, not asked");
+        }
     }
 
     #[test]

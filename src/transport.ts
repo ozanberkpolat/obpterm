@@ -155,6 +155,8 @@ export interface Config {
   max_live_panes: number;
   /** Minutes a finished, unfocused Claude session sits before /exit frees its memory. 0 = never. */
   eco_after_minutes: number;
+  /** Percent of system RAM above which idle sessions are exited early. 0 = never. */
+  eco_memory_pct: number;
   notify_bell: boolean;
   notify_silence: boolean;
   silence_seconds: number;
@@ -348,6 +350,7 @@ export function withDefaults(config: Partial<Config>): Config {
     sleep_after_seconds: config.sleep_after_seconds ?? 60,
     max_live_panes: config.max_live_panes ?? 8,
     eco_after_minutes: config.eco_after_minutes ?? 15,
+    eco_memory_pct: config.eco_memory_pct ?? 85,
     notify_bell: config.notify_bell ?? true,
     notify_silence: config.notify_silence ?? false,
     silence_seconds: config.silence_seconds ?? 20,

@@ -363,6 +363,10 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
         row("Sleep a finished agent after", "A Claude session that finished and sat unread is /exited to free its memory (~335 MB each); the tab stays and clicking it resumes the same conversation. Zero never does.",
           slider(c.eco_after_minutes, 0, 240, 10, " min", (v) => { c.eco_after_minutes = v; ctx.save(); })),
       ),
+      card(
+        row("Exit idle sessions when memory passes", "The machine running out of RAM is what actually freezes this window — it thrashes on swap and everything stalls for minutes. Above this, idle sessions are /exited oldest first, sleeping ones included, until it comes down. Each tab stays and resumes on click. Zero never does.",
+          slider(c.eco_memory_pct, 0, 100, 5, "%", (v) => { c.eco_memory_pct = v; ctx.save(); })),
+      ),
       cap("Being told"),
       card(
         row("Notify when a pane asks for you", "A desktop notification carrying what the program said, and the taskbar flashes until you come back.",

@@ -685,6 +685,10 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 .agent-pill.live { background: color-mix(in srgb, var(--accent) 12%, transparent); color: #ffcf9e; }
 .agent-pill.live i { background: #2fd6a3; box-shadow: 0 0 5px rgba(47, 214, 163, .7); }
 /* Spawned by another agent, not by the session: one notch in, with the thread that says so. */
+/* Metrics nobody has been able to refresh: dimmed, because a stale number that looks live is
+   worse than no number — this is what makes the CPU bar appear stuck at 100%. */
+#metrics.stale { opacity: .45; }
+#metrics.stale::after { content: "stale"; font: 600 9px var(--mono); color: var(--faint); margin-left: 6px; }
 .agent-pill.nested { margin-left: 11px; position: relative; }
 .agent-pill.nested::before {
   content: ""; position: absolute; left: -9px; top: 50%; width: 7px; height: 1px;

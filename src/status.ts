@@ -56,6 +56,14 @@ export class Status {
     void this.refreshMetrics();
   }
 
+  /** How full the machine's RAM is, 0-100, or null before the first sample. What the eco sweep
+   *  watches: an out-of-memory machine thrashes on swap and every window stalls with it. */
+  memoryPct(): number | null {
+    const m = this.metrics;
+    if (!m || !m.mem_total) return null;
+    return (m.mem_used / m.mem_total) * 100;
+  }
+
   /** The account new shells inherit: the focused tab's, else the configured default. */
   current(): Account | null {
     const id = this.app.tab?.accountId ?? this.app.config.default_account;
@@ -91,8 +99,12 @@ export class Status {
 
   async refreshMetrics() {
     this.metrics = await this.app.tp.hostMetrics(this.app.tab?.active.cwd ?? null).catch(() => null);
+    this.metricsAt = Date.now();
     this.paintMetrics();
   }
+
+  /** When the numbers on the bar were actually taken. */
+  private metricsAt = 0;
 
   private paintMetrics() {
     const m = this.metrics;
@@ -106,6 +118,14 @@ export class Status {
       ["swap", share(m.swap_used, m.swap_total), m.swap_total ? `${gb(m.swap_used)}/${gb(m.swap_total)}` : "none"],
       ["disk", share(m.disk_used, m.disk_total), `${gb(m.disk_used)}/${gb(m.disk_total)}`],
     ];
+    // A window starved of memory stops running its timers, so the last sample it managed to
+    // take — one from the moment everything was pegged — stays on the bar for as long as the
+    // freeze lasts. That is why the meter reads 100% long after the machine has recovered.
+    // Say the number is old rather than letting it pretend to be current.
+    const age = Date.now() - this.metricsAt;
+    const stale = age > 10_000;
+    this.metricsEl.classList.toggle("stale", stale);
+    this.metricsEl.title = stale ? `Last read ${Math.round(age / 1000)}s ago — the window was busy` : "";
     this.metricsEl.replaceChildren(
       ...gauges.map(([label, fraction, text]) => {
         const el = document.createElement("span");

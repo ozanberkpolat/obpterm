@@ -1356,6 +1356,43 @@ await evaluate("window.obpterm.config.update_repo = null");
 }
 
 
+// ---- v0.21.18: idle sessions are exited when the machine runs out of memory --------------
+{
+  // The freeze was never CPU: ~400 MB per idle Claude session, eighteen of them, a box at 98%
+  // RAM thrashing on swap. A SLEEPING pane counts — sleep frees a terminal, not the process.
+  const tabsBefore = await evaluate("window.obpterm.tabs.length");
+  await evaluate("void window.obpterm.newTab()");
+  await until(`window.obpterm.tabs.length === ${tabsBefore + 1}`, "a tab to sacrifice");
+  await until("window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].id > 0", "with a live shell");
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+  await evaluate(`(() => {
+    const p = window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0];
+    p.claudeSessionId = "mem-1";
+    p.agent.state = "done";
+    p.asleep = true;                       // the case that used to be skipped outright
+    p.lastVisited = Date.now();            // and far too recent for the timed path
+    window.obpterm.config.eco_memory_pct = 50;
+    window.obpterm.status.memoryPct = () => 97;
+  })()`);
+  await evaluate("window.obpterm.ecoSweep()");
+  const ecoed = await evaluate(`window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].eco`);
+  assert.equal(ecoed, true, "an idle sleeping session is exited under memory pressure");
+
+  // Below the threshold nothing is touched.
+  await evaluate(`(() => {
+    const p = window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0];
+    p.eco = false;
+    window.obpterm.status.memoryPct = () => 40;
+  })()`);
+  await evaluate("window.obpterm.ecoSweep()");
+  assert.equal(await evaluate(`window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].eco`), false, "and left alone when there is room");
+
+  await evaluate("(() => { window.obpterm.config.eco_memory_pct = 0; delete window.obpterm.status.memoryPct; })()");
+  await evaluate(`(() => { const t = window.obpterm.tabs.at(-1); if (window.obpterm.tabs.length > 1) window.obpterm.closeTab(t); })()`);
+  await until(`window.obpterm.tabs.length === ${tabsBefore}`, "its tab is gone again");
+}
+
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

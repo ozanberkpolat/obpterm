@@ -11,10 +11,6 @@ pub struct Metrics(Mutex<Sampler>);
 struct Sampler {
     system: System,
     disks: Disks,
-    /// The last few CPU readings, so one bad delta cannot pin the bar at 100%.
-    cpu: Vec<f32>,
-    #[cfg(windows)]
-    utility: Option<pdh::Counter>,
 }
 
 impl Default for Metrics {
@@ -24,9 +20,6 @@ impl Default for Metrics {
                 RefreshKind::nothing().with_cpu(sysinfo::CpuRefreshKind::nothing().with_cpu_usage()).with_memory(MemoryRefreshKind::everything()),
             ),
             disks: Disks::new_with_refreshed_list(),
-            cpu: Vec::new(),
-            #[cfg(windows)]
-            utility: pdh::Counter::processor_utility(),
         }))
     }
 }
@@ -51,26 +44,6 @@ pub fn host_metrics(metrics: State<Metrics>, cwd: Option<String>) -> HostMetrics
     s.system.refresh_memory();
     s.disks.refresh(false);
 
-    // `sysinfo` reports % Processor TIME — the share of wall time cores were not idle. Task
-    // Manager shows % Processor UTILITY, which scales that by actual frequency over base
-    // frequency, so a throttled laptop reads 100 here and 73 there, and the number the user
-    // can check is the one they believe. Prefer Windows' own counter; fall back to sysinfo.
-    let raw = {
-        #[cfg(windows)]
-        {
-            s.utility.as_mut().and_then(|c| c.read()).unwrap_or_else(|| s.system.global_cpu_usage())
-        }
-        #[cfg(not(windows))]
-        {
-            s.system.global_cpu_usage()
-        }
-    };
-    s.cpu.push(raw.clamp(0.0, 100.0));
-    if s.cpu.len() > 3 {
-        s.cpu.remove(0);
-    }
-    let cpu = s.cpu.iter().sum::<f32>() / s.cpu.len() as f32;
-
     // The disk the shell is actually working on is the one worth watching.
     let target = cwd.map(std::path::PathBuf::from);
     let disk = s
@@ -82,7 +55,7 @@ pub fn host_metrics(metrics: State<Metrics>, cwd: Option<String>) -> HostMetrics
         .or_else(|| s.disks.list().iter().max_by_key(|d| d.total_space()));
 
     HostMetrics {
-        cpu,
+        cpu: s.system.global_cpu_usage(),
         mem_used: s.system.used_memory(),
         mem_total: s.system.total_memory(),
         swap_used: s.system.used_swap(),
@@ -125,68 +98,4 @@ pub fn rss_for(metrics: State<Metrics>, pids: Vec<u32>) -> Vec<u64> {
             total
         })
         .collect()
-}
-
-/// The one performance counter worth the FFI: `\Processor Information(_Total)\% Processor
-/// Utility`, which is exactly what Task Manager's CPU column shows. Any failure along the way
-/// leaves the caller on `sysinfo`, so a machine without the counter simply keeps the old number.
-#[cfg(windows)]
-mod pdh {
-    use windows::core::PCWSTR;
-    use windows::Win32::System::Performance::{
-        PdhAddEnglishCounterW, PdhCollectQueryData, PdhGetFormattedCounterValue, PdhOpenQueryW, PDH_FMT_COUNTERVALUE,
-        PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY,
-    };
-
-    pub struct Counter {
-        query: PDH_HQUERY,
-        counter: PDH_HCOUNTER,
-        primed: bool,
-    }
-
-    // The handles are plain integers owned by this struct and only touched under the Mutex.
-    unsafe impl Send for Counter {}
-
-    fn wide(s: &str) -> Vec<u16> {
-        s.encode_utf16().chain(std::iter::once(0)).collect()
-    }
-
-    impl Counter {
-        pub fn processor_utility() -> Option<Self> {
-            unsafe {
-                let mut query = PDH_HQUERY::default();
-                if PdhOpenQueryW(PCWSTR::null(), 0, &mut query) != 0 {
-                    return None;
-                }
-                let path = wide("\\Processor Information(_Total)\\% Processor Utility");
-                let mut counter = PDH_HCOUNTER::default();
-                if PdhAddEnglishCounterW(query, PCWSTR(path.as_ptr()), 0, &mut counter) != 0 {
-                    return None;
-                }
-                // A rate counter needs two samples; the first collection is the baseline.
-                if PdhCollectQueryData(query) != 0 {
-                    return None;
-                }
-                Some(Self { query, counter, primed: false })
-            }
-        }
-
-        /// The current value, or None until the counter has two samples to work from.
-        pub fn read(&mut self) -> Option<f32> {
-            unsafe {
-                if PdhCollectQueryData(self.query) != 0 {
-                    return None;
-                }
-                if !self.primed {
-                    self.primed = true;
-                    return None;
-                }
-                let mut value = PDH_FMT_COUNTERVALUE::default();
-                if PdhGetFormattedCounterValue(self.counter, PDH_FMT_DOUBLE, None, &mut value) != 0 {
-                    return None;
-                }
-                Some(value.Anonymous.doubleValue as f32)
-            }
-        }
-    }
 }
