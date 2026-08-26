@@ -1,6 +1,6 @@
 // Tabs, panes and projects. A tab owns a pane tree; a project groups tabs, gives them a colour
 // and can save/restore its own set of tabs.
-import { isClaudePane, isDangerous, pruneFan, tick as agentTick } from "./agent";
+import { isClaudePane, isDangerous, liveAgents, pruneFan, tick as agentTick } from "./agent";
 import { withDefaults, type Account, type Config, type Host, type Profile, type Project, type Transport } from "./transport";
 import { ACTIVE_MS, Pane, type PaneHost } from "./pane";
 import * as L from "./layout";
@@ -264,6 +264,33 @@ export class App implements PaneHost {
     this.paintSoon();
   }
 
+  /** How many agents the whole window has out right now. The one number that says whether the
+   *  fleet is quiet or in full fan-out, without opening a single tab. */
+  liveAgentCount(): number {
+    return this.tabs.flatMap((t) => L.panes(t.root)).reduce((n, p) => n + liveAgents(p.agent).length, 0);
+  }
+
+  /** Tabs whose shell ended badly and are just taking up rail. */
+  exitedTabs(): Tab[] {
+    return this.tabs.filter((t) => this.activity(t) === "exited");
+  }
+
+  /** Close all of them at once — at twenty sessions these accumulate and each one wanted a
+   *  visit and a keypress. */
+  closeExited() {
+    const dead = this.exitedTabs();
+    for (const tab of dead) this.closeTab(tab);
+    if (dead.length) toast(`Closed ${dead.length} exited tab${dead.length > 1 ? "s" : ""}`);
+  }
+
+  /** Every pane whose shell the host lost, restarted in one go — a host hiccup takes several
+   *  at a time and the only cure was the per-pane strip, one at a time. */
+  async reloadLost() {
+    const lost = this.tabs.flatMap((t) => L.panes(t.root)).filter((p) => p.linkLost && !p.exited);
+    for (const p of lost) await this.reloadPane(p);
+    toast(lost.length ? `Reloaded ${lost.length} disconnected pane${lost.length > 1 ? "s" : ""}` : "Nothing is disconnected");
+  }
+
   /** What a tab has spent, in dollars — its panes summed. Null when nothing is known yet. */
   tabCost(tab: Tab): number | null {
     const costs = L.panes(tab.root).map((p) => p.usage?.cost_usd).filter((c): c is number => c !== undefined);
@@ -402,15 +429,19 @@ export class App implements PaneHost {
     window.setTimeout(() => tab && this.sendKey("claude auth login\r"), 700);
   }
 
+  /** A project made from where you are standing. Promoting an ad-hoc tab into a project is the
+   *  common move, and leaving `cwd` null meant a second trip through Settings to type the path
+   *  the app was already looking at. */
   addProject(name: string): Project {
     const used = new Set(this.config.projects.map((p) => p.color));
     const color = COLORS.find((c) => !used.has(c.value))?.value ?? COLORS[0]!.value;
+    const here = this.tab?.active;
     const project: Project = {
       id: `p${Date.now().toString(36)}`,
       name,
       color,
-      cwd: null,
-      default_profile: null,
+      cwd: here?.cwd ?? null,
+      default_profile: here?.profile.id ?? null,
       layout: null,
       collapsed: false,
     };
@@ -1066,6 +1097,11 @@ export class App implements PaneHost {
         const pid = pidOf.get(p.id);
         const bytes = pid ? byPid.get(pid) ?? 0 : 0;
         if (bytes) p.rss = bytes;
+      }
+      // The host has known how old every shell is since it started it; nothing ever read it.
+      for (const s of sessions) {
+        const pane = all.find((p) => p.id === s.id);
+        if (pane) pane.startedAt = s.started_at;
       }
     }
 

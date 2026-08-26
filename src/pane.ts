@@ -79,6 +79,9 @@ export class Pane {
   /** Bytes this pane's whole process tree is holding, from the host's pid. The number that
    *  decides which session is worth exiting when the machine is out of RAM. */
   rss = 0;
+  /** When the host started this shell — wall-clock age, unlike `agent.workingSince` which
+   *  resets every turn. The tab that has been open since yesterday. */
+  startedAt = 0;
   /** Tokens and estimated dollars this conversation has spent, from its own transcript. */
   usage: import("./transport").SessionUsage | null = null;
   /** Set when this pane's shell is not in the host's list any more, or a write to it failed:

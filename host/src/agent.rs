@@ -107,6 +107,10 @@ pub fn normalize(pane: u32, payload: &serde_json::Value) -> Option<AgentEvent> {
         }
         "PreToolUse" | "PostToolUse" => {
             let mut e = mk("working", tool_activity(payload));
+            // The name of the tool, on every tool event — not only on the ones that ask
+            // permission. "7 Bash, 2 Edit, 1 Read" says what a session is doing far better than
+            // one rolling detail line, and the field was already threaded end to end.
+            e.tool = payload.get("tool_name").and_then(|v| v.as_str()).map(str::to_string);
             // Inside a fan-out, tool calls carry the agent's own id: they are its feed, and
             // must not read as the parent session working.
             if let Some(id) = agent_of(payload) {

@@ -20,6 +20,11 @@ export interface FannedAgent {
 }
 
 export interface AgentState {
+  /** How many of each tool this session has called: {Bash: 7, Edit: 2}. What it is DOING,
+   *  where `detail` only says what it did last. */
+  toolCounts?: Record<string, number>;
+  /** What its finished fan-outs came to, kept as the agents themselves are pruned away. */
+  fanStats?: { count: number; totalMs: number; longestMs: number };
   /** When a session that was working went quiet for good — it stopped reporting mid-task
    *  rather than finishing. Null while it is talking. */
   stalledSince?: number | null;
@@ -55,6 +60,8 @@ export const blank = (): AgentState => ({
   unread: false,
   lastToolAt: 0,
   workingSince: 0,
+  toolCounts: {},
+  fanStats: { count: 0, totalMs: 0, longestMs: 0 },
   stalledSince: null,
   fanned: [],
   mode: null,
@@ -92,6 +99,12 @@ export function reduce(a: AgentState, u: AgentUpdate, focused: boolean): "notify
   if (u.agent_id && u.agent_event) {
     applyFan(a, u);
     if (u.agent_event !== "spawned") return null;
+  }
+  // Count the tool before the state machine gets a look: `a.tool` is cleared on every working
+  // event (it belongs to the blocked-state display), so the tally has to be its own.
+  if (u.tool && u.state === "working" && u.agent_event !== "tool") {
+    a.toolCounts = a.toolCounts ?? {};
+    a.toolCounts[u.tool] = (a.toolCounts[u.tool] ?? 0) + 1;
   }
   switch (u.state) {
     case "working": {
@@ -210,6 +223,17 @@ function applyFan(a: AgentState, u: AgentUpdate) {
 export function pruneFan(a: AgentState): boolean {
   const cutoff = Date.now() - 6000;
   const before = a.fanned.length;
+  // An agent's own duration is computed, shown for six seconds and then deleted with it. Fold
+  // it into the session's running total on the way out, so "that fan-out took 2m40s across four
+  // agents" survives the agent that earned it.
+  for (const f of a.fanned) {
+    if (f.endedAt === null || f.endedAt > cutoff || hasLiveDescendant(a, f.id)) continue;
+    const ms = f.endedAt - f.startedAt;
+    a.fanStats = a.fanStats ?? { count: 0, totalMs: 0, longestMs: 0 };
+    a.fanStats.count += 1;
+    a.fanStats.totalMs += ms;
+    a.fanStats.longestMs = Math.max(a.fanStats.longestMs, ms);
+  }
   a.fanned = a.fanned.filter((f) => f.endedAt === null || f.endedAt > cutoff || hasLiveDescendant(a, f.id));
   return a.fanned.length !== before;
 }

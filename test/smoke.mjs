@@ -1492,6 +1492,54 @@ await evaluate("window.obpterm.config.update_repo = null");
 }
 
 
+// ---- v0.21.21: the fields the app computed and never read ---------------------------------
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const pane = await evaluate("window.obpterm.tab.active.id");
+  const fire = (u) => devWs.send(JSON.stringify({ t: "agent_inject", reqId: 700, update: { pane, state: "working", session_id: "s-tally", detail: null, pending_id: null, options: [], ...u } }));
+
+  // Tool tally: the name arrives on every tool event now, not only on permission requests.
+  await evaluate("(() => { window.obpterm.tab.active.agent.toolCounts = {}; })()");
+  fire({ tool: "Bash", detail: "Running cargo test" });
+  fire({ tool: "Bash", detail: "Running npm run build" });
+  fire({ tool: "Edit", detail: "Editing pty.rs" });
+  await until("window.obpterm.tab.active.agent.toolCounts?.Bash === 2", "two Bash calls counted");
+  assert.equal(await evaluate("window.obpterm.tab.active.agent.toolCounts.Edit"), 1, "and one Edit");
+
+  // Fan-out rollup: the duration outlives the agent that earned it.
+  await evaluate(`(() => {
+    const a = window.obpterm.tab.active.agent;
+    a.fanStats = { count: 0, totalMs: 0, longestMs: 0 };
+    a.fanned = [
+      { id: "f1", kind: "general-purpose", task: "one", feed: null, startedAt: Date.now() - 100000, endedAt: Date.now() - 40000, tools: 3, parent: null },
+      { id: "f2", kind: "general-purpose", task: "two", feed: null, startedAt: Date.now() - 60000, endedAt: Date.now() - 30000, tools: 1, parent: null },
+    ];
+    window.obpterm.onPaneActivity();
+  })()`);
+  await until("window.obpterm.tab.active.agent.fanStats.count === 2", "both finished agents are folded in");
+  const longest = await evaluate("window.obpterm.tab.active.agent.fanStats.longestMs");
+  assert.ok(longest >= 59000 && longest <= 61000, `the longest is kept (${longest}ms)`);
+  assert.equal(await evaluate("window.obpterm.tab.active.agent.fanned.length"), 0, "and the agents themselves are gone");
+
+  // The header carries what it knows, and both counts are actionable.
+  await evaluate("(() => { window.obpterm.tab.active.startedAt = Date.now() - 6 * 3600_000 - 40 * 60_000; window.obpterm.paint(); })()");
+  assert.match(await evaluate("document.querySelector('.tab.active').title"), /open 6h40m/, "the row says how long it has been open");
+  assert.match(await evaluate("document.querySelector('.tab.active').title"), /2 Bash/, "and what it has been doing");
+  assert.equal(await evaluate("typeof document.querySelector('#rail-waiting').onclick"), "function", "the header count is clickable");
+
+  // A project made from where you are standing.
+  const cwd = await evaluate("window.obpterm.tab.active.cwd");
+  const madeId = await evaluate("window.obpterm.addProject('inherits-cwd').id");
+  const made = JSON.parse(await evaluate(`JSON.stringify(window.obpterm.config.projects.find(p => p.id === ${JSON.stringify(madeId)}))`));
+  assert.equal(made.cwd, cwd, "the new project starts where the tab was");
+  await evaluate(`(() => { const c = window.obpterm.config; c.projects = c.projects.filter(p => p.id !== ${JSON.stringify(madeId)}); window.obpterm.paint(); })()`);
+
+  await evaluate("(() => { const a = window.obpterm.tab.active.agent; a.toolCounts = {}; a.fanStats = { count: 0, totalMs: 0, longestMs: 0 }; window.obpterm.tab.active.startedAt = 0; })()");
+  devWs.close();
+}
+
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

@@ -47,6 +47,8 @@ export function installPalette(app: App) {
     { group: "Panes", label: app.tab?.active.logPath ? "Stop capture" : "Start capture", hint: "Ctrl+Shift+L", run: () => void app.toggleLog() },
     { group: "App", label: "Agents — every session and what it fanned out", hint: "Ctrl+G", run: () => app.showView("agents") },
     { group: "App", label: "New tab in a worktree — isolated copy of this repo", hint: "Ctrl+Shift+U", run: () => void import("./rail").then((r) => r.newWorktree(app)) },
+    { group: "App", label: "Close every exited tab", run: () => app.closeExited() },
+    { group: "App", label: "Reload every disconnected pane", run: () => void app.reloadLost() },
     { group: "App", label: "Restart the session host (ends shells, restores tabs)", run: () => void app.restartHost() },
     { group: "App", label: "Settings", hint: "Ctrl+Shift+,", run: () => app.settings.open() },
     { group: "App", label: "Manage snippets", run: () => app.settings.open("snippets") },

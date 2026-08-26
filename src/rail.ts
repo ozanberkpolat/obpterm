@@ -26,6 +26,13 @@ interface Row {
 
 const rows = new WeakMap<Tab, Row>();
 
+/** 95000 -> "1m", 24000000 -> "6h40m". */
+function fmtAge(ms: number): string {
+  const min = Math.round(ms / 60_000);
+  if (min < 60) return `${min}m`;
+  return `${Math.floor(min / 60)}h${min % 60 ? `${min % 60}m` : ""}`;
+}
+
 /** 412000 -> "412k", 2400000 -> "2.4M". */
 function fmtTokens(n: number): string {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
@@ -90,8 +97,23 @@ function patchAgents(app: App) {
 function patchHeader(app: App) {
   const el = document.querySelector<HTMLElement>("#rail-waiting")!;
   const n = app.waiting();
-  el.textContent = n ? `${n} waiting` : "";
-  el.hidden = n === 0;
+  const agents = app.liveAgentCount();
+  const dead = app.exitedTabs().length;
+  // Three facts, in the order they demand action. Each one is a button: the count that tells
+  // you something is wrong and cannot be clicked is a count you have to act on by hand.
+  const parts = [n ? `${n} waiting` : "", agents ? `${agents} agents` : "", dead ? `${dead} exited` : ""].filter(Boolean);
+  el.textContent = parts.join(" · ");
+  el.hidden = parts.length === 0;
+  el.title = "Click: jump to the next session that needs you. Right-click: close every exited tab.";
+  if (!el.dataset.wired) {
+    el.dataset.wired = "1";
+    el.style.cursor = "pointer";
+    el.onclick = () => app.jumpNeedsYou();
+    el.oncontextmenu = (e) => {
+      e.preventDefault();
+      app.closeExited();
+    };
+  }
 }
 
 function group(app: App, project: Project | null, tabs: Tab[]): HTMLElement {
@@ -264,7 +286,17 @@ function patchRow(app: App, tab: Tab) {
   row.li.classList.toggle("dead", state === "exited");
   row.li.classList.toggle("stalled", !!stalled);
   row.li.style.setProperty("--tab-accent", app.accent(tab));
-  row.li.title = `${title}\n${tab.active.profile.name}${tab.active.cwd ? `\n${tab.active.cwd}` : ""}`;
+  // Everything the row knows and has no room to draw. Cheap: it is one string per patch.
+  const a = tab.active.agent;
+  const tools = Object.entries(a.toolCounts ?? {}).sort((x, y) => y[1] - x[1]).slice(0, 3);
+  const fan = a.fanStats;
+  const extra = [
+    tab.active.startedAt ? `open ${fmtAge(Date.now() - tab.active.startedAt)}` : "",
+    tools.length ? tools.map(([t, n]) => `${n} ${t}`).join(", ") : "",
+    fan?.count ? `${fan.count} agents finished · longest ${fmtAge(fan.longestMs)}` : "",
+    tab.active.usage?.turns ? `${tab.active.usage.turns} turns · $${(tab.active.usage.cost_usd / tab.active.usage.turns).toFixed(3)}/turn` : "",
+  ].filter(Boolean);
+  row.li.title = [title, tab.active.profile.name, tab.active.cwd ?? "", ...extra].filter(Boolean).join("\n");
 
   set(row.num, String(app.tabs.indexOf(tab) + 1));
   set(row.title, title);
@@ -295,7 +327,8 @@ function patchRow(app: App, tab: Tab) {
   row.cost.hidden = cost === null || cost < 0.1;
   if (cost !== null) {
     set(row.cost, `$${cost < 10 ? cost.toFixed(2) : Math.round(cost)}`);
-    row.cost.title = `${fmtTokens(tokens)} tokens · estimated from this machine's transcripts, at the prices in Settings`;
+    const turns = panes.reduce((n, p) => n + (p.usage?.turns ?? 0), 0);
+    row.cost.title = `${fmtTokens(tokens)} tokens${turns ? ` · ${turns} turns · $${(cost / turns).toFixed(3)} a turn` : ""} · estimated from this machine's transcripts, at the prices in Settings`;
   }
   row.badge.hidden = panes.length < 2;
   set(row.badge, panes.length > 1 ? String(panes.length) : "");
@@ -435,10 +468,12 @@ function colorMenu(x: number, y: number, current: string | null, set: (c: string
 export function newWorktree(app: App) {
   const host = document.querySelector<HTMLElement>("#rail-new")!;
   host.hidden = false;
-  editInline(host, "", "Worktree name (becomes the branch)", (v) => {
+  // Comma-separated makes the parallel case one keystroke sequence instead of N — parallel
+  // worktrees are why the feature exists.
+  editInline(host, "", "Worktree name, or several separated by commas", (v) => {
     host.hidden = true;
     host.replaceChildren();
-    if (v) void app.newWorktreeTab(v);
+    for (const name of v.split(",").map((n) => n.trim()).filter(Boolean)) void app.newWorktreeTab(name);
   });
 }
 
