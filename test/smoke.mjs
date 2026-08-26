@@ -211,10 +211,13 @@ await until("!!document.querySelector('.group.collapsed')", "a collapsed project
 assert.equal(await evaluate("getComputedStyle(document.querySelector('.group.collapsed .glist')).display"), "none");
 await evaluate("void window.obpterm.toggleProject(window.obpterm.config.projects[0])");
 await until("!document.querySelector('.group.collapsed')", "the project expanded again");
-// A run that died between collapse and expand leaves rail_collapsed behind — normalize first.
-await evaluate("(() => { if (window.obpterm.config.rail_collapsed) window.obpterm.toggleRail(); })()");
+// A run that died between collapse and expand leaves the rail collapsed — normalize by what
+// the DOM actually shows, since that is what the width assertion measures.
+await evaluate("(() => { if (document.querySelector('#rail').classList.contains('collapsed')) window.obpterm.toggleRail(); })()");
+await until("!document.querySelector('#rail').classList.contains('collapsed')", "an expanded rail");
 await evaluate("window.obpterm.setRailWidth(300)");
-assert.equal(await evaluate("document.querySelector('#rail').getBoundingClientRect().width"), 300);
+// The drag handler above finishes asynchronously; wait for the width rather than race it.
+await until("Math.round(document.querySelector('#rail').getBoundingClientRect().width) === 300", "the rail at its set width");
 assert.equal(
   await evaluate("document.querySelector('#rail-body').scrollWidth <= document.querySelector('#rail-body').clientWidth"),
   true,
@@ -1069,6 +1072,29 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
   await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.fanned = []; }), window.obpterm.paint()");
   devWs.close();
+}
+
+
+// ---- v0.21.3: a pane whose shell is gone says so, and Reload brings it back -----------------
+{
+  await evaluate("window.obpterm.showView('sessions')");
+  // A pane pointed at a pty id the host does not hold: exactly what a stale restore leaves.
+  await evaluate("(() => { const p = window.obpterm.tab.active; window.__realId = p.id; p.id = 999999; p.cwd = null; p.claudeSessionId = null; })()");
+  await evaluate("void window.obpterm.refreshHeld()");
+  await until("!!document.querySelector('.pane .lost')", "the pane admits its shell is gone");
+  assert.match(await evaluate("document.querySelector('.pane .lost span').textContent"), /typing goes nowhere/, "and says why");
+
+  // Reload respawns it and clears the warning.
+  await evaluate("document.querySelector('.pane .lost button').click()");
+  await until("document.querySelector('.pane .lost') === null", "reload clears it");
+  await until("window.obpterm.tab.active.id > 0 && window.obpterm.tab.active.id !== 999999", "the pane runs a real shell again");
+  assert.ok(!(await evaluate("window.obpterm.tab.active.profile.args.includes('--resume')")), "a shell profile never gets --resume in its args");
+
+  // Typing reaches that shell (give the fresh pty a beat, and let the typed resume land
+  // first — the fixture has no claude binary, so it just prints "command not found").
+  await new Promise((r) => setTimeout(r, 1200));
+  await evaluate("void window.obpterm.tp.write(window.obpterm.tab.active.id, 'echo alive-again\\r')");
+  await until(`${bufferText("window.obpterm.tab.active")}.includes('alive-again')`, "the reloaded shell answers");
 }
 
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
