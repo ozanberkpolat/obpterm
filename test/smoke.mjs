@@ -69,6 +69,11 @@ const until = async (expr, what, ms = 15000) => {
 await until("!!document.querySelector('.xterm-screen')", "the first terminal");
 await until("!!window.obpterm?.tab?.active?.id > 0", "a live pty");
 
+// The sleep sweep and the live ceiling are driven explicitly further down. Left on their
+// timers they would tear terminals down under the other 1100 lines, and a wake replays
+// scrollback, which reads as fresh output — an activity assertion two blocks away would flap.
+await evaluate("(() => { window.obpterm.config.sleep_after_seconds = 0; window.obpterm.config.max_live_panes = 0; })()");
+
 // Split twice, then close one pane: the tree, the DOM and the ptys must agree.
 const panes0 = await evaluate("document.querySelectorAll('.pane').length");
 const dividers0 = await evaluate("document.querySelectorAll('.divider').length");
@@ -443,7 +448,7 @@ await until(`window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].id > 0`,
 await evaluate(`void window.obpterm.tp.write(window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].id, 'echo before-sleep\\n')`);
 await until(`${bufferText(`window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0]`)}.includes('before-sleep')`, "output before sleeping");
 await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
-await evaluate(`(() => { window.obpterm.config.sleep_after_minutes = 1; window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].lastVisited = 0; })()`);
+await evaluate(`(() => { window.obpterm.config.sleep_after_seconds = 1; window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].lastVisited = 0; })()`);
 await evaluate("void window.obpterm.sleepIdleTabs()");
 await until(`window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].asleep === true`, "the pane asleep");
 assert.equal(await evaluate(`window.obpterm.tabs[${sleeper}].el.querySelector('.xterm') === null`), true, "its terminal is gone");
@@ -456,7 +461,7 @@ await evaluate(`window.obpterm.activate(window.obpterm.tabs[${sleeper}])`);
 await until(`window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0].asleep === false`, "the pane awake");
 await until(`${bufferText(`window.obpterm.panesOf(window.obpterm.tabs[${sleeper}])[0]`)}.includes('before-sleep')`, "the replay after waking");
 await evaluate(`window.obpterm.closeTab(window.obpterm.tabs[${sleeper}])`);
-await evaluate("window.obpterm.config.sleep_after_minutes = 10");
+await evaluate("window.obpterm.config.sleep_after_seconds = 0");
 
 // ---- agent supervision: hook events drive the states, and answers travel back -------------
 const agentPaneId = await evaluate("window.obpterm.tab.active.id");
@@ -1210,6 +1215,59 @@ await evaluate("window.obpterm.config.update_repo = null");
   await fire("mousemove", 600, 200, 1);  // after mouseup nothing should move
   assert.equal(await evaluate("window.__drag.length"), 1, "and it stops listening when the button comes up");
   await evaluate("window.obpterm.tp.native = window.__wasNative");
+}
+
+
+// ---- v0.21.12: sleeping background tabs, and a ceiling on live terminals ------------------
+{
+  // A live terminal holds a WebGL context; past about sixteen the window falls apart. Both
+  // levers are driven by hand here — the suite pins them off at the top.
+  const tabsBefore = await evaluate("window.obpterm.tabs.length");
+  await evaluate("void window.obpterm.newTab()");
+  await evaluate("void window.obpterm.newTab()");
+  await until(`window.obpterm.tabs.length === ${tabsBefore + 2}`, "two tabs of its own");
+  const awake = () => evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).filter(p => !p.asleep && !p.exited && p.id > 0).length");
+
+  // The sweep sleeps what is off screen, and never the tab you are looking at.
+  await evaluate("(() => { window.obpterm.config.sleep_after_seconds = 1; for (const t of window.obpterm.tabs) for (const p of window.obpterm.panesOf(t)) p.lastVisited = 0; })()");
+  await evaluate("void window.obpterm.sleepIdleTabs()");
+  await until("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).some(p => p.asleep)", "an off-screen tab sleeps");
+  const front = await evaluate("window.obpterm.panesOf(window.obpterm.tab).every(p => !p.asleep)");
+  assert.ok(front, "the tab on screen keeps its terminal");
+
+  // A pane waiting on a permission question is never slept — the rail answers through it.
+  await evaluate(`(() => {
+    const other = window.obpterm.tabs.find((t) => t !== window.obpterm.tab);
+    const p = window.obpterm.panesOf(other)[0];
+    window.__askId = p.id;
+    p.lastVisited = 0;
+    p.agent.state = "blocked";
+    return p.asleep ? window.obpterm.wakePane(p) : null;
+  })()`);
+  await until("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === window.__askId)?.asleep === false", "it is awake to be tested");
+  await evaluate("void window.obpterm.sleepIdleTabs()");
+  const stillAwake = await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === window.__askId).asleep");
+  assert.equal(stillAwake, false, "a pane holding a question is never slept");
+  await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(x => x.id === window.__askId); p.agent.state = "done"; })()`);
+
+  // The ceiling: waking past it sleeps the pane visited longest ago.
+  await evaluate("(() => { window.obpterm.config.sleep_after_seconds = 0; window.obpterm.config.max_live_panes = 1; })()");
+  await evaluate("(() => { for (const t of window.obpterm.tabs) for (const p of window.obpterm.panesOf(t)) p.lastVisited = Date.now(); })()");
+  const target = await evaluate(`(() => {
+    const other = window.obpterm.tabs.find((t) => t !== window.obpterm.tab);
+    const p = window.obpterm.panesOf(other)[0];
+    p.lastVisited = Date.now();
+    return window.obpterm.wakePane(p).then(() => p.id);
+  })()`);
+  await until(`(${await awake()} , window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).filter(p => !p.asleep && !p.exited && p.id > 0).length <= window.obpterm.panesOf(window.obpterm.tab).length + 1)`, "the ceiling sleeps the oldest awake pane");
+  assert.ok(typeof target === "number", "the woken pane is still the one asked for");
+
+  // Put the suite back the way it found it.
+  await evaluate("(() => { window.obpterm.config.sleep_after_seconds = 0; window.obpterm.config.max_live_panes = 0; })()");
+  await evaluate(`(() => {
+    for (const t of [...window.obpterm.tabs]) if (window.obpterm.tabs.length > ${tabsBefore}) window.obpterm.closeTab(t === window.obpterm.tab ? window.obpterm.tabs.find(x => x !== window.obpterm.tab) : t);
+  })()`);
+  await until(`window.obpterm.tabs.length === ${tabsBefore}`, "its tabs are gone again");
 }
 
 

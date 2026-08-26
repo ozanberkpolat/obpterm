@@ -75,8 +75,6 @@ export class Pane {
   /** Cold restore of claude typed into a plain shell: type `claude --resume <this>` once up. */
   typeResume: string | null = null;
   logPath: string | null = null;
-  /** Restore hint: come back asleep instead of attaching. Set for tabs that are not on screen. */
-  startAsleep = false;
 
   constructor(
     public host: PaneHost,
@@ -175,11 +173,6 @@ export class Pane {
     if (this.asleep || this.exited || this.id < 0) return;
     this.asleep = true;
     await this.host.tp.detach(this.id).catch(() => {});
-    this.teardown();
-  }
-
-  /** Drops the terminal and puts the placeholder in its place. The shell is not touched. */
-  private teardown() {
     this.term.dispose();
     this.el.replaceChildren();
     const note = document.createElement("div");
@@ -239,19 +232,8 @@ export class Pane {
       // The shell never stopped; the window did. Replay its history, then go live.
       const id = this.attachTo;
       this.attachTo = null;
-      this.id = id;
-      if (this.startAsleep) {
-        // Twenty tabs coming back used to mean twenty attaches and twenty scrollback replays
-        // into twenty terminals, in one go, before the window would answer anything. A tab you
-        // are not looking at does not need any of that: the shell is already running and its id
-        // is all a click needs to attach it.
-        this.startAsleep = false;
-        this.host.onPaneReattached(this);
-        this.asleep = true;
-        this.teardown();
-        return;
-      }
       await this.host.tp.attach(id, t.cols, t.rows, onData, onExit);
+      this.id = id;
       this.host.onPaneReattached(this);
     } else {
       this.id = await this.host.tp.spawn({ ...this.profile, cwd: this.cwd }, t.cols, t.rows, onData, onExit);
@@ -283,9 +265,6 @@ export class Pane {
   }
 
   focus() {
-    // A pane that lost its GPU context while it was in the background gets one back here: it is
-    // about to be the terminal you are looking at, and the ceiling has freed the contexts.
-    if (this.term.degraded()) this.term.regain();
     this.term.fit();
     this.term.term.focus();
   }

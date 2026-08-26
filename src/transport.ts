@@ -149,8 +149,10 @@ export interface Config {
   capture_keep_days: number;
   capture_max_mb: number;
   update_check_on_launch: boolean;
-  /** Minutes a tab can go unvisited before its terminal is put to sleep. 0 = never. */
-  sleep_after_minutes: number;
+  /** Seconds a tab can sit off screen before its terminal is put to sleep. 0 = never. */
+  sleep_after_seconds: number;
+  /** How many panes may hold a terminal at once; waking past it sleeps the oldest. 0 = no cap. */
+  max_live_panes: number;
   /** Minutes a finished, unfocused Claude session sits before /exit frees its memory. 0 = never. */
   eco_after_minutes: number;
   notify_bell: boolean;
@@ -343,7 +345,8 @@ export function withDefaults(config: Partial<Config>): Config {
     capture_keep_days: config.capture_keep_days ?? 30,
     capture_max_mb: config.capture_max_mb ?? 512,
     update_check_on_launch: config.update_check_on_launch ?? true,
-    sleep_after_minutes: config.sleep_after_minutes ?? 10,
+    sleep_after_seconds: config.sleep_after_seconds ?? 60,
+    max_live_panes: config.max_live_panes ?? 8,
     eco_after_minutes: config.eco_after_minutes ?? 15,
     notify_bell: config.notify_bell ?? true,
     notify_silence: config.notify_silence ?? false,

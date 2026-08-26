@@ -12,10 +12,6 @@ export interface Term {
   search: SearchAddon;
   fit(): void;
   dispose(): void;
-  /** True while this terminal is painting through the DOM because its GPU context went away. */
-  degraded(): boolean;
-  /** Try to take a GPU context again. Called when the pane is focused, after others have slept. */
-  regain(): void;
 }
 
 const isWindows = navigator.userAgent.includes("Windows");
@@ -40,39 +36,19 @@ export function createTerm(container: HTMLElement, config: Config): Term {
   term.loadAddon(new WebLinksAddon());
   term.unicode.activeVersion = "11";
   term.open(container);
-  // Chromium hands out about sixteen WebGL contexts per process, and takes the oldest back when
-  // it runs out. Losing one used to be permanent: the addon was disposed and that terminal
-  // painted through the DOM for the rest of its life, several times more expensive per byte of
-  // output. Enough of them and the window stops answering. So the loss is remembered, and the
-  // pane asks for a context again when it is focused — by which time the ceiling has slept
-  // whatever was holding them.
-  let webgl: WebglAddon | null = null;
-  let supported = true; // a machine with no WebGL at all is not worth asking twice
-  const gpu = () => {
-    if (webgl || !supported) return;
-    try {
-      const addon = new WebglAddon();
-      addon.onContextLoss(() => {
-        addon.dispose();
-        webgl = null;
-      });
-      term.loadAddon(addon);
-      webgl = addon;
-    } catch (e) {
-      console.warn("webgl renderer unavailable, using DOM renderer", e);
-      webgl = null;
-      supported = false;
-    }
-  };
-  gpu();
+  try {
+    const webgl = new WebglAddon();
+    webgl.onContextLoss(() => webgl.dispose()); // falls back to the DOM renderer
+    term.loadAddon(webgl);
+  } catch (e) {
+    console.warn("webgl renderer unavailable, using DOM renderer", e);
+  }
   return {
     term,
     search,
     // A hidden tab measures 0 wide; fitting then would resize the shell to nothing.
     fit: () => container.clientWidth > 0 && container.clientHeight > 0 && fitAddon.fit(),
     dispose: () => term.dispose(),
-    degraded: () => supported && webgl === null,
-    regain: gpu,
   };
 }
 

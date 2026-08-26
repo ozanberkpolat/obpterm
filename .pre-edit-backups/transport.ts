@@ -276,6 +276,8 @@ export interface Transport {
   windowAction(label: string, action: "minimize" | "maximize" | "close"): Promise<void>;
   /** Begins dragging the window from our own title bar. */
   startDrag(): Promise<void>;
+  /** Fallback drag: move the window by a pointer delta, in physical pixels. */
+  dragMove(dx: number, dy: number): Promise<void>;
   /** A desktop notification. Resolves false when the OS refused permission. */
   notify(title: string, body: string): Promise<boolean>;
   /** Flash the window and its taskbar button until the app is focused. */

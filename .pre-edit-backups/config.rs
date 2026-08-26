@@ -118,14 +118,9 @@ pub struct Config {
     pub capture_max_mb: u32,
     /// Ask GitHub for a newer release once, a few seconds after launch.
     pub update_check_on_launch: bool,
-    /// Seconds a tab can sit off screen before its terminal is torn down to save memory; the
-    /// shell keeps running in the host and the tab wakes on click. 0 = never. Seconds, not
-    /// minutes, because a live terminal is not free: it holds a WebGL context, and Chromium
-    /// gives the whole webview about sixteen of those before it starts taking them away.
-    pub sleep_after_seconds: u32,
-    /// How many panes may hold a terminal at once. Waking one past the ceiling puts the
-    /// least-recently-visited awake pane to sleep first. 0 = no ceiling.
-    pub max_live_panes: u32,
+    /// Minutes a tab can go unvisited before its terminal is torn down to save memory; the
+    /// shell keeps running in the host and the tab wakes on click. 0 = never.
+    pub sleep_after_minutes: u32,
     /// Minutes a finished, unfocused Claude session sits before /exit frees its ~335 MB.
     /// 15 by default: with every tab a Claude session, idle ones are the memory bill.
     /// The tab stays; clicking it runs `claude --resume`. 0 = never.
@@ -199,8 +194,7 @@ impl Default for Config {
             capture_keep_days: 30,
             capture_max_mb: 512,
             update_check_on_launch: true,
-            sleep_after_seconds: 60,
-            max_live_panes: 8,
+            sleep_after_minutes: 10,
             eco_after_minutes: 15,
             notify_bell: true,
             notify_silence: false,

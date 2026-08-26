@@ -41,7 +41,7 @@ async function main() {
   // Running decays to idle on its own, so the rail re-derives once a second. The rail patches
   // rows in place, so this is a handful of attribute writes, not a rebuild.
   window.setInterval(() => app.onPaneActivity(), 1000);
-  window.setInterval(() => void app.sleepIdleTabs(), 15_000);
+  window.setInterval(() => void app.sleepIdleTabs(), 30_000);
   window.setInterval(() => app.ecoSweep(), 60_000);
   window.setInterval(() => void app.refreshAgentTitles(), 5_000);
   installAgentEvents(app);
@@ -61,10 +61,7 @@ async function main() {
       }
     })
     .catch(() => {});
-  // Only while the window is in front. Nothing on this bar changes a decision you cannot see,
-  // and polling the host every three seconds behind another window is pure heat.
-  window.setInterval(() => document.hasFocus() && void app.refreshHeld(), 5_000);
-  window.addEventListener("focus", () => void app.refreshHeld());
+  window.setInterval(() => void app.refreshHeld(), 3_000);
   window.addEventListener("focus", () => app.clearAttention());
   const { restored, crashed, updatedTo } = await app.restoreSession();
   const tabs = `${restored} tab${restored > 1 ? "s" : ""}`;

@@ -222,8 +222,7 @@ export class App implements PaneHost {
     const dir = account?.claude_dir ?? "~/.claude";
     for (const pane of L.panes(tab.root)) {
       if (!pane.claudeSessionId) continue;
-      // The name only when the user has not chosen one; the gauge only for the pane whose gauge
-      // is on screen — it is a 256 KB read and a JSON parse per pane, every five seconds.
+      // The name only when the user has not chosen one; the context gauge always.
       if (!tab.name) {
         const title = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
         if (title && title !== pane.title) {
@@ -231,7 +230,7 @@ export class App implements PaneHost {
           this.paint();
         }
       }
-      if (pane === tab.active) pane.ctxPct = await this.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
+      pane.ctxPct = await this.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
     }
     this.status?.paintCtx();
   }
@@ -453,7 +452,7 @@ export class App implements PaneHost {
     for (const p of L.panes(tab.root)) {
       p.lastVisited = Date.now();
       p.agent.unread = false;
-      if (p.asleep) void this.wakePane(p);
+      if (p.asleep) void p.wake().then(() => this.paint());
       if (p.eco) void this.resumeEco(p);
     }
     this.mru = [tab, ...this.mru.filter((t) => t !== tab && this.tabs.includes(t))];
@@ -896,49 +895,14 @@ export class App implements PaneHost {
    * most of it. The shells keep running in the host; clicking the tab brings the terminal
    * back with the shell's recent output.
    */
-  /** Every awake pane, oldest visit first. */
-  private awakePanes(): Pane[] {
-    return this.tabs
-      .flatMap((t) => L.panes(t.root))
-      .filter((p) => !p.asleep && !p.exited && p.id > 0)
-      .sort((a, b) => a.lastVisited - b.lastVisited);
-  }
-
-  /**
-   * Wakes a pane, and keeps the window under its ceiling while doing it. A live terminal holds
-   * a WebGL context; past about sixteen Chromium takes them back, every terminal that loses one
-   * falls back to the DOM renderer, and the window seizes. So the oldest awake pane goes to
-   * sleep to make room — its shell keeps running, and it wakes on click like any other.
-   */
-  async wakePane(pane: Pane) {
-    await pane.wake();
-    const cap = this.config.max_live_panes;
-    if (cap) {
-      const current = this.tab ? L.panes(this.tab.root) : [];
-      const spare = this.awakePanes().filter((p) => p !== pane && !current.includes(p));
-      let slept = 0;
-      while (spare.length && spare.length + current.length > cap) {
-        const oldest = spare.shift()!;
-        if (oldest.agent.state === "blocked" || oldest.agent.state === "waiting") continue;
-        await oldest.sleep();
-        slept++;
-      }
-      if (slept) toast(`${slept} background session${slept > 1 ? "s" : ""} put to sleep — click one to wake it`);
-    }
-    this.paint();
-  }
-
   async sleepIdleTabs() {
-    const seconds = this.config.sleep_after_seconds;
-    if (!seconds || !this.hostInstance) return;
-    const cutoff = Date.now() - seconds * 1000;
+    const minutes = this.config.sleep_after_minutes;
+    if (!minutes || !this.hostInstance) return;
+    const cutoff = Date.now() - minutes * 60_000;
     let slept = 0;
     for (const tab of this.tabs) {
       if (tab === this.tab) continue;
       for (const p of L.panes(tab.root)) {
-        // A pane holding a permission question keeps its shell: the rail's Allow/Deny writes
-        // to it, and answering a question through a torn-down terminal is not a thing.
-        if (p.agent.state === "blocked" || p.agent.state === "waiting") continue;
         if (!p.asleep && !p.exited && p.id > 0 && p.lastVisited < cutoff && !p.logPath) {
           await p.sleep();
           slept++;
@@ -1347,13 +1311,8 @@ export class App implements PaneHost {
     const saved = (session?.tabs as SavedTab[] | null) ?? [];
     this.claimed.clear();
     let restored = 0;
-    const list = Array.isArray(saved) ? saved : [];
-    // Everything except the tab that will be in front comes back asleep. Restoring twenty live
-    // terminals at once is the worst moment the window has, and nineteen of them were for tabs
-    // nobody was looking at.
-    const front = Math.min(session?.active ?? 0, list.length - 1);
-    for (const [i, tab] of list.entries()) {
-      if (await this.restoreTab(tab, i !== front)) restored++;
+    for (const tab of Array.isArray(saved) ? saved : []) {
+      if (await this.restoreTab(tab)) restored++;
     }
     // Activate once, at the end, on the tab that was in front — not on whichever happened to
     // be built last, and without repainting the whole rail per restored tab.
@@ -1423,7 +1382,7 @@ export class App implements PaneHost {
     return pane;
   }
 
-  private async restoreTab(saved: SavedTab, asleep = false): Promise<boolean> {
+  private async restoreTab(saved: SavedTab): Promise<boolean> {
     const build = (n: L.SavedNode): L.Node | null => {
       if (n.kind === "leaf") {
         return L.leaf(this.restorePane(n, saved));
@@ -1454,8 +1413,6 @@ export class App implements PaneHost {
     this.tabs.push(tab);
     this.layout(tab);
     // ConPTY spawns are independent: 24 panes should not be 24 round trips in series.
-    // A capture profile has to attach: its log is written from the stream it would not receive.
-    for (const p of list) if (asleep && p.attachTo !== null && !p.profile.capture) p.startAsleep = true;
     await Promise.all(list.map((p) => this.startPane(tab, p)));
     for (const p of list) {
       if (!p.typeResume || p.exited || p.id < 0) continue;

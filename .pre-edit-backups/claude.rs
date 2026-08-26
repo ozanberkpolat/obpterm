@@ -486,18 +486,6 @@ pub async fn session_context(dir: String, session_id: String) -> Option<u8> {
         .flatten()
         .map(|d| d.path().join(format!("{session_id}.jsonl")))
         .find(|p| p.exists())?;
-    // The transcript is re-read every few seconds for a gauge that only moves when the file
-    // grows. Remember the last answer against the file's size and mtime and skip the 256 KB
-    // read plus the JSON parse of every usage line when nothing has been appended.
-    let stamp = std::fs::metadata(&file)
-        .ok()
-        .map(|m| (m.len(), m.modified().ok()))
-        .unwrap_or((0, None));
-    if let Some((seen, pct)) = CONTEXT_CACHE.lock().ok().and_then(|c| c.get(&session_id).copied()) {
-        if seen == stamp {
-            return pct;
-        }
-    }
     let text = tail(&file, 256 * 1024)?;
     let mut last: Option<u64> = None;
     let mut model = String::new();
@@ -520,17 +508,8 @@ pub async fn session_context(dir: String, session_id: String) -> Option<u8> {
             }
         }
     }
-    let pct = last.map(|t| ((t as f64 / window_for(&model) as f64) * 100.0).round().clamp(0.0, 100.0) as u8);
-    if let Ok(mut c) = CONTEXT_CACHE.lock() {
-        c.insert(session_id.clone(), (stamp, pct));
-    }
-    pct
+    last.map(|t| ((t as f64 / window_for(&model) as f64) * 100.0).round().clamp(0.0, 100.0) as u8)
 }
-
-type FileStamp = (u64, Option<std::time::SystemTime>);
-/// session id -> (what the transcript looked like when we read it, what it said).
-static CONTEXT_CACHE: std::sync::LazyLock<Mutex<HashMap<String, (FileStamp, Option<u8>)>>> =
-    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The saved statusLine payload, when it is this very session's: Claude's own percentage.
 fn payload_context(dir: &str, session_id: &str) -> Option<u8> {

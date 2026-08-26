@@ -352,12 +352,8 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
       ),
       cap("Memory"),
       card(
-        row("Put a tab to sleep after it leaves the screen", "A tab you are not looking at loses its terminal; the shell keeps running in the session host and the tab wakes on click. The rail still shows what a sleeping shell is doing, and a pane waiting on a permission question is never slept. Zero keeps every terminal alive.",
-          slider(c.sleep_after_seconds, 0, 600, 30, " s", (v) => { c.sleep_after_seconds = v; ctx.save(); })),
-      ),
-      card(
-        row("Keep at most this many terminals awake", "Each live terminal holds a WebGL context, and the window gets about sixteen before Chromium starts taking them back — at which point every terminal drops to the slow renderer and the app seizes. Waking a pane past this many sleeps the one you looked at longest ago. Zero removes the ceiling.",
-          slider(c.max_live_panes, 0, 20, 1, "", (v) => { c.max_live_panes = v; ctx.save(); })),
+        row("Put idle tabs to sleep after", "A tab nobody has looked at loses its terminal; the shell keeps running in the session host and the tab wakes on click. The rail still shows what a sleeping shell is doing. Zero keeps every terminal alive.",
+          slider(c.sleep_after_minutes, 0, 120, 5, " min", (v) => { c.sleep_after_minutes = v; ctx.save(); })),
       ),
       card(
         row("Sleep a finished agent after", "A Claude session that finished and sat unread is /exited to free its memory (~335 MB each); the tab stays and clicking it resumes the same conversation. Zero never does.",
