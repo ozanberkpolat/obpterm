@@ -120,6 +120,10 @@ export class App implements PaneHost {
 
   /** Shells the host was holding when this window connected, by id. */
   private held = new Map<number, import("./transport").HostSession>();
+  /** The same shells by Claude's own session id — an identity that outlives pty numbering. */
+  private heldByClaude = new Map<string, import("./transport").HostSession>();
+  /** Which held shells a restored pane has already taken, so two never claim one. */
+  private claimed = new Set<number>();
   private reattachable = false;
   /** Panes that came back attached to a shell that never stopped. */
   reattached = 0;
@@ -435,7 +439,9 @@ export class App implements PaneHost {
     this.paint();
     void this.flushSession();
     if (!this.tabs.length) {
-      if (this.tp.native) void import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().close());
+      // Closing the last tab closes the window — through the Rust side, not the webview's own
+      // `close()`, which depends on a capability and has failed silently here before.
+      if (this.tp.native) void this.tp.windowAction("main", "close").catch(() => void this.newTab());
       else void this.newTab();
     }
   }
@@ -946,7 +952,9 @@ export class App implements PaneHost {
   async quitAll() {
     await this.flushSession();
     await this.tp.hostShutdown().catch(() => {});
-    if (this.tp.native) void import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().close());
+    // Through the Rust side, not the webview's own `close()`: that path depends on a capability
+    // and failed silently once already, leaving Quit as a button that did nothing.
+    if (this.tp.native) await this.tp.windowAction("main", "close").catch((err) => toast(`Can't quit: ${err}`));
   }
 
   /** Swap a stale session host for a current one without closing the window. The shells it
@@ -1284,6 +1292,9 @@ export class App implements PaneHost {
     }
     const sessions = await this.tp.listSessions().catch(() => []);
     this.held = new Map(sessions.map((s) => [s.id, s]));
+    this.heldByClaude = new Map(
+      sessions.filter((s) => s.exited === null && s.claude_session_id).map((s) => [s.claude_session_id!, s]),
+    );
   }
 
   /** How many of the host's shells no tab in this window is showing. */
@@ -1298,6 +1309,7 @@ export class App implements PaneHost {
     // Ids from another host instance are just numbers; those panes respawn instead.
     this.reattachable = !!this.hostInstance && session?.host === this.hostInstance;
     const saved = (session?.tabs as SavedTab[] | null) ?? [];
+    this.claimed.clear();
     let restored = 0;
     for (const tab of Array.isArray(saved) ? saved : []) {
       if (await this.restoreTab(tab)) restored++;
@@ -1325,7 +1337,16 @@ export class App implements PaneHost {
     const profile = host ? this.hostProfile(host) : this.config.profiles.find((p) => p.id === wanted);
     if (profile) {
       let effective = this.withAccount(profile, saved.account ?? null, saved.slot);
-      const held = this.reattachable && node.pty ? this.held.get(node.pty) : undefined;
+      // Two ways home, in order of certainty. The pty number is only meaningful against the
+      // host instance that minted it; Claude's session id is the shell's own identity and
+      // survives anything short of that shell ending — which is what makes a restore after an
+      // update a REATTACH rather than ten sessions resuming from scratch.
+      let held = this.reattachable && node.pty ? this.held.get(node.pty) : undefined;
+      if (!held && node.claude) {
+        const byIdentity = this.heldByClaude.get(node.claude);
+        if (byIdentity && !this.claimed.has(byIdentity.id)) held = byIdentity;
+      }
+      if (held) this.claimed.add(held.id);
       let typeResume: string | null = null;
       if (!held && node.claude) {
         // The host (and the shell) are gone — a reboot. The conversation is not. A claude

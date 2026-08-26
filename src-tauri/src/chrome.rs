@@ -12,6 +12,15 @@ pub fn attention(app: AppHandle, on: bool) -> Result<(), String> {
     window.request_user_attention(request).map_err(|e| e.to_string())
 }
 
+/// Starts a window drag from our own title bar. Done as a command rather than through the
+/// webview's `startDragging`, because that path depends on a capability being granted and
+/// fails silently when it is not — and a window you cannot move is not a small failure.
+#[tauri::command]
+pub fn start_drag(app: AppHandle) -> Result<(), String> {
+    let window = app.get_webview_window("main").ok_or("no main window")?;
+    window.start_dragging().map_err(|e| e.to_string())
+}
+
 /// minimize | maximize | close, for the buttons in our own header bar.
 #[tauri::command]
 pub fn window_action(app: AppHandle, label: String, action: String) -> Result<(), String> {
