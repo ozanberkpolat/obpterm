@@ -7,6 +7,25 @@ import { newProject } from "./rail";
 export function installHeader(app: App) {
   const bar = document.querySelector<HTMLElement>("#titlebar")!;
 
+  // Dragging the window. `data-tauri-drag-region` is the intended way, but it depends on a
+  // permission and on the webview handling the attribute; a title bar you cannot pick up is
+  // too central to leave to that. Start the drag ourselves on mousedown over empty bar space.
+  bar.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button, input, .menus")) return; // controls keep their clicks
+    if (!app.tp.native) return;
+    void import("@tauri-apps/api/window")
+      .then((w) => w.getCurrentWindow().startDragging())
+      .catch(() => {});
+  });
+  // Double-click the bar to maximize, the way every title bar does.
+  bar.addEventListener("dblclick", (e) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button, input, .menus")) return;
+    void app.tp.windowAction("main", "maximize").catch(() => {});
+  });
+
   const menus: [string, () => { label: string; hint?: string; danger?: boolean; onPick: () => void }[]][] = [
     ["Shell", () => [
       ...app.config.profiles.map((p, i) => ({

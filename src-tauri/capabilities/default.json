@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: core IPC + clipboard",
+  "description": "Main window: core IPC, clipboard, and dragging our own title bar",
   "windows": [
     "main"
   ],
@@ -10,6 +10,11 @@
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-read-image",
     "clipboard-manager:allow-write-text",
-    "notification:default"
+    "notification:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-position",
+    "core:window:allow-current-monitor",
+    "core:window:allow-is-maximized",
+    "core:window:allow-toggle-maximize"
   ]
 }

@@ -80,7 +80,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt9sujok",
+      "id": "hmt9tjjkw",
       "name": "New host",
       "host": "",
       "user": null,
@@ -1704,6 +1704,24 @@
     },
     {
       "id": "pmt9stycu",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt9tignl",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt9tizf0",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,
