@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .mono { font-family: "JetBrains Mono", monospace; }
+    .rail { width: 240px; flex: none; display: flex; flex-direction: column; padding: 10px 8px;
+      background: linear-gradient(180deg, #141a24, #0e131c); border-right: 1px solid rgba(140,160,190,.12); }
+    .seg { display: flex; gap: 3px; margin: 0 -2px 6px; padding: 3px; border-radius: 999px; background: rgba(10,14,20,.55); }
+    .seg button { flex: 1; padding: 6px 10px; border: 0; border-radius: 999px; background: none;
+      color: #76879c; font: 700 11.5px "Plus Jakarta Sans"; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+    .seg button.on { background: rgba(255,138,30,.16); color: #ffcf9e; }
+    .badge { font: 700 9.5px "JetBrains Mono", monospace; min-width: 17px; height: 16px;
+      display: inline-flex; align-items: center; justify-content: center; padding: 0 5px;
+      border-radius: 999px; background: #ff8a1e; color: #04101f; }
+    .tab { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 5px 8px 5px 10px;
+      border-radius: 999px; color: #8b97a8; font-size: 12.5px; }
+    .tab .t { flex: 1; font-weight: 600; color: #eaf0f7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+    .ghead { display: flex; align-items: center; gap: 8px; padding: 5px 8px 3px 10px; color: #5b6878;
+      font: 700 10.5px "Plus Jakarta Sans"; text-transform: uppercase; letter-spacing: .07em; }
+    .canvas { flex: 1; min-width: 0; position: relative; overflow: hidden;
+      background-image: radial-gradient(rgba(140,160,190,.09) 1px, transparent 1px); background-size: 26px 26px; }
+    .node { position: absolute; border-radius: 12px; background: #10151d; overflow: hidden;
+      border: 1px solid rgba(140,160,190,.16); box-shadow: 0 14px 40px rgba(0,0,0,.5); }
+    .node header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #161c26; }
+    .node .name { font-weight: 700; font-size: 12.5px; }
+    .pill { font: 700 8.5px "Plus Jakarta Sans"; text-transform: uppercase; letter-spacing: .08em;
+      padding: 2px 8px; border-radius: 999px; flex: none; }
+    .p-run { background: rgba(47,214,163,.16); color: #2fd6a3; }
+    .p-need { background: #ff8a1e; color: #0a0e14; }
+    .p-auto { background: rgba(180,140,255,.16); color: #b48cff; }
+    .body { padding: 9px 12px; font: 10.5px/1.7 "JetBrains Mono", monospace; color: #93a0b4; white-space: pre; }
+    .foot { display: flex; gap: 10px; padding: 6px 12px 8px; font: 500 9.5px "JetBrains Mono", monospace; color: #5b6878; }
+    .hot { border-color: #ff8a1e !important; box-shadow: 0 0 0 1px rgba(255,138,30,.35), 0 0 34px rgba(255,138,30,.14), 0 16px 44px rgba(0,0,0,.55) !important; }
+    .hot header { background: linear-gradient(180deg,#241a10,#1a1610); }
+    .agent { position: absolute; border-radius: 11px; background: #0e1219; border: 1px solid rgba(140,160,190,.13);
+      box-shadow: 0 10px 26px rgba(0,0,0,.45); }
+    .agent .eyebrow { font: 700 8px "Plus Jakarta Sans"; letter-spacing: .12em; color: #ff8a1e; padding: 8px 11px 0; }
+    .agent .task { font-weight: 700; font-size: 11.5px; padding: 2px 11px 6px; color: #d7dee9; }
+    .agent .feed { padding: 0 11px 9px; font: 500 9.5px/1.8 "JetBrains Mono", monospace; color: #5f6c80; }
+    .adot { position: absolute; top: 9px; right: 10px; width: 7px; height: 7px; border-radius: 999px; background: #2fd6a3; box-shadow: 0 0 5px rgba(47,214,163,.7); }
+    .btn { padding: 4px 12px; border-radius: 999px; border: 0; font: 700 10.5px "Plus Jakarta Sans"; cursor: pointer; }
+    .allow { background: linear-gradient(135deg,#ffa23e,#ff8410); color: #04101f; }
+    .deny { background: none; border: 1px solid rgba(140,160,190,.25); color: #8b97a8; }
+    .chrome { position: absolute; z-index: 3; display: flex; align-items: center; gap: 12px;
+      padding: 7px 14px; border-radius: 999px; background: rgba(16,21,29,.92);
+      border: 1px solid rgba(140,160,190,.18); font: 600 11px "JetBrains Mono", monospace; color: #76879c; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; background: #0a0e14; overflow: hidden">
+  <div class="rail">
+    <div class="seg"><button>Sessions</button><button class="on">Agents<span class="badge">1</span></button></div>
+    <div style="margin: 0 4px 8px; font-size: 11px; color: #ff8a1e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">ntfy tokens · docker restart ntfy?</div>
+    <div class="ghead"><span class="dot" style="background:#4c8dff"></span><span style="flex:1">iot-stack</span>3</div>
+    <div class="tab"><span class="dot" style="background:#2fd6a3"></span><span class="t">portal resolver</span></div>
+    <div class="tab"><span class="dot" style="background:#ff8a1e"></span><span class="t">ntfy tokens</span></div>
+    <div class="tab" style="opacity:.5"><span class="dot" style="background:#3d4654"></span><span class="t" style="color:#8b97a8">ssh · vps</span></div>
+    <div class="ghead" style="margin-top:6px"><span class="dot" style="background:#2fd6a3"></span><span style="flex:1">invest</span>2</div>
+    <div class="tab"><span class="dot" style="background:#2fd6a3"></span><span class="t">grading refactor</span></div>
+    <div class="tab" style="opacity:.5"><span class="dot" style="background:#3d4654"></span><span class="t" style="color:#8b97a8">journal check</span></div>
+  </div>
+  <div class="canvas">
+    <div class="chrome" style="left: 20px; top: 16px"><span style="color:#eaf0f7; font-weight:800; font-family:'Plus Jakarta Sans'">Agents</span><span>the one that needs you sits in the middle</span></div>
+    <svg style="position:absolute; inset:0; pointer-events:none" width="1200" height="900">
+      <path d="M 600 590 C 600 640, 330 640, 330 686" stroke="rgba(255,138,30,.45)" stroke-width="1.5" fill="none"/>
+      <path d="M 640 590 C 640 640, 872 640, 872 686" stroke="rgba(255,138,30,.45)" stroke-width="1.5" fill="none"/>
+      <path d="M 236 300 C 330 300, 380 330, 470 350" stroke="rgba(140,160,190,.18)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
+      <path d="M 1010 300 C 930 300, 880 330, 800 350" stroke="rgba(140,160,190,.18)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
+      <circle cx="600" cy="590" r="3" fill="#ff8a1e"/><circle cx="330" cy="686" r="3" fill="#ff8a1e"/>
+      <circle cx="640" cy="590" r="3" fill="#ff8a1e"/><circle cx="872" cy="686" r="3" fill="#ff8a1e"/>
+    </svg>
+
+    <div class="node hot" style="left: 430px; top: 250px; width: 380px">
+      <header><span class="dot" style="background:#ff8a1e; box-shadow:0 0 7px rgba(255,138,30,.9)"></span><span class="name" style="color:#ffd9ae; font-size:14px">ntfy tokens</span><span class="mono" style="font-size:9.5px; color:#7a6a4a">iot-stack</span><span style="flex:1"></span><span class="pill p-need">needs you</span></header>
+      <div class="body" style="font-size:11.5px">> wire the obpterm topic and restart
+• Write(<span style="color:#c3cddb">ntfy/acl.yml</span>) <span style="color:#2fd6a3">✓</span>
+• Bash(<span style="color:#c3cddb">ntfy user add obpterm</span>) <span style="color:#2fd6a3">✓</span>
+
+<span style="color:#ffcf9e">Restart the ntfy container? Subscriptions
+drop for a second or two.</span>
+<span style="color:#ff8a1e">❯ 1. Yes   2. No</span></div>
+      <div style="display:flex; gap:8px; padding:0 14px 12px"><button class="btn allow">Allow · a</button><button class="btn deny">Deny · d</button><button class="btn deny">Always · w</button><button class="btn deny">Reply · t</button></div>
+      <div class="foot" style="padding-bottom:10px"><span>4m</span><span>ctx 22%</span><span style="color:#ff8a1e">2 agents out</span></div>
+    </div>
+    <div class="agent" style="left: 214px; top: 686px; width: 232px">
+      <span class="adot"></span><div class="eyebrow">AGENT · general-purpose</div>
+      <div class="task">Verify the ACL applies</div><div class="feed">• Bash(ntfy access) · 12s</div>
+    </div>
+    <div class="agent" style="left: 756px; top: 686px; width: 232px">
+      <span class="adot" style="background:#4c8dff; box-shadow:none"></span><div class="eyebrow">AGENT · Explore</div>
+      <div class="task">Find every topic reference</div><div class="feed">• Grep(ntfy) · 11 matches · <span style="color:#4c8dff">done</span></div>
+    </div>
+
+    <div class="node" style="left: 60px; top: 250px; width: 250px; opacity:.72; transform: scale(.94); transform-origin: left top">
+      <header><span class="dot" style="background:#2fd6a3"></span><span class="name" style="font-size:11.5px">portal resolver</span><span style="flex:1"></span><span class="pill p-run">running</span></header>
+      <div class="body" style="font-size:9.5px">• Bash(nginx -t) — successful
+  rebuilding container…</div>
+      <div class="foot"><span>12m</span><span>2 agents</span></div>
+    </div>
+    <div class="node" style="left: 1000px; top: 250px; width: 250px; opacity:.72; transform: scale(.94); transform-origin: left top">
+      <header><span class="dot" style="background:#2fd6a3"></span><span class="name" style="font-size:11.5px">grading refactor</span><span style="flex:1"></span><span class="pill p-auto">auto</span></header>
+      <div class="body" style="font-size:9.5px">• Edit(grader.py) 578/580
+<span style="color:#ffb454">quiet 4m</span></div>
+      <div class="foot"><span>41m</span><span>ctx 71%</span></div>
+    </div>
+    <div class="chrome" style="left: 50%; bottom: 18px; transform: translateX(-50%)"><span>← →</span><span style="color:#eaf0f7">bring another to the middle</span></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

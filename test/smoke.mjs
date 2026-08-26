@@ -1026,6 +1026,51 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   devWs.close();
 }
 
+
+// ---- v0.21.0: the spine — sessions down the left, agents branching right ---------------------
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const injectDev = (update) =>
+    new Promise((r) => {
+      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
+      setTimeout(r, 150);
+    });
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; p.agent.fanned = []; p.lastOutput = 0; }), window.obpterm.paint()");
+  await evaluate("void window.obpterm.newTab()");
+  await until("window.obpterm.tabs.length >= 2", "two sessions");
+  const one = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[0])[0].id");
+  const two = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
+  for (const p of [one, two]) {
+    await injectDev({ pane: p, state: "working", session_id: `s-${p}`, detail: "Editing pty.rs", pending_id: null, options: [], mode: "default" });
+  }
+  await injectDev({ pane: one, state: "working", session_id: `s-${one}`, detail: "Delegating", pending_id: null, options: [],
+    agent_id: "sp-1", agent_kind: "Explore", agent_task: "Map the routes", agent_event: "spawned" });
+  await evaluate("window.obpterm.showView('agents')");
+  await until("document.querySelectorAll('#nodemap .nnode.session').length === 2", "both sessions on the spine");
+
+  const geom = JSON.parse(await evaluate(`(() => {
+    const at = (el) => { const m = /translate\\((-?[\\d.]+)px, (-?[\\d.]+)px\\)/.exec(el.style.transform); return { x: +m[1], y: +m[2] }; };
+    const s = [...document.querySelectorAll('#nodemap .nnode.session')].map(at);
+    const a = [...document.querySelectorAll('#nodemap .nnode.agent')].map(at);
+    return JSON.stringify({ s, a });
+  })()`));
+  assert.equal(new Set(geom.s.map((p) => p.x)).size, 1, "every session shares the spine's x");
+  assert.ok(geom.s[1].y > geom.s[0].y, "sessions stack downward");
+  assert.ok(geom.a[0].x > geom.s[0].x, "agents branch to the right of the spine");
+
+  // Right steps into the session's agent, left comes back.
+  await evaluate("document.querySelector('#nodemap').dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowRight', key: 'ArrowRight', bubbles: true, cancelable: true }))");
+  await until("document.querySelector('#nodemap .nnode.agent.sel') !== null", "right steps into the agents");
+  await evaluate("document.querySelector('#nodemap').dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowLeft', key: 'ArrowLeft', bubbles: true, cancelable: true }))");
+  await until("document.querySelector('#nodemap .nnode.session.sel') !== null", "left returns to the session");
+
+  await evaluate("window.obpterm.showView('sessions')");
+  await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.fanned = []; }), window.obpterm.paint()");
+  devWs.close();
+}
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");
