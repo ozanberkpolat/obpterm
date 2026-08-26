@@ -18,15 +18,20 @@ pub const EVENTS: [&str; 9] = [
 
 /// The sentinel that marks our entries. Bump the suffix when the command changes shape, and
 /// old entries are replaced instead of duplicated.
-pub const MARK: &str = "# obpterm-hooks v1";
+pub const MARK: &str = "# obpterm-hooks v2";
 
-/// The command itself: gated on being inside OBPTerm (a plain terminal is a no-op), reading
-/// the current port and token from the env file the host rewrites at boot, failing open
-/// always. POSIX sh — Claude Code runs hooks through a POSIX shell on Windows (Git Bash).
-pub fn hook_command() -> String {
-    format!(
-        r#"[ -n "$OBPTERM_PANE_ID" ] && [ -f "$OBPTERM_HOOK_ENV" ] && . "$OBPTERM_HOOK_ENV" && curl -s -m 50 --data-binary @- "http://127.0.0.1:$OBPTERM_HOOK_PORT/hook/$OBPTERM_HOOK_TOKEN/$OBPTERM_PANE_ID"; : {MARK}"#
-    )
+/// How the shell should spell the host's path. The commands run through a POSIX shell on
+/// Windows (Git Bash), where a backslash is an escape — so forward slashes, always.
+fn shell_path(exe: &str) -> String {
+    exe.replace('\\', "/")
+}
+
+/// The command itself: one process, which checks for `OBPTERM_PANE_ID` and fails open on its
+/// own (see `cli::hook`). It replaces `sh` + `curl` per event — two process creations for every
+/// PreToolUse and PostToolUse of every agent, which is what made a fan-out cost so much on
+/// Windows. The `[ -n ... ]` guard stays so a plain terminal does not even spawn us.
+pub fn hook_command(exe: &str) -> String {
+    format!(r#"[ -n "$OBPTERM_PANE_ID" ] && "{}" hook; : {MARK}"#, shell_path(exe))
 }
 
 /// True when the settings already carry the current block on every event.
@@ -48,8 +53,8 @@ pub fn installed(settings: &Value) -> bool {
 /// True when our installed block is the CURRENT command, not an older one. A settings file
 /// written by an earlier version carries the same mark but a stale command; without this the
 /// installer would skip it forever and the app would wait on events that never come.
-pub fn current(settings: &Value) -> bool {
-    let want = hook_command();
+pub fn current(settings: &Value, exe: &str) -> bool {
+    let want = hook_command(exe);
     EVENTS.iter().all(|event| {
         settings
             .pointer(&format!("/hooks/{event}"))
@@ -65,7 +70,7 @@ pub fn current(settings: &Value) -> bool {
 }
 
 /// Adds (or refreshes) the block, leaving every other hook exactly as it was.
-pub fn install(settings: &mut Value) {
+pub fn install(settings: &mut Value, exe: &str) {
     remove(settings);
     if !settings.is_object() {
         *settings = json!({});
@@ -90,7 +95,7 @@ pub fn install(settings: &mut Value) {
         // PermissionRequest's POST is held while the rail decides; give it room.
         let timeout = if event == "PermissionRequest" { 55 } else { 10 };
         entries.as_array_mut().unwrap().push(json!({
-            "hooks": [{ "type": "command", "command": hook_command(), "timeout": timeout }]
+            "hooks": [{ "type": "command", "command": hook_command(exe), "timeout": timeout }]
         }));
     }
 }
@@ -116,15 +121,13 @@ pub fn remove(settings: &mut Value) {
 }
 
 /// Marks our statusLine so it is recognizably ours and never clobbers a user's own.
-pub const SL_MARK: &str = "# obpterm-statusline v2";
+pub const SL_MARK: &str = "# obpterm-statusline v3";
 
 /// Saves the payload (rate_limits included) where the token meters read it, and prints the
 /// model plus both percentages as Claude Code's own status line. POSIX sh, same as the hooks;
 /// staleness comes from the file's mtime, so no timestamp needs appending.
-pub fn statusline_command() -> String {
-    format!(
-        r#"p=$(cat); d="${{CLAUDE_CONFIG_DIR:-$HOME/.claude}}"; printf '%s' "$p" >"$d/limits.json"; printf '%s 5h %s%% wk %s%%' "$(printf '%s' "$p" | sed -n 's/.*"display_name" *: *"\([^"]*\)".*/\1/p')" "$(printf '%s' "$p" | sed -n 's/.*"five_hour"[^0-9]*\([0-9]*\).*/\1/p')" "$(printf '%s' "$p" | sed -n 's/.*"seven_day"[^0-9]*\([0-9]*\).*/\1/p')"; : {SL_MARK}"#
-    )
+pub fn statusline_command(exe: &str) -> String {
+    format!(r#""{}" statusline; : {SL_MARK}"#, shell_path(exe))
 }
 
 /// True when the statusLine is ours. A user's own statusLine returns false — and install
@@ -137,7 +140,7 @@ pub fn statusline_installed(settings: &Value) -> bool {
 }
 
 /// Sets our statusLine only when the slot is empty or already ours. Returns whether it wrote.
-pub fn statusline_install(settings: &mut Value) -> bool {
+pub fn statusline_install(settings: &mut Value, exe: &str) -> bool {
     let foreign = settings.get("statusLine").is_some() && !statusline_installed(settings);
     if foreign {
         return false;
@@ -145,7 +148,7 @@ pub fn statusline_install(settings: &mut Value) -> bool {
     if !settings.is_object() {
         *settings = json!({});
     }
-    let wanted = json!({ "type": "command", "command": statusline_command() });
+    let wanted = json!({ "type": "command", "command": statusline_command(exe) });
     if settings.get("statusLine") == Some(&wanted) {
         return false;
     }
@@ -166,6 +169,21 @@ pub fn statusline_remove(settings: &mut Value) -> bool {
 mod tests {
     use super::*;
 
+    /// Where the host would live on a real machine; the commands embed it.
+    const EXE: &str = "C:/Users/obp/AppData/Local/OBPTerm/host/obpterm-host-9.9.9.exe";
+
+    #[test]
+    fn neither_command_spawns_a_shell_pipeline() {
+        // The whole point of v0.21.13: one process per event, not eight. If either of these
+        // grows a `curl`, a `sed` or a pipe again, an agent fan-out gets expensive on Windows.
+        for cmd in [hook_command(EXE), statusline_command(EXE)] {
+            for banned in ["curl", "sed", "printf", "|", "$("] {
+                assert!(!cmd.contains(banned), "{banned:?} is back in {cmd:?}");
+            }
+            assert!(cmd.contains(EXE), "the command calls the host binary: {cmd:?}");
+        }
+    }
+
     #[test]
     fn install_is_idempotent_and_leaves_other_hooks_alone() {
         let mut settings = json!({
@@ -174,8 +192,8 @@ mod tests {
                 "Stop": [{ "hooks": [{ "type": "command", "command": "ntfy send done" }] }]
             }
         });
-        install(&mut settings);
-        install(&mut settings); // twice: must not duplicate
+        install(&mut settings, EXE);
+        install(&mut settings, EXE); // twice: must not duplicate
         assert!(installed(&settings));
         let stop = settings.pointer("/hooks/Stop").unwrap().as_array().unwrap();
         assert_eq!(stop.len(), 2, "the user's own Stop hook plus exactly one of ours");
@@ -193,15 +211,15 @@ mod tests {
     fn statusline_respects_a_foreign_one_and_round_trips() {
         // Empty file: installs.
         let mut settings = json!({});
-        assert!(statusline_install(&mut settings));
+        assert!(statusline_install(&mut settings, EXE));
         assert!(statusline_installed(&settings));
-        assert!(!statusline_install(&mut settings), "idempotent: a second install writes nothing");
+        assert!(!statusline_install(&mut settings, EXE), "idempotent: a second install writes nothing");
         // Ours is removable…
         assert!(statusline_remove(&mut settings));
         assert!(settings.get("statusLine").is_none());
         // …a user's own is neither replaced nor removed.
         let mut theirs = json!({ "statusLine": { "type": "command", "command": "starship prompt" } });
-        assert!(!statusline_install(&mut theirs));
+        assert!(!statusline_install(&mut theirs, EXE));
         assert!(!statusline_remove(&mut theirs));
         assert_eq!(theirs.pointer("/statusLine/command").unwrap(), "starship prompt");
     }
@@ -209,24 +227,24 @@ mod tests {
     #[test]
     fn a_stale_block_is_recognised_and_refreshed() {
         let mut settings = json!({});
-        install(&mut settings);
-        assert!(installed(&settings) && current(&settings));
+        install(&mut settings, EXE);
+        assert!(installed(&settings) && current(&settings, EXE));
         // Simulate a block written by an older version: our mark, a different command.
         for event in EVENTS {
             let entries = settings.pointer_mut(&format!("/hooks/{event}")).unwrap().as_array_mut().unwrap();
             entries[0]["hooks"][0]["command"] = json!(format!("old-command ; : {MARK}"));
         }
         assert!(installed(&settings), "it still carries our mark");
-        assert!(!current(&settings), "but it is not the command we ship now");
-        install(&mut settings);
-        assert!(current(&settings), "installing again refreshes it");
+        assert!(!current(&settings, EXE), "but it is not the command we ship now");
+        install(&mut settings, EXE);
+        assert!(current(&settings, EXE), "installing again refreshes it");
     }
 
     #[test]
     fn install_copes_with_an_empty_or_missing_file() {
         let mut settings = json!({});
         assert!(!installed(&settings));
-        install(&mut settings);
+        install(&mut settings, EXE);
         assert!(installed(&settings));
         assert!(settings.pointer("/hooks/PermissionRequest/0/hooks/0/timeout").unwrap() == 55);
     }

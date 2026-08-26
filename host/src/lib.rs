@@ -13,6 +13,7 @@ pub mod logins;
 pub mod agent;
 pub mod hooks;
 pub mod install;
+pub mod cli;
 
 use std::path::PathBuf;
 

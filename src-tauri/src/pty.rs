@@ -97,20 +97,22 @@ pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>) -> Result<Vec<Strin
     });
 
     let mut changed = Vec::new();
+    let exe = host_copy_path().display().to_string();
     for dir in dirs {
         let path = PathBuf::from(expand_vars(&dir)).join("settings.json");
         let mut settings: serde_json::Value = std::fs::read_to_string(&path)
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or(serde_json::json!({}));
-        let hooks_done = obpterm_host::install::installed(&settings) && obpterm_host::install::current(&settings);
+        let hooks_done =
+            obpterm_host::install::installed(&settings) && obpterm_host::install::current(&settings, &exe);
         let mut wrote = false;
         if !hooks_done {
-            obpterm_host::install::install(&mut settings);
+            obpterm_host::install::install(&mut settings, &exe);
             wrote = true;
         }
         // Same pass, same file: the token meters' statusLine (never over a user's own).
-        wrote |= obpterm_host::install::statusline_install(&mut settings);
+        wrote |= obpterm_host::install::statusline_install(&mut settings, &exe);
         if !wrote {
             continue;
         }
@@ -164,6 +166,7 @@ fn launch_host(config_dir: &PathBuf) -> Result<(), String> {
     let copies = host_copy_dir();
     std::fs::create_dir_all(&copies).map_err(|e| format!("create {}: {e}", copies.display()))?;
     let copy = copies.join(format!("obpterm-host-{version}{ext}"));
+    debug_assert_eq!(copy, host_copy_path());
     if !copy.exists() {
         std::fs::copy(&source, &copy).map_err(|e| format!("copy host: {e}"))?;
     }
@@ -201,6 +204,13 @@ fn host_binary() -> Option<PathBuf> {
     // The dev tree: the workspace's target dir.
     let dev = dir.join(name);
     dev.exists().then_some(dev)
+}
+
+/// The versioned copy the host runs from — and the binary the hooks and the statusLine call,
+/// so the path has to be the same one `launch_host` spawns.
+pub fn host_copy_path() -> PathBuf {
+    let ext = if cfg!(windows) { ".exe" } else { "" };
+    host_copy_dir().join(format!("obpterm-host-{}{ext}", env!("CARGO_PKG_VERSION")))
 }
 
 fn host_copy_dir() -> PathBuf {

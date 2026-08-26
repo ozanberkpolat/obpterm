@@ -221,7 +221,7 @@ export function installAgentEvents(app: App) {
       const tab = app.tabs.find((t) => app.panesOf(t).includes(pane));
       app.agentAlert(tab ? app.title(tab) : "Claude", pane.agent.detail ?? "needs you");
     }
-    app.paint();
+    app.paintSoon();
   });
 
   // Typing into a waiting pane is the answer arriving in-pane; settle it without a hook.

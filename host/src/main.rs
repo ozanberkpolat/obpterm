@@ -6,8 +6,15 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
+    // Two per-event modes that Claude Code runs, hundreds of times in an agent fan-out. They do
+    // their job and exit; nothing here starts a server. See `cli.rs` for why they are not shell.
+    match std::env::args().nth(1).as_deref() {
+        Some("statusline") => return obpterm_host::cli::statusline(),
+        Some("hook") => return obpterm_host::cli::hook(),
+        _ => {}
+    }
     let config_dir = std::env::args().nth(1).map(std::path::PathBuf::from).unwrap_or_else(|| {
-        eprintln!("usage: obpterm-host <config-dir>");
+        eprintln!("usage: obpterm-host <config-dir> | statusline | hook");
         std::process::exit(2);
     });
     std::fs::create_dir_all(&config_dir).expect("config dir");

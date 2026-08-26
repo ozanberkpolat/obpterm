@@ -1226,6 +1226,22 @@ export class App implements PaneHost {
   }
 
   /** Repaint the rail. Cheap: the rail is the only derived view. */
+  /**
+   * A repaint at the next frame, and only one however many times it was asked for. Hook events
+   * arrive in bursts — a ten-agent fan-out is a PreToolUse and a PostToolUse per tool call per
+   * agent — and each one used to repaint the rail, the deck and the map synchronously. The
+   * screen cannot show more than one frame anyway.
+   */
+  paintSoon() {
+    if (this.paintQueued) return;
+    this.paintQueued = true;
+    requestAnimationFrame(() => {
+      this.paintQueued = false;
+      this.paint();
+    });
+  }
+  private paintQueued = false;
+
   paint() {
     renderRail(this);
     this.nodes?.paint();

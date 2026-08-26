@@ -1271,6 +1271,26 @@ await evaluate("window.obpterm.config.update_repo = null");
 }
 
 
+// ---- v0.21.13: a burst of hook events costs one repaint ------------------------------------
+{
+  // A ten-agent fan-out delivers hundreds of events in a burst. Each one used to repaint the
+  // rail synchronously; now they collapse into the next frame.
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const pane = await evaluate("window.obpterm.tab.active.id");
+  await evaluate("(() => { window.__paints = 0; const real = window.obpterm.paint.bind(window.obpterm); window.obpterm.paint = () => { window.__paints++; real(); }; })()");
+  for (let i = 0; i < 12; i++) {
+    devWs.send(JSON.stringify({ t: "agent_inject", reqId: 900 + i, update: { pane, state: "working", session_id: "s-burst", detail: `tool ${i}`, pending_id: null, options: [], agent_id: `b-${i}`, agent_kind: "general-purpose", agent_task: "burst", agent_event: "tool" } }));
+  }
+  await until("window.__paints >= 1", "the burst reaches the window");
+  await new Promise((r) => setTimeout(r, 250));
+  const paints = await evaluate("window.__paints");
+  assert.ok(paints <= 3, `twelve events cost ${paints} repaints, not twelve`);
+  await evaluate("(() => { window.obpterm.paint = Object.getPrototypeOf(window.obpterm).paint.bind(window.obpterm); })()");
+  devWs.close();
+}
+
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");
