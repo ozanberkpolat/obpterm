@@ -340,7 +340,7 @@ export function withDefaults(config: Partial<Config>): Config {
     capture_max_mb: config.capture_max_mb ?? 512,
     update_check_on_launch: config.update_check_on_launch ?? true,
     sleep_after_minutes: config.sleep_after_minutes ?? 10,
-    eco_after_minutes: config.eco_after_minutes ?? 30,
+    eco_after_minutes: config.eco_after_minutes ?? 15,
     notify_bell: config.notify_bell ?? true,
     notify_silence: config.notify_silence ?? false,
     silence_seconds: config.silence_seconds ?? 20,

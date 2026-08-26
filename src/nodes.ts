@@ -32,8 +32,6 @@ const SESSION_W = 330;
 const SESSION_H = 172;
 const AGENT_W = 250;
 const AGENT_H = 104;
-const SHELL_W = 250;
-const SHELL_H = 96;
 /** Left edge of the agent column, measured from the spine. */
 const BRANCH_X = 500;
 /** Vertical air between agents of one session, and between sessions. */
@@ -70,7 +68,6 @@ export class Nodes {
   private collect(): Node[] {
     const out: Node[] = [];
     const sessions: Node[] = [];
-    const shells: Node[] = [];
     for (const tab of this.app.tabs) {
       for (const pane of this.app.panesOf(tab)) {
         const id = `p${pane.id}`;
@@ -83,9 +80,8 @@ export class Nodes {
         const busy = a.state === "working" || a.state === "blocked" || a.state === "waiting" || liveAgents;
         if (isClaudePane(pane)) {
           if (!dormant && busy) sessions.push({ id, kind: "session", pane, tab, parent: null, x: 0, y: 0, w: SESSION_W, h: SESSION_H });
-        } else if (!dormant && Date.now() - pane.lastOutput < 60_000) {
-          shells.push({ id, kind: "shell", pane, tab, parent: null, x: 0, y: 0, w: SHELL_W, h: SHELL_H });
         }
+        // Plain shells are not what this view is for; they live in the rail.
       }
     }
     sessions.sort((a, b) => {
@@ -116,13 +112,6 @@ export class Nodes {
       y += bandH + SESSION_GAP;
     }
 
-    // Plain shells finish the spine, below the sessions.
-    for (const sh of shells) {
-      sh.x = 0;
-      sh.y = y;
-      y += sh.h + AGENT_GAP;
-      out.push(sh);
-    }
     return out;
   }
 

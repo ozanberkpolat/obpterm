@@ -122,11 +122,13 @@ pub struct Config {
     /// shell keeps running in the host and the tab wakes on click. 0 = never.
     pub sleep_after_minutes: u32,
     /// Minutes a finished, unfocused Claude session sits before /exit frees its ~335 MB.
+    /// 15 by default: with every tab a Claude session, idle ones are the memory bill.
     /// The tab stays; clicking it runs `claude --resume`. 0 = never.
     pub eco_after_minutes: u32,
     /// Desktop notification when an unfocused pane rings or asks for something.
     pub notify_bell: bool,
-    /// Desktop notification when a busy pane goes quiet — a build or an agent finishing.
+    /// Desktop notification when a busy pane goes quiet. A guess for shells that cannot report;
+    /// a Claude session has real hook states, so this is off by default and can only cry wolf.
     pub notify_silence: bool,
     /// How long a pane must be quiet, after being busy, to count as finished.
     pub silence_seconds: u32,
@@ -193,7 +195,7 @@ impl Default for Config {
             capture_max_mb: 512,
             update_check_on_launch: true,
             sleep_after_minutes: 10,
-            eco_after_minutes: 30,
+            eco_after_minutes: 15,
             notify_bell: true,
             notify_silence: false,
             silence_seconds: 20,
@@ -233,7 +235,10 @@ fn default_profiles() -> Vec<Profile> {
         env: Default::default(),
         capture: false,
     };
+    // This app manages Claude Code sessions; a new tab should BE one, not a shell you then
+    // type `claude` into. The shells stay one pick away in the profile menu.
     vec![
+        p("claude", "Claude Code", "pwsh.exe", &["-NoLogo", "-NoExit", "-Command", "claude"]),
         p("pwsh", "PowerShell 7", "pwsh.exe", &["-NoLogo"]),
         p("powershell", "Windows PowerShell", "powershell.exe", &["-NoLogo"]),
         p("cmd", "Command Prompt", "cmd.exe", &[]),
@@ -361,7 +366,12 @@ pub fn config_load(app: AppHandle) -> Result<Config, String> {
         return Ok(cfg);
     }
     let text = std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    serde_json::from_str(&text).map_err(|e| format!("{} is not valid config: {e}", path.display()))
+    let mut config: Config =
+        serde_json::from_str(&text).map_err(|e| format!("{} is not valid config: {e}", path.display()))?;
+    if adopt_claude_profile(&mut config) {
+        write(&path, &config)?;
+    }
+    Ok(config)
 }
 
 #[tauri::command]
@@ -420,6 +430,23 @@ fn chrono_free_date() -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// A config written before this app was Claude-first has no `claude` profile and opens shells.
+/// Add the profile, and make it the default UNLESS the user picked something of their own —
+/// one of the three stock shells is the old default, not a decision. Returns whether it wrote.
+fn adopt_claude_profile(config: &mut Config) -> bool {
+    if config.profiles.iter().any(|p| p.id == "claude") {
+        return false;
+    }
+    let Some(claude) = default_profiles().into_iter().find(|p| p.id == "claude") else {
+        return false; // not the Windows build
+    };
+    config.profiles.insert(0, claude);
+    if matches!(config.default_profile.as_str(), "pwsh" | "powershell" | "cmd") {
+        config.default_profile = "claude".into();
+    }
+    true
 }
 
 /// Puts the defaults back, keeping the open tabs.
@@ -547,6 +574,25 @@ fn now_ms() -> i64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[cfg(windows)]
+    fn an_old_config_gains_the_claude_profile_without_losing_a_chosen_default() {
+        let mut old = Config::default();
+        old.profiles.retain(|p| p.id != "claude");
+        old.default_profile = "pwsh".into();
+        assert!(super::adopt_claude_profile(&mut old));
+        assert_eq!(old.profiles[0].id, "claude", "it leads the list");
+        assert_eq!(old.default_profile, "claude", "a stock shell default is just the old default");
+        assert!(!super::adopt_claude_profile(&mut old), "and it only happens once");
+
+        // A default the user actually chose is left alone.
+        let mut mine = Config::default();
+        mine.profiles.retain(|p| p.id != "claude");
+        mine.default_profile = "my-ssh-box".into();
+        super::adopt_claude_profile(&mut mine);
+        assert_eq!(mine.default_profile, "my-ssh-box");
+    }
+
     #[test]
     fn portable_strips_the_secrets_and_the_session() {
         let mut cfg = Config::default();

@@ -80,7 +80,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt9qskj5",
+      "id": "hmt9r3sjc",
       "name": "New host",
       "host": "",
       "user": null,
@@ -1506,6 +1506,15 @@
     },
     {
       "id": "pmt9qs20d",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": null,
+      "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmt9r39sl",
       "name": "Smoke",
       "color": "#ff8a1e",
       "cwd": null,
