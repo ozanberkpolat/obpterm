@@ -29,6 +29,7 @@ export function tauriTransport(): Transport {
     hooksRemove: (dirs) => invoke<number>("hooks_remove", { dirs }),
     sessionTitle: (dir, sessionId) => invoke<string | null>("session_title", { dir, sessionId }),
     hostShutdown: () => invoke("host_shutdown"),
+    hostRestart: () => invoke<string>("host_restart"),
     async spawn(profile: Profile, cols, rows, onData, onExit) {
       // Rust sends `Response::new(bytes)` → arrives as an ArrayBuffer, no JSON in between.
       const onDataCh = new Channel<ArrayBuffer>();

@@ -321,6 +321,59 @@ pub fn pty_log_stop(link: State<HostLink>, id: u32) -> Result<(), String> {
     Ok(())
 }
 
+/// Ends the host and starts a fresh one, without closing the window. The graceful path is the
+/// socket; a host that will not answer (or predates the request) is killed by the pid in its
+/// own advert, because a stale host holding the shells is exactly the state this exists to
+/// escape. The window reloads afterwards and restores its tabs against the new host.
+#[tauri::command]
+pub async fn host_restart(app: AppHandle) -> Result<String, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let advert_path = obpterm_host::advert_path(&dir);
+    let advert: Option<Advert> = std::fs::read_to_string(&advert_path).ok().and_then(|t| serde_json::from_str(&t).ok());
+
+    if let Some(c) = app.state::<HostLink>().0.lock().unwrap().clone() {
+        c.shutdown();
+    }
+    *app.state::<HostLink>().0.lock().unwrap() = None;
+
+    // Give the graceful exit a moment, then make sure it is gone.
+    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+    if let Some(a) = &advert {
+        if still_running(a.pid) {
+            kill_pid(a.pid);
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        }
+    }
+    let _ = std::fs::remove_file(&advert_path);
+
+    let client = ensure(&app).await?;
+    Ok(client.version.clone())
+}
+
+#[cfg(windows)]
+fn still_running(pid: u32) -> bool {
+    std::process::Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()))
+        .unwrap_or(false)
+}
+
+#[cfg(not(windows))]
+fn still_running(pid: u32) -> bool {
+    std::path::Path::new(&format!("/proc/{pid}")).exists()
+}
+
+#[cfg(windows)]
+fn kill_pid(pid: u32) {
+    let _ = std::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/F"]).output();
+}
+
+#[cfg(not(windows))]
+fn kill_pid(pid: u32) {
+    let _ = std::process::Command::new("kill").args(["-9", &pid.to_string()]).output();
+}
+
 /// Ends every shell and the host with them. The one way out that means it.
 #[tauri::command]
 pub fn host_shutdown(link: State<HostLink>) -> Result<(), String> {

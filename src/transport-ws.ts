@@ -68,6 +68,7 @@ export function wsTransport(): Transport {
       await call("detach", { id });
     },
     hostShutdown: async () => void (await call("shutdown")),
+    hostRestart: async () => "dev",
     async spawn(profile: Profile, cols, rows, onData, onExit) {
       const m = await call("spawn", { profile, cols, rows });
       const id = m.id as number;

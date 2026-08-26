@@ -878,6 +878,21 @@ export class App implements PaneHost {
     if (this.tp.native) void import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().close());
   }
 
+  /** Swap a stale session host for a current one without closing the window. The shells it
+   *  held cannot survive that — but the tabs do: the reload restores them, Claude panes with
+   *  `--resume`, so nothing has to be reopened by hand. */
+  async restartHost() {
+    toast("Restarting the session host…");
+    await this.flushSession();
+    try {
+      const version = await this.tp.hostRestart();
+      toast(`Session host is now ${version} — restoring your tabs`);
+      window.setTimeout(() => window.location.reload(), 700);
+    } catch (e) {
+      toast(`Could not restart the host: ${e}`);
+    }
+  }
+
   sleepingCount(): number {
     return this.tabs.flatMap((t) => L.panes(t.root)).filter((p) => p.asleep).length;
   }
@@ -1199,7 +1214,7 @@ export class App implements PaneHost {
     if (info && mine && olderThan(info.version, mine)) {
       toast(`Shells are still on the older session host ${info.version} — agents stay invisible until it restarts`, {
         label: "Restart host",
-        run: () => void this.quitAll(),
+        run: () => void this.restartHost(),
       });
     }
     const sessions = await this.tp.listSessions().catch(() => []);

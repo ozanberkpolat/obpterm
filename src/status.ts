@@ -329,6 +329,11 @@ export class Status {
   private hostMenu2(e: MouseEvent) {
     openMenu(e.clientX, e.clientY, [
       { label: "Wake every sleeping tab", onPick: () => void this.app.wakeAll() },
+      {
+        label: "Restart the session host",
+        hint: this.app.hostVersion ? `now ${this.app.hostVersion}` : "",
+        onPick: () => void this.app.restartHost(),
+      },
       { label: "Quit and end every shell", danger: true, onPick: () => void this.app.quitAll() },
     ]);
   }

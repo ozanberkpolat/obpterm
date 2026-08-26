@@ -46,6 +46,7 @@ export function installPalette(app: App) {
     { group: "App", label: "Agents — every Claude session at once", hint: "Ctrl+G", run: () => app.openAgents() },
     { group: "App", label: "Agents as a map — sessions, their agents and shells", hint: "Ctrl+M", run: () => app.toggleAgentsView() },
     { group: "App", label: "New tab in a worktree — isolated copy of this repo", hint: "Ctrl+Shift+U", run: () => void import("./rail").then((r) => r.newWorktree(app)) },
+    { group: "App", label: "Restart the session host (ends shells, restores tabs)", run: () => void app.restartHost() },
     { group: "App", label: "Settings", hint: "Ctrl+Shift+,", run: () => app.settings.open() },
     { group: "App", label: "Manage snippets", run: () => app.settings.open("snippets") },
     { group: "App", label: "Appearance", run: () => app.settings.open("appearance") },

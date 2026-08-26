@@ -233,6 +233,8 @@ export interface Transport {
   detach(id: number): Promise<void>;
   /** Ends every shell and the host. The one way out that means it. */
   hostShutdown(): Promise<void>;
+  /** Ends the running host, starts a fresh one, resolves its version. The window reloads after. */
+  hostRestart(): Promise<string>;
   /** Hook-derived agent updates (Claude Code's own events), for the supervision states. */
   onAgent(handler: (u: import("./agent").AgentUpdate) => void): void;
   /** The rail's verdict on a held permission request; null passes it to the in-pane prompt. */
