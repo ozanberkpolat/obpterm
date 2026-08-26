@@ -439,7 +439,9 @@ export class App implements PaneHost {
     this.paint();
     void this.flushSession();
     if (!this.tabs.length) {
-      if (this.tp.native) void import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().close());
+      // Closing the last tab closes the window — through the Rust side, not the webview's own
+      // `close()`, which depends on a capability and has failed silently here before.
+      if (this.tp.native) void this.tp.windowAction("main", "close").catch(() => void this.newTab());
       else void this.newTab();
     }
   }
@@ -950,7 +952,9 @@ export class App implements PaneHost {
   async quitAll() {
     await this.flushSession();
     await this.tp.hostShutdown().catch(() => {});
-    if (this.tp.native) void import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().close());
+    // Through the Rust side, not the webview's own `close()`: that path depends on a capability
+    // and failed silently once already, leaving Quit as a button that did nothing.
+    if (this.tp.native) await this.tp.windowAction("main", "close").catch((err) => toast(`Can't quit: ${err}`));
   }
 
   /** Swap a stale session host for a current one without closing the window. The shells it
