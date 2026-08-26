@@ -283,7 +283,8 @@ export function installAgentEvents(app: App) {
       pane.agent.pendingId = null;
     } else if (action === "notify" && !focused) {
       const tab = app.tabs.find((t) => app.panesOf(t).includes(pane));
-      app.agentAlert(tab ? app.title(tab) : "Claude", pane.agent.detail ?? "needs you");
+      // The pending id makes the push answerable: two buttons that publish the verdict back.
+      app.agentAlert(tab ? app.title(tab) : "Claude", pane.agent.detail ?? "needs you", pane.agent.pendingId);
     }
     app.paintSoon();
   });

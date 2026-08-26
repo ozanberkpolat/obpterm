@@ -1,5 +1,5 @@
 import { pickTransport, withDefaults } from "./transport";
-import { App } from "./app";
+import { App, resumePlan } from "./app";
 import { installKeys } from "./keys";
 import { bindKeys } from "./keymap";
 import { installFind } from "./find";
@@ -36,6 +36,9 @@ async function main() {
   bindKeys(config);
   installKeys(app);
   (window as unknown as { obpterm: App }).obpterm = app; // devtools handle
+  // The one rule for bringing a conversation back, reachable on its own: it is pure, it decides
+  // whether `--resume` is an argument or something to type, and getting it wrong exits pwsh.
+  (window as unknown as { __resumePlan: typeof resumePlan }).__resumePlan = resumePlan;
   installCrashGuard(app);
   await app.connectHost();
   // Running decays to idle on its own, so the rail re-derives once a second. The rail patches
@@ -45,6 +48,18 @@ async function main() {
   window.setInterval(() => app.ecoSweep(), 60_000);
   window.setInterval(() => void app.refreshAgentTitles(), 5_000);
   installAgentEvents(app);
+  // The window says whether anyone is looking: the host holds a permission request for seconds
+  // when someone is and for minutes when nobody is, which is what makes answering from a phone
+  // possible at all.
+  const tellFocus = () => void app.tp.windowFocus(document.hasFocus()).catch(() => {});
+  window.addEventListener("focus", tellFocus);
+  window.addEventListener("blur", tellFocus);
+  tellFocus();
+  // Verdicts sent from the phone come back through the same ntfy topic.
+  if (config.ntfy_url) {
+    void app.tp.ntfyWatch(config.ntfy_url, config.ntfy_token).catch(() => {});
+    void app.tp.onNtfyAnswer((pending, allow) => app.answerFromPhone(pending, allow));
+  }
   // Hooks go in automatically (the user chose that): the default login's dir plus every
   // account's. A marked block; Settings can remove it.
   const hookDirs = [...new Set(["~/.claude", ...config.accounts.map((a) => a.claude_dir).filter((d): d is string => !!d)])];

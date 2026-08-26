@@ -20,7 +20,13 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
 /// How long a permission request waits for an answer from the rail before falling open.
+/// How long a held permission request waits while someone is looking at the window: the in-pane
+/// prompt is right there, so falling open quickly is the kind thing to do.
 pub const ANSWER_WAIT: Duration = Duration::from_secs(40);
+/// And while nobody is. Long enough to reach a phone or walk back to the desk, short enough
+/// that a session you have forgotten is not stuck for an hour. The hook's own timeout in
+/// `settings.json` is set above this — a hold longer than that would just be killed.
+pub const ANSWER_WAIT_AWAY: Duration = Duration::from_secs(180);
 
 pub struct HookHub {
     pub token: String,
@@ -28,12 +34,25 @@ pub struct HookHub {
     pending: Mutex<HashMap<String, oneshot::Sender<Option<bool>>>>,
     /// Where normalized events go — the server forwards them to the connected window.
     events: tokio::sync::broadcast::Sender<AgentEvent>,
+    /// Whether the window is in front, as the window last reported. Starts false: with no
+    /// window attached at all, nobody is looking, which is exactly the long-hold case.
+    focused: std::sync::atomic::AtomicBool,
 }
 
 impl HookHub {
     pub fn new(token: String) -> Arc<Self> {
         let (events, _) = tokio::sync::broadcast::channel(256);
-        Arc::new(Self { token, pending: Mutex::new(HashMap::new()), events })
+        Arc::new(Self {
+            token,
+            pending: Mutex::new(HashMap::new()),
+            events,
+            focused: std::sync::atomic::AtomicBool::new(false),
+        })
+    }
+
+    /// The window came to the front, or left it.
+    pub fn set_focused(&self, focused: bool) {
+        self.focused.store(focused, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<AgentEvent> {
@@ -114,7 +133,8 @@ impl HookHub {
             let (tx, rx) = oneshot::channel();
             self.pending.lock().unwrap().insert(pending_id.clone(), tx);
             let _ = self.events.send(event);
-            let verdict = tokio::time::timeout(ANSWER_WAIT, rx).await.ok().and_then(|r| r.ok()).flatten();
+            let wait = if self.focused.load(std::sync::atomic::Ordering::Relaxed) { ANSWER_WAIT } else { ANSWER_WAIT_AWAY };
+            let verdict = tokio::time::timeout(wait, rx).await.ok().and_then(|r| r.ok()).flatten();
             self.pending.lock().unwrap().remove(&pending_id);
             let body = match verdict {
                 Some(true) => r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#,

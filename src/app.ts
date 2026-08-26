@@ -65,6 +65,22 @@ function olderThan(a: string, b: string): boolean {
   return false;
 }
 
+/**
+ * How to bring one conversation back, for BOTH the restore path and the eco path. There is
+ * exactly one rule and it has to live in one place: a profile that actually runs `claude` takes
+ * `--resume` in its arguments; anything else — a plain shell someone typed `claude` into — must
+ * be resumed by TYPING it again, because `pwsh.exe --resume <id>` is not a shell invocation,
+ * it is `pwsh` exiting with code 64 and taking the session with it.
+ */
+export function resumePlan(profile: Profile, sessionId: string | null): { profile: Profile; type: string | null } {
+  const next = { ...profile };
+  if (!sessionId) return { profile: next, type: null };
+  const runsClaude = `${next.exe} ${next.args.join(" ")}`.toLowerCase().includes("claude");
+  if (!runsClaude) return { profile: next, type: sessionId };
+  next.args = [...stripSessionArgs(next.args), "--resume", sessionId];
+  return { profile: next, type: null };
+}
+
 function stripSessionArgs(args: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -320,16 +336,20 @@ export class App implements PaneHost {
     pane.eco = false;
     const sessionId = pane.claudeSessionId;
     const profile = { ...pane.profile };
-    if (sessionId) {
-      const args = [];
-      for (let i = 0; i < profile.args.length; i++) {
-        if (profile.args[i] === "--session-id") { i++; continue; }
-        args.push(profile.args[i]!);
-      }
-      profile.args = [...args, "--resume", sessionId];
-    }
-    pane.profile = profile;
+    // ONLY a profile that actually runs claude takes `--resume` in its arguments. A plain shell
+    // with claude typed into it must be resumed by TYPING again: appending `--resume` to
+    // pwsh.exe makes pwsh exit with code 64 and the session is gone. The restore path has
+    // always known this; eco did not, and v0.21.18's memory-pressure sweep made eco fire on
+    // every idle session instead of the occasional finished one — so it took the whole window
+    // down at once.
+    const plan = resumePlan(profile, sessionId);
+    const typeResume = plan.type;
+    pane.profile = plan.profile;
     await this.respawnPane(pane);
+    if (typeResume) {
+      // Give the shell a moment to draw its prompt before typing into it (same as restore).
+      window.setTimeout(() => !pane.exited && void this.tp.write(pane.id, `claude --resume ${typeResume}\r`).catch(() => {}), 900);
+    }
   }
 
   /**
@@ -940,19 +960,33 @@ export class App implements PaneHost {
   }
 
   /** An agent asked for something, in its own words. */
-  agentAlert(title: string, body: string) {
-    this.alert(title, body);
+  agentAlert(title: string, body: string, pending?: string | null) {
+    this.alert(title, body, pending);
+  }
+
+  /** A verdict that arrived from the phone, through the ntfy topic. Same path as the rail's own
+   *  Allow/Deny: the held POST completes and the session moves on. */
+  answerFromPhone(pending: string, allow: boolean) {
+    const pane = this.tabs.flatMap((t) => L.panes(t.root)).find((p) => p.agent.pendingId === pending);
+    void this.tp.agentAnswer(pending, allow).catch(() => {});
+    if (pane) {
+      pane.agent.pendingId = null;
+      pane.agent.state = "working";
+    }
+    toast(`${allow ? "Allowed" : "Denied"} from your phone`);
+    this.paintSoon();
   }
 
   /** One place for "tell the user something happened while they were elsewhere". */
-  private alert(title: string, body: string) {
+  private alert(title: string, body: string, pending?: string | null) {
     if (!this.config.notify_bell) return;
     void this.tp.notify(title, body).catch(() => {});
     void this.tp.attention(true).catch(() => {});
     // The phone, but only when the window itself is in the background — a push for every
-    // background-tab event while actively working here would be spam.
+    // background-tab event while actively working here would be spam. A push about a HELD
+    // request carries its id, which is what turns the notification into two buttons.
     if (this.config.ntfy_url && !document.hasFocus()) {
-      void this.tp.ntfy(this.config.ntfy_url, this.config.ntfy_token, title, body).catch(() => {});
+      void this.tp.ntfy(this.config.ntfy_url, this.config.ntfy_token, title, body, pending ?? null).catch(() => {});
     }
   }
 

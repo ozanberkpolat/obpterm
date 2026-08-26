@@ -251,6 +251,11 @@ impl Client {
     }
 
     /// The rail's verdict on a held permission request.
+    /// Tell the host whether anyone is looking at the window.
+    pub fn focus(&self, focused: bool) {
+        self.send_json(&Request::Focus { focused });
+    }
+
     pub fn answer(&self, pending: String, allow: Option<bool>) {
         self.send_json(&Request::Answer { pending, allow });
     }

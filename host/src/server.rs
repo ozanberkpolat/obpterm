@@ -187,6 +187,7 @@ OBPTERM_HOOK_TOKEN={}
                                     }
                                 }
                                 Request::Answer { pending, allow } => self.hooks.answer(&pending, allow),
+                                Request::Focus { focused } => self.hooks.set_focused(focused),
                                 Request::Detach { id } => self.registry.lock().unwrap().detach(id),
                                 Request::Resize { id, cols, rows } => {
                                     let _ = self.registry.lock().unwrap().resize(id, cols, rows);

@@ -150,6 +150,18 @@ pub fn hooks_remove(dirs: Vec<String>) -> Result<usize, String> {
     Ok(removed)
 }
 
+/// Whether anyone is looking at the window. The host holds a permission request for seconds when
+/// someone is and for minutes when nobody is — the difference between "the prompt is right there"
+/// and "he is in another room with his phone".
+#[tauri::command]
+pub fn window_focus(link: State<HostLink>, focused: bool) -> Result<(), String> {
+    // Not an error worth surfacing: with no host connected there is nothing to tell.
+    if let Ok(client) = self::link(&link) {
+        client.focus(focused);
+    }
+    Ok(())
+}
+
 /// The rail's verdict on a held permission request.
 #[tauri::command]
 pub fn agent_answer(link: State<HostLink>, pending: String, allow: Option<bool>) -> Result<(), String> {

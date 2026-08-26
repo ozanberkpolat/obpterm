@@ -34,8 +34,12 @@
   "capture_keep_days": 30,
   "capture_max_mb": 512,
   "update_check_on_launch": false,
-  "sleep_after_minutes": 10,
+  "sleep_after_seconds": 0,
+  "max_live_panes": 0,
   "eco_after_minutes": 30,
+  "eco_memory_pct": 0,
+  "model_prices": {},
+  "context_warn_pct": 80,
   "notify_bell": true,
   "notify_silence": false,
   "silence_seconds": 20,
@@ -80,7 +84,7 @@
   ],
   "hosts": [
     {
-      "id": "hmt9us0cu",
+      "id": "hmtaf3kjr",
       "name": "New host",
       "host": "",
       "user": null,
@@ -105,7 +109,7 @@
   "ntfy_url": null,
   "ntfy_token": null,
   "keep_awake": true,
-  "agents_view": "sessions",
+  "agents_view": "agents",
   "quota_5h_tokens": null,
   "quota_7d_tokens": null,
   "projects": [
@@ -1717,6 +1721,60 @@
       "color": "#ff8a1e",
       "cwd": null,
       "default_profile": null,
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmtaewvr7",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": "~",
+      "default_profile": "bash",
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmtaexdvk",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": "~",
+      "default_profile": "bash",
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmtaez3kz",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": "~",
+      "default_profile": "bash",
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmtaf2ssw",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": "~",
+      "default_profile": "bash",
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmtaf4gtl",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": "~",
+      "default_profile": "bash",
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmtaf5yo1",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": "~",
+      "default_profile": "bash",
       "layout": null,
       "collapsed": false
     }

@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::io::Write;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 const USER_AGENT: &str = concat!("OBPTerm/", env!("CARGO_PKG_VERSION"));
 
@@ -146,6 +146,58 @@ pub fn run_installer(app: AppHandle, name: String, version: String, bytes: Vec<u
     Ok(path.display().to_string())
 }
 
+/// What an answer coming back through the topic looks like, so this machine can tell its own
+/// verdicts from every other notification on the topic.
+pub const ANSWER_MARK: &str = "OBPTERM-ANSWER";
+
+/// One verdict, parsed off a message body. `None` for anything that is not one of ours.
+pub fn parse_answer(body: &str) -> Option<(String, bool)> {
+    let rest = body.trim().strip_prefix(ANSWER_MARK)?;
+    let mut parts = rest.split_whitespace();
+    let pending = parts.next()?.to_string();
+    let allow = match parts.next()? {
+        "allow" => true,
+        "deny" => false,
+        _ => return None,
+    };
+    Some((pending, allow))
+}
+
+/// Listens to the ntfy topic for verdicts sent from the phone and hands each one to the window,
+/// which answers it exactly as the rail's own buttons do. One long-lived streaming request that
+/// reconnects on its own: a laptop sleeps, and the topic outlives any single connection.
+#[tauri::command]
+pub async fn ntfy_watch(app: AppHandle, url: String, token: Option<String>) -> Result<(), String> {
+    let stream_url = format!("{}/json?poll=0", url.trim_end_matches('/'));
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let client = reqwest::Client::new();
+            let mut req = client.get(&stream_url);
+            if let Some(t) = token.as_deref().filter(|t| !t.is_empty()) {
+                req = req.bearer_auth(t);
+            }
+            if let Ok(mut response) = req.send().await {
+                let mut buf = String::new();
+                // One JSON object per line, for as long as the connection lives.
+                while let Ok(Some(chunk)) = response.chunk().await {
+                    buf.push_str(&String::from_utf8_lossy(&chunk));
+                    while let Some(nl) = buf.find('\n') {
+                        let line: String = buf.drain(..=nl).collect();
+                        let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim()) else { continue };
+                        let Some(message) = v.get("message").and_then(|m| m.as_str()) else { continue };
+                        if let Some((pending, allow)) = parse_answer(message) {
+                            let _ = app.emit("ntfy:answer", serde_json::json!({ "pending": pending, "allow": allow }));
+                        }
+                    }
+                }
+            }
+            // Dropped, slept, or refused: wait, then listen again.
+            tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+        }
+    });
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::is_newer;
@@ -165,7 +217,13 @@ mod tests {
 /// app contacts nothing by default. The Title header must be latin-1 or ntfy drops the push
 /// silently (fleet scar tissue), so anything outside it becomes '?'.
 #[tauri::command]
-pub async fn ntfy_publish(url: String, token: Option<String>, title: String, body: String) -> Result<(), String> {
+pub async fn ntfy_publish(
+    url: String,
+    token: Option<String>,
+    title: String,
+    body: String,
+    pending: Option<String>,
+) -> Result<(), String> {
     let latin1: String = title.chars().map(|c| if (c as u32) < 256 { c } else { '?' }).collect();
     let client = reqwest::Client::new();
     let mut req = client
@@ -175,6 +233,23 @@ pub async fn ntfy_publish(url: String, token: Option<String>, title: String, bod
         .header("Tags", "robot")
         .timeout(std::time::Duration::from_secs(6))
         .body(body);
+    // A held permission request gets two buttons. They publish the verdict back to the same
+    // topic, which this machine is listening to — so the answer needs no open port here, no
+    // firewall change, and works from anywhere the phone has signal. The token rides in the
+    // action's own header: it is in a notification only this user receives.
+    if let Some(pending) = pending {
+        let auth = token
+            .as_deref()
+            .filter(|t| !t.is_empty())
+            .map(|t| format!(", headers.Authorization=Bearer {t}"))
+            .unwrap_or_default();
+        let one = |label: &str, verdict: &str| {
+            format!(
+                "http, {label}, {url}, method=POST, headers.Title=answered, headers.Priority=min, headers.Tags=white_check_mark{auth}, body={ANSWER_MARK} {pending} {verdict}"
+            )
+        };
+        req = req.header("Actions", format!("{}; {}", one("Allow", "allow"), one("Deny", "deny")));
+    }
     if let Some(token) = token.filter(|t| !t.is_empty()) {
         req = req.bearer_auth(token);
     }
@@ -183,6 +258,21 @@ pub async fn ntfy_publish(url: String, token: Option<String>, title: String, bod
         return Err(format!("ntfy said {}", response.status()));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod phone_tests {
+    use super::*;
+
+    #[test]
+    fn a_verdict_from_the_phone_is_recognised_and_nothing_else_is() {
+        assert_eq!(parse_answer("OBPTERM-ANSWER p7-ab12 allow"), Some(("p7-ab12".into(), true)));
+        assert_eq!(parse_answer("  OBPTERM-ANSWER p7-ab12 deny  "), Some(("p7-ab12".into(), false)));
+        // Everything else on that topic is somebody's notification, not an answer.
+        assert_eq!(parse_answer("Editing pty.rs"), None);
+        assert_eq!(parse_answer("OBPTERM-ANSWER p7-ab12 maybe"), None);
+        assert_eq!(parse_answer("OBPTERM-ANSWER"), None);
+    }
 }
 
 #[cfg(test)]

@@ -99,7 +99,10 @@ pub fn install(settings: &mut Value, exe: &str) {
             *entries = json!([]);
         }
         // PermissionRequest's POST is held while the rail decides; give it room.
-        let timeout = if event == "PermissionRequest" { 55 } else { 10 };
+        // A permission request may be held for `ANSWER_WAIT_AWAY` (3 min) while nobody is looking
+        // at the window; the hook's own timeout has to outlast that or Claude Code kills the
+        // wait before the answer can arrive from the rail — or from a phone.
+        let timeout = if event == "PermissionRequest" { 200 } else { 10 };
         entries.as_array_mut().unwrap().push(json!({
             "hooks": [{ "type": "command", "command": hook_command(exe), "timeout": timeout }]
         }));
@@ -288,6 +291,6 @@ mod tests {
         assert!(!installed(&settings));
         install(&mut settings, EXE);
         assert!(installed(&settings));
-        assert!(settings.pointer("/hooks/PermissionRequest/0/hooks/0/timeout").unwrap() == 55);
+        assert!(settings.pointer("/hooks/PermissionRequest/0/hooks/0/timeout").unwrap() == 200);
     }
 }

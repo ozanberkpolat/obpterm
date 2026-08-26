@@ -302,7 +302,13 @@ export interface Transport {
   /** Taskbar overlay badge: how many agents wait on the user. 0 clears it. */
   badge(count: number): Promise<void>;
   /** One push to the user's own ntfy. Only called with a URL the user configured. */
-  ntfy(url: string, token: string | null, title: string, body: string): Promise<void>;
+  ntfy(url: string, token: string | null, title: string, body: string, pending?: string | null): Promise<void>;
+  /** Start listening to the ntfy topic for verdicts sent from a phone. */
+  ntfyWatch(url: string, token: string | null): Promise<void>;
+  /** Each verdict that arrives that way. */
+  onNtfyAnswer(handler: (pending: string, allow: boolean) => void): Promise<void>;
+  /** Tell the host whether the window is in front — it decides how long to hold a request. */
+  windowFocus(focused: boolean): Promise<void>;
   /** Hold or release the OS sleep inhibitor. */
   keepAwake(on: boolean): Promise<void>;
   /** RSS in bytes of each pid's process tree, for the Deck's memory readout. */

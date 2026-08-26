@@ -338,3 +338,56 @@ async fn a_nested_fan_out_keeps_the_agent_that_spawned_it() {
     let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
     let _ = std::fs::remove_dir_all(dir);
 }
+
+
+/// The hold that makes answering from a phone possible: seconds when someone is looking at the
+/// window, minutes when nobody is. Driven through the real listener, both ways.
+#[tokio::test]
+async fn a_permission_request_is_held_longer_while_nobody_is_looking() {
+    use obpterm_host::client::AgentUpdate;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), "test"));
+    let dir = std::env::temp_dir().join(format!("obpterm-hold-{}", obpterm_host::random_hex(4)));
+    std::fs::create_dir_all(&dir).unwrap();
+    host.start_hooks(&dir).await.unwrap();
+    let advert = host.advert.clone();
+    let server = tokio::spawn(Arc::clone(&host).serve());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let env = std::fs::read_to_string(dir.join("hook-endpoint.env")).unwrap();
+    let get = |k: &str| env.lines().find_map(|l| l.strip_prefix(&format!("{k}="))).unwrap().to_string();
+    let (port, token) = (get("OBPTERM_HOOK_PORT").parse::<u16>().unwrap(), get("OBPTERM_HOOK_TOKEN"));
+
+    let c = Client::connect(&advert).await.unwrap();
+    let (atx, mut agents) = mpsc::unbounded_channel::<AgentUpdate>();
+    c.watch_agents(atx);
+
+    // Nobody is looking. The request must still be open well past the focused hold.
+    c.focus(false);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let body = r#"{"hook_event_name":"PermissionRequest","tool_name":"Bash","session_id":"s1","tool_input":{"command":"rm -rf build/"}}"#;
+    let held = tokio::spawn(async move {
+        let mut s = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        let req = format!("POST /hook/{token}/7 HTTP/1.1\r\nhost: x\r\ncontent-length: {}\r\n\r\n{body}", body.len());
+        s.write_all(req.as_bytes()).await.unwrap();
+        let mut out = String::new();
+        let _ = s.read_to_string(&mut out).await;
+        out
+    });
+
+    let u = tokio::time::timeout(Duration::from_secs(3), agents.recv()).await.unwrap().unwrap();
+    let pending = u.pending_id.expect("a held request has an id to answer");
+    assert_eq!(u.state, "blocked");
+
+    // Answer it a moment later — the point is that it is still there to answer.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!held.is_finished(), "the request is still held while nobody is looking");
+    c.answer(pending, Some(true));
+    let out = tokio::time::timeout(Duration::from_secs(5), held).await.unwrap().unwrap();
+    assert!(out.contains("\"behavior\":\"allow\""), "the verdict reached the hook: {out}");
+
+    c.shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
+    let _ = std::fs::remove_dir_all(dir);
+}

@@ -1540,6 +1540,56 @@ await evaluate("window.obpterm.config.update_repo = null");
 }
 
 
+// ---- v0.21.22: a verdict that came from the phone ----------------------------------------
+{
+  // The phone taps a button in the ntfy notification; that publishes back to the topic; the
+  // window hears it and answers the held request exactly as the rail's own buttons do.
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const pane = await evaluate("window.obpterm.tab.active.id");
+  void pane;
+  // A request on the pane you are LOOKING at is passed straight through by design, so hold one
+  // directly rather than fighting that.
+  await evaluate("(() => { const a = window.obpterm.tab.active.agent; a.state = 'blocked'; a.pendingId = 'p-phone'; })()");
+
+  await evaluate("window.obpterm.answerFromPhone('p-phone', true)");
+  await until("window.obpterm.tab.active.agent.pendingId === null", "the pane stops waiting");
+  const answers = await new Promise((resolve) => {
+    devWs.send(JSON.stringify({ t: "agent_answers", reqId: 3100 }));
+    devWs.on("message", function once(d) {
+      const m = JSON.parse(d);
+      if (m.reqId === 3100) { devWs.off("message", once); resolve(m.answered); }
+    });
+  });
+  assert.deepEqual(answers.at(-1), { pending: "p-phone", allow: true }, "and the verdict reached the host");
+  devWs.close();
+}
+
+
+// ---- v0.21.22: eco must not append --resume to a shell ------------------------------------
+{
+  // `pwsh.exe --resume <id>` is not a shell invocation — it is pwsh exiting with code 64 and
+  // the conversation going with it. This took out every session on the user's machine once.
+  const plan = JSON.parse(await evaluate(`(() => {
+    const shell = { id: "p-sh", name: "PowerShell", exe: "pwsh.exe", args: ["-NoLogo", "-NoExit"] };
+    const claude = { id: "p-cl", name: "Claude", exe: "pwsh.exe", args: ["-NoLogo", "-NoExit", "-Command", "claude"] };
+    const r = window.obpterm.constructor;
+    return JSON.stringify({
+      shell: window.__resumePlan(shell, "sess-1"),
+      claude: window.__resumePlan(claude, "sess-1"),
+      claudeAgain: window.__resumePlan({ ...claude, args: [...claude.args, "--resume", "old"] }, "sess-2"),
+      unused: !!r,
+    });
+  })()`));
+  assert.deepEqual(plan.shell.profile.args, ["-NoLogo", "-NoExit"], "a shell's arguments are left alone");
+  assert.equal(plan.shell.type, "sess-1", "and the conversation is typed into it instead");
+  assert.deepEqual(plan.claude.profile.args.slice(-2), ["--resume", "sess-1"], "a claude profile takes it as an argument");
+  assert.equal(plan.claude.type, null, "and types nothing");
+  assert.deepEqual(plan.claudeAgain.profile.args.slice(-2), ["--resume", "sess-2"], "resuming twice does not stack --resume");
+  assert.equal(plan.claudeAgain.profile.args.filter((a) => a === "--resume").length, 1, "exactly one");
+}
+
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

@@ -83,7 +83,12 @@ export function tauriTransport(): Transport {
     },
     configReset: () => invoke<Config>("config_reset"),
     configExport: (config) => invoke<string>("config_export", { config }),
-    ntfy: (url, token, title, body) => invoke("ntfy_publish", { url, token, title, body }),
+    ntfy: (url, token, title, body, pending) => invoke("ntfy_publish", { url, token, title, body, pending: pending ?? null }),
+    ntfyWatch: (url, token) => invoke("ntfy_watch", { url, token }),
+    onNtfyAnswer: async (handler) => {
+      await listen<{ pending: string; allow: boolean }>("ntfy:answer", (e) => handler(e.payload.pending, e.payload.allow));
+    },
+    windowFocus: (focused) => invoke("window_focus", { focused }),
     keepAwake: (on) => invoke("keep_awake", { on }),
     rssFor: (pids) => invoke<number[]>("rss_for", { pids }),
     gitShortstat: (cwd) => invoke<string | null>("git_shortstat", { cwd }),

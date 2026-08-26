@@ -43,6 +43,10 @@ pub enum Request {
     LogStop { id: u32 },
     /// The rail's verdict on a held permission request; None passes it to the normal prompt.
     Answer { pending: String, allow: Option<bool> },
+    /// Whether the window is in front. A permission request is held for seconds when someone is
+    /// looking at it and for minutes when nobody is — that is the difference between "the prompt
+    /// is right there" and "he is in another room with his phone".
+    Focus { focused: bool },
     /// End every shell and exit. Closing the window is a detach, never this.
     Shutdown,
 }
