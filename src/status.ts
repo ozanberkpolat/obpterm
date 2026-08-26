@@ -137,7 +137,11 @@ export class Status {
       this.updateEl.disabled = true;
     }
     try {
-      const release = await this.app.tp.updateCheck(repo, this.app.config.github_token);
+      // Belt to the timeout's braces: whatever happens down there, this chip comes back.
+      const release = await Promise.race([
+        this.app.tp.updateCheck(repo, this.app.config.github_token),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("no answer from GitHub in 30s")), 30_000)),
+      ]);
       if (!release.newer) {
         this.updateEl.textContent = `v${this.version}`;
         this.updateEl.title = `v${this.version} is the newest release (checked ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}) — click to check again`;

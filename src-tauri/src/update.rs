@@ -80,7 +80,14 @@ pub async fn update_install(app: AppHandle, release: Release, token: Option<Stri
 }
 
 async fn request(url: &str, token: Option<String>) -> Result<reqwest::Response, String> {
-    let mut req = reqwest::Client::new()
+    // Without a timeout a single stalled connection leaves the caller waiting forever — which
+    // is exactly what a chip stuck on "Checking…" is.
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(8))
+        .timeout(std::time::Duration::from_secs(25))
+        .build()
+        .map_err(|e| format!("{e}"))?;
+    let mut req = client
         .get(url)
         .header(reqwest::header::USER_AGENT, USER_AGENT)
         .header("X-GitHub-Api-Version", "2022-11-28");

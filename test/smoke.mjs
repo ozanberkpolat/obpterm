@@ -1097,6 +1097,17 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   await until(`${bufferText("window.obpterm.tab.active")}.includes('alive-again')`, "the reloaded shell answers");
 }
 
+
+// ---- v0.21.5: the update chip always comes back --------------------------------------------
+await evaluate("(() => { window.obpterm.config.update_repo = 'x/y'; window.obpterm.status.pendingUpdate = null; window.obpterm.tp.updateCheck = () => new Promise(() => {}); })()");
+await evaluate("void window.obpterm.status.checkUpdates()");
+await until("document.querySelector('#update-chip').textContent === 'Checking…'", "it starts checking");
+await evaluate("(() => { window.obpterm.tp.updateCheck = async () => { throw new Error('no answer'); }; })()");
+await evaluate("void window.obpterm.status.checkUpdates()");
+await until("/^v\\d+\\.\\d+\\.\\d+/.test(document.querySelector('#update-chip').textContent)", "a failed check restores the version");
+assert.equal(await evaluate("document.querySelector('#update-chip').disabled"), false, "and the chip is clickable again");
+await evaluate("window.obpterm.config.update_repo = null");
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");
