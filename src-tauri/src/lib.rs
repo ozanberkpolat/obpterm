@@ -53,6 +53,7 @@ pub fn run() {
             update::ntfy_publish,
             metrics::rss_for,
             claude::session_context,
+            claude::session_usage,
             extras::git_shortstat,
             extras::allow_rule,
             extras::save_clip_image,

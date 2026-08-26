@@ -76,6 +76,8 @@ export class Pane {
   diffstat: string | null = null;
   /** Rough context-window fill %, from the transcript tail. */
   ctxPct: number | null = null;
+  /** Tokens and estimated dollars this conversation has spent, from its own transcript. */
+  usage: import("./transport").SessionUsage | null = null;
   /** Set when this pane's shell is not in the host's list any more, or a write to it failed:
    *  the screen is replayed history and everything typed at it disappears. */
   linkLost = false;

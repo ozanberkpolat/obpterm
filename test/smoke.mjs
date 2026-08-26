@@ -1393,6 +1393,44 @@ await evaluate("window.obpterm.config.update_repo = null");
 }
 
 
+// ---- v0.21.19: context pressure and what a session has spent -----------------------------
+{
+  // Both read the same transcript on the Rust side; here we drive the surfaces they feed.
+  const row = () => "document.querySelector('.tab.active')";
+  await evaluate("(() => { window.obpterm.config.context_warn_pct = 80; window.obpterm.tab.active.ctxPct = 42; window.obpterm.paint(); })()");
+  assert.equal(await evaluate(`${row()}.querySelector('.ctx').hidden`), true, "a half-full conversation is not news");
+
+  await evaluate("(() => { window.obpterm.tab.active.ctxPct = 88; window.obpterm.paint(); })()");
+  await until(`${row()}.querySelector('.ctx').hidden === false`, "the context chip appears");
+  assert.equal(await evaluate(`${row()}.querySelector('.ctx').textContent`), "ctx 88%", "and says how full");
+  await evaluate("(() => { window.obpterm.tab.active.ctxPct = 97; window.obpterm.paint(); })()");
+  assert.ok(await evaluate(`${row()}.querySelector('.ctx').classList.contains('hot')`), "past 95 it turns red");
+
+  // Threshold off = nothing, whatever the gauge says.
+  await evaluate("(() => { window.obpterm.config.context_warn_pct = 0; window.obpterm.paint(); })()");
+  assert.equal(await evaluate(`${row()}.querySelector('.ctx').hidden`), true, "zero never flags");
+  await evaluate("(() => { window.obpterm.config.context_warn_pct = 80; window.obpterm.tab.active.ctxPct = null; })()");
+
+  // /compact goes to the shell as a line, like anything else typed at it.
+  const paneId = await evaluate("window.obpterm.tab.active.id");
+  await evaluate("(() => { window.__wrote = []; const real = window.obpterm.tp.write.bind(window.obpterm.tp); window.obpterm.tp.write = (id, d) => { window.__wrote.push([id, d]); return real(id, d); }; })()");
+  await evaluate("(() => { window.obpterm.tab.active.claudeSessionId = 'c-1'; window.obpterm.compact(window.obpterm.tab.active); })()");
+  const wrote = JSON.parse(await evaluate("JSON.stringify(window.__wrote)"));
+  assert.deepEqual(wrote.at(-1), [paneId, "/compact\r"], "compact types /compact into that pane");
+  await evaluate("(() => { window.obpterm.tab.active.claudeSessionId = null; })()");
+
+  // Cost: shown once it is worth mentioning, with the tokens in the tooltip.
+  await evaluate("(() => { window.obpterm.tab.active.usage = { input: 400000, output: 12000, cache_read: 0, cache_write: 0, cost_usd: 1.5, turns: 9 }; window.obpterm.paint(); })()");
+  await until(`${row()}.querySelector('.cost').hidden === false`, "the cost chip appears");
+  assert.equal(await evaluate(`${row()}.querySelector('.cost').textContent`), "$1.50", "in dollars");
+  assert.match(await evaluate(`${row()}.querySelector('.cost').title`), /412k tokens/, "with the tokens in the tooltip");
+
+  await evaluate("(() => { window.obpterm.tab.active.usage = { input: 10, output: 10, cache_read: 0, cache_write: 0, cost_usd: 0.004, turns: 1 }; window.obpterm.paint(); })()");
+  assert.equal(await evaluate(`${row()}.querySelector('.cost').hidden`), true, "and below a dime it stays out of the way");
+  await evaluate("(() => { window.obpterm.tab.active.usage = null; window.obpterm.paint(); })()");
+}
+
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

@@ -220,6 +220,7 @@ export class App implements PaneHost {
     if (!tab) return;
     const account = this.account(tab.accountId);
     const dir = account?.claude_dir ?? "~/.claude";
+    void this.refreshContext();
     for (const pane of L.panes(tab.root)) {
       if (!pane.claudeSessionId) continue;
       // The name only when the user has not chosen one; the gauge only for the pane whose gauge
@@ -234,6 +235,46 @@ export class App implements PaneHost {
       if (pane === tab.active) pane.ctxPct = await this.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
     }
     this.status?.paintCtx();
+  }
+
+  /**
+   * The context gauge for every live Claude session, not just the one on screen — a background
+   * session filling its window is exactly the one nobody is watching. Cheap by construction:
+   * `session_context` caches on the transcript's size and mtime, so a quiet session costs one
+   * `stat`. Panes past the warning line are said out loud once, the way a bell is.
+   */
+  private async refreshContext() {
+    const warn = this.config.context_warn_pct;
+    for (const tab of this.tabs) {
+      const dir = this.account(tab.accountId)?.claude_dir ?? "~/.claude";
+      for (const pane of L.panes(tab.root)) {
+        if (!pane.claudeSessionId || pane.exited || pane.eco) continue;
+        const before = pane.ctxPct;
+        pane.ctxPct = await this.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
+        // Same pass, same file: what this conversation has spent. Both read the transcript and
+        // both cache on how far they got, so a quiet session costs a `stat` and nothing else.
+        pane.usage = await this.tp.sessionUsage(dir, pane.claudeSessionId, this.config.model_prices).catch(() => null);
+        if (!warn || pane.ctxPct === null) continue;
+        // Only on the crossing, and only once: a session sitting at 91% must not nag every poll.
+        if (pane.ctxPct >= warn && (before === null || before < warn)) {
+          this.agentAlert(this.title(tab), `context ${pane.ctxPct}% full — /compact soon`);
+        }
+      }
+    }
+    this.paintSoon();
+  }
+
+  /** What a tab has spent, in dollars — its panes summed. Null when nothing is known yet. */
+  tabCost(tab: Tab): number | null {
+    const costs = L.panes(tab.root).map((p) => p.usage?.cost_usd).filter((c): c is number => c !== undefined);
+    return costs.length ? costs.reduce((a, b) => a + b, 0) : null;
+  }
+
+  /** Hand the focused pane's conversation to `/compact`. */
+  compact(pane: Pane) {
+    if (!pane.claudeSessionId || pane.exited) return;
+    void this.tp.write(pane.id, "/compact\r").catch(() => {});
+    toast("Compacting the conversation…");
   }
 
   /** The rail's verdict on a pane's held permission request. */

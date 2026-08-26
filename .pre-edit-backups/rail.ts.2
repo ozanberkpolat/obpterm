@@ -13,23 +13,12 @@ interface Row {
   num: HTMLElement;
   title: HTMLElement;
   sub: HTMLElement;
-  /** "$1.24" — what this session has spent, once it is worth mentioning. */
-  cost: HTMLElement;
-  /** "ctx 88%", only once the conversation is close to full. */
-  ctx: HTMLElement;
   badge: HTMLElement;
   rec: HTMLElement;
   state: HTMLElement;
 }
 
 const rows = new WeakMap<Tab, Row>();
-
-/** 412000 -> "412k", 2400000 -> "2.4M". */
-function fmtTokens(n: number): string {
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${Math.round(n / 1e3)}k`;
-  return String(n);
-}
 /** What the last render laid out, so structure work only happens when the structure changed. */
 let lastShape = "";
 
@@ -152,8 +141,6 @@ function rowFor(app: App, tab: Tab): Row {
   li.innerHTML =
     `<span class="num"></span>` +
     `<span class="label"><span class="title"></span><span class="sub"></span></span>` +
-    `<span class="cost" hidden></span>` +
-    `<span class="ctx" hidden></span>` +
     `<span class="badge" hidden></span><span class="rec" hidden title="capturing to a log file">●</span>` +
     `<span class="st"></span>` +
     `<button class="close" title="Close this tab (Ctrl+Shift+Q)">×</button>`;
@@ -162,8 +149,6 @@ function rowFor(app: App, tab: Tab): Row {
     num: li.querySelector(".num")!,
     title: li.querySelector(".title")!,
     sub: li.querySelector(".sub")!,
-    cost: li.querySelector(".cost")!,
-    ctx: li.querySelector(".ctx")!,
     badge: li.querySelector(".badge")!,
     rec: li.querySelector(".rec")!,
     state: li.querySelector(".st")!,
@@ -258,24 +243,6 @@ function patchRow(app: App, tab: Tab) {
   set(row.num, String(app.tabs.indexOf(tab) + 1));
   set(row.title, title);
   set(row.sub, sub === title ? "" : sub);
-  // Context pressure. Only when it matters: a session at 40% is not news, one at 88% is about to
-  // start forgetting the beginning of its own task.
-  const warn = app.config.context_warn_pct;
-  const full = warn ? panes.map((p) => p.ctxPct).filter((v): v is number => v !== null && v >= warn).sort((a, b) => b - a)[0] ?? null : null;
-  row.ctx.hidden = full === null;
-  if (full !== null) {
-    set(row.ctx, `ctx ${full}%`);
-    row.ctx.classList.toggle("hot", full >= 95);
-    row.ctx.title = "This conversation is nearly full — right-click the tab to /compact it";
-  }
-  // What it has cost. Below a dime it is noise; the tooltip carries the tokens either way.
-  const cost = app.tabCost(tab);
-  const tokens = panes.reduce((n, p) => n + (p.usage ? p.usage.input + p.usage.output + p.usage.cache_read + p.usage.cache_write : 0), 0);
-  row.cost.hidden = cost === null || cost < 0.1;
-  if (cost !== null) {
-    set(row.cost, `$${cost < 10 ? cost.toFixed(2) : Math.round(cost)}`);
-    row.cost.title = `${fmtTokens(tokens)} tokens · estimated from this machine's transcripts, at the prices in Settings`;
-  }
   row.badge.hidden = panes.length < 2;
   set(row.badge, panes.length > 1 ? String(panes.length) : "");
   row.rec.hidden = !panes.some((p) => p.logPath);
@@ -342,7 +309,6 @@ function tabMenu(app: App, tab: Tab, x: number, y: number) {
     { label: "Split right", hint: "Alt+Shift+=", onPick: () => void app.splitPane("row") },
     { label: "Split down", hint: "Alt+Shift+-", onPick: () => void app.splitPane("col") },
     { label: capturing ? "Stop capture" : "Start capture", hint: "Ctrl+Shift+L", onPick: () => void app.toggleLog() },
-    { label: "Compact this conversation (/compact)", onPick: () => app.compact(tab.active) },
     { label: "New tab in a worktree…", hint: "Ctrl+Shift+U", onPick: () => newWorktree(app) },
     { label: "Move to project…", onPick: () => moveMenu(app, tab, x, y) },
     { label: "Tab colour…", onPick: () => colorMenu(x, y, tab.color, (c) => app.setTabColor(tab, c)) },

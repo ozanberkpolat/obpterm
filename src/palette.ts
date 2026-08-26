@@ -42,6 +42,7 @@ export function installPalette(app: App) {
     { group: "Panes", label: "Split right", hint: "Alt+Shift+=", run: () => void app.splitPane("row") },
     { group: "Panes", label: "Split down", hint: "Alt+Shift+-", run: () => void app.splitPane("col") },
     { group: "Panes", label: "Reload this session (resume the same conversation)", run: () => { if (app.tab) void app.reloadPane(app.tab.active); } },
+    { group: "Panes", label: "Compact this conversation (/compact)", run: () => { if (app.tab) app.compact(app.tab.active); } },
     { group: "Panes", label: "Find in scrollback", hint: "Ctrl+Shift+F", run: () => app.find.open() },
     { group: "Panes", label: app.tab?.active.logPath ? "Stop capture" : "Start capture", hint: "Ctrl+Shift+L", run: () => void app.toggleLog() },
     { group: "App", label: "Agents — every session and what it fanned out", hint: "Ctrl+G", run: () => app.showView("agents") },

@@ -92,6 +92,7 @@ export function tauriTransport(): Transport {
     worktreeRemove: (mainRoot, path, branch) => invoke("worktree_remove", { mainRoot, path, branch }),
     allowRule: (cwd, rule) => invoke("allow_rule", { cwd, rule }),
     sessionContext: (dir, sessionId) => invoke<number | null>("session_context", { dir, sessionId }),
+    sessionUsage: (dir, sessionId, prices) => invoke("session_usage", { dir, sessionId, prices }),
     async readClipboardImage() {
       // The plugin hands back raw RGBA; a canvas turns it into the PNG the temp file needs.
       try {

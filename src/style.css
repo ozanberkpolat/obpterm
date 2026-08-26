@@ -689,6 +689,14 @@ button.chip:hover { background: var(--border); color: var(--ink); }
    worse than no number — this is what makes the CPU bar appear stuck at 100%. */
 #metrics.stale { opacity: .45; }
 #metrics.stale::after { content: "stale"; font: 600 9px var(--mono); color: var(--faint); margin-left: 6px; }
+/* What a session has spent. Quiet by default — it is context, not a headline. */
+.tab .cost { font: 600 9px var(--mono); color: var(--faint); flex: none; }
+/* A conversation close to full. Amber says "soon"; red says "now", and neither moves. */
+.tab .ctx {
+  font: 700 9px var(--mono); padding: 1px 6px; border-radius: 999px; flex: none;
+  background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent);
+}
+.tab .ctx.hot { background: color-mix(in srgb, var(--bad) 22%, transparent); color: var(--bad); }
 .agent-pill.nested { margin-left: 11px; position: relative; }
 .agent-pill.nested::before {
   content: ""; position: absolute; left: -9px; top: 50%; width: 7px; height: 1px;

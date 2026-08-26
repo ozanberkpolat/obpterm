@@ -118,6 +118,7 @@ export function wsTransport(): Transport {
     gitShortstat: async () => null,
     allowRule: async () => {},
     sessionContext: async () => null,
+    sessionUsage: async () => null,
     readClipboardImage: async () => null,
     worktreeStatus: async () => null,
     worktreeAdd: async () => { throw new Error("worktrees are a desktop feature"); },

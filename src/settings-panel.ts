@@ -364,6 +364,10 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
           slider(c.eco_after_minutes, 0, 240, 10, " min", (v) => { c.eco_after_minutes = v; ctx.save(); })),
       ),
       card(
+        row("Flag a conversation when its context passes", "The gauge exists but says nothing unless you look at it — and the session filling up is usually one you are not looking at. Past this, the rail shows it and an unfocused window gets the same notification a bell would raise. Right-click the tab to /compact. Zero never flags.",
+          slider(c.context_warn_pct, 0, 100, 5, "%", (v) => { c.context_warn_pct = v; ctx.save(); })),
+      ),
+      card(
         row("Exit idle sessions when memory passes", "The machine running out of RAM is what actually freezes this window — it thrashes on swap and everything stalls for minutes. Above this, idle sessions are /exited oldest first, sleeping ones included, until it comes down. Each tab stays and resumes on click. Zero never does.",
           slider(c.eco_memory_pct, 0, 100, 5, "%", (v) => { c.eco_memory_pct = v; ctx.save(); })),
       ),

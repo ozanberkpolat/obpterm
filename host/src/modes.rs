@@ -14,6 +14,13 @@ pub struct Modes {
 
 impl Modes {
     pub fn track(&mut self, bytes: &[u8]) {
+        // The common case by far: nothing was carried over, and the chunk holds no ESC at all —
+        // ordinary program output. Every pty read of every session passes through here, so the
+        // old unconditional `carry + extend_from_slice` copied up to 16 KB per read for a
+        // feature that only cares about a handful of rare escape bytes.
+        if self.carry.is_empty() && !bytes.contains(&0x1b) {
+            return;
+        }
         let mut buf = std::mem::take(&mut self.carry);
         buf.extend_from_slice(bytes);
         let mut i = 0;
@@ -54,9 +61,10 @@ impl Modes {
             }
             i += 1;
         }
-        // Keep a short tail in case an ESC [ ? is split across the boundary.
+        // Keep a short tail only when it could actually be the start of a split sequence —
+        // otherwise the next chunk pays for a copy that can never match anything.
         let keep = buf.len().saturating_sub(8);
-        self.carry = buf[keep..].to_vec();
+        self.carry = if buf[keep..].contains(&0x1b) { buf[keep..].to_vec() } else { Vec::new() };
         let _ = last_esc;
     }
 
@@ -90,6 +98,22 @@ impl Modes {
 #[cfg(test)]
 mod tests {
     use super::Modes;
+
+    #[test]
+    fn plain_output_is_not_copied_and_a_split_sequence_still_survives_it() {
+        let mut m = Modes::default();
+        // Megabytes of ordinary output must leave no carry behind — that copy was per read,
+        // per session, for nothing.
+        m.track(&vec![b'x'; 16 * 1024]);
+        assert!(m.carry.is_empty(), "plain output carries nothing forward");
+        // And the boundary case the carry exists for still works.
+        m.track(b"before \x1b[?20");
+        assert!(!m.carry.is_empty(), "a half-finished sequence IS carried");
+        m.track(b"04h after");
+        assert!(m.is_on(2004), "the split sequence still lands");
+        m.track(&vec![b'y'; 4096]);
+        assert!(m.is_on(2004) && m.carry.is_empty(), "and plain output after it changes nothing");
+    }
 
     #[test]
     fn mouse_tracking_is_tracked_but_never_replayed() {

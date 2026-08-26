@@ -120,6 +120,15 @@ export interface ReleaseInfo {
   newer: boolean;
 }
 
+export interface SessionUsage {
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write: number;
+  cost_usd: number;
+  turns: number;
+}
+
 export interface HostMetrics {
   cpu: number;
   mem_used: number;
@@ -157,6 +166,10 @@ export interface Config {
   eco_after_minutes: number;
   /** Percent of system RAM above which idle sessions are exited early. 0 = never. */
   eco_memory_pct: number;
+  /** Dollars per million tokens per model: [input, output, cache read, cache write]. */
+  model_prices: Record<string, number[]>;
+  /** Percent of the context window at which a session is flagged. 0 = never. */
+  context_warn_pct: number;
   notify_bell: boolean;
   notify_silence: boolean;
   silence_seconds: number;
@@ -300,6 +313,8 @@ export interface Transport {
   allowRule(cwd: string, rule: string): Promise<void>;
   /** Rough context-window fill % for a session, from its transcript tail. */
   sessionContext(dir: string, sessionId: string): Promise<number | null>;
+  /** Tokens and estimated cost for one conversation, accumulated from its transcript. */
+  sessionUsage(dir: string, sessionId: string, prices: Record<string, number[]>): Promise<SessionUsage | null>;
   /** A pasted bitmap, saved to a temp PNG; resolves the path to type, or null when the
    *  clipboard holds no image (or images are unsupported here). */
   readClipboardImage(): Promise<string | null>;
@@ -351,6 +366,8 @@ export function withDefaults(config: Partial<Config>): Config {
     max_live_panes: config.max_live_panes ?? 8,
     eco_after_minutes: config.eco_after_minutes ?? 15,
     eco_memory_pct: config.eco_memory_pct ?? 85,
+    model_prices: config.model_prices ?? {},
+    context_warn_pct: config.context_warn_pct ?? 80,
     notify_bell: config.notify_bell ?? true,
     notify_silence: config.notify_silence ?? false,
     silence_seconds: config.silence_seconds ?? 20,
