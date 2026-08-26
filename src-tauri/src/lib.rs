@@ -76,6 +76,11 @@ pub fn run() {
         .setup(|app| {
             let main = app.get_webview_window("main").expect("main window");
             disable_browser_accelerators(&main);
+            // The app draws its own title bar. `decorations: false` in the config is supposed
+            // to be enough, but a restored window state or an in-place upgrade can leave the
+            // native caption on — and then you get two of them stacked. Enforce it here, where
+            // nothing can have overridden it yet.
+            let _ = main.set_decorations(false);
             Ok(())
         })
         .on_window_event(|window, event| {
