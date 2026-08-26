@@ -41,6 +41,10 @@ pub struct AgentEvent {
     pub agent_event: Option<String>,
     /// On `linked`: the spawn's tool_use_id, so the window can rekey the agent it opened.
     pub agent_ref: Option<String>,
+    /// The session's permission mode at the moment of the event: default | acceptEdits |
+    /// bypassPermissions | plan. In bypass ("auto") nothing ever asks, so the answer buttons
+    /// are noise.
+    pub mode: Option<String>,
 }
 
 /// Maps one hook payload to an event. Pure, so it is testable without HTTP or hooks.
@@ -61,6 +65,7 @@ pub fn normalize(pane: u32, payload: &serde_json::Value) -> Option<AgentEvent> {
         agent_task: None,
         agent_event: None,
         agent_ref: None,
+        mode: payload.get("permission_mode").and_then(|v| v.as_str()).map(str::to_string),
     };
     Some(match event {
         "UserPromptSubmit" => mk("working", None),
@@ -224,6 +229,10 @@ mod tests {
         assert_eq!(e.detail.as_deref(), Some("Running rm -rf build"));
         assert_eq!(e.pending_id.as_deref(), Some("p-1"));
         assert_eq!((e.tool.as_deref(), e.tool_input.as_deref()), (Some("Bash"), Some("rm -rf build")), "the raw command rides along for grading");
+
+        // The mode rides along, so the UI can drop answer buttons a bypassing session never needs.
+        let e = normalize(7, &json!({"hook_event_name": "UserPromptSubmit", "permission_mode": "bypassPermissions"})).unwrap();
+        assert_eq!(e.mode.as_deref(), Some("bypassPermissions"));
 
         let e = normalize(7, &json!({"hook_event_name": "Notification", "notification_type": "idle_prompt"})).unwrap();
         assert_eq!(e.state, "idle_rescue", "idle_prompt may only rescue a stuck working state");

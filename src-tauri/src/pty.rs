@@ -90,7 +90,7 @@ pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>) -> Result<Vec<Strin
                     "detail": u.detail, "pending_id": u.pending_id, "options": u.options,
                     "tool": u.tool, "tool_input": u.tool_input,
                     "agent_id": u.agent_id, "agent_kind": u.agent_kind,
-                    "agent_task": u.agent_task, "agent_event": u.agent_event, "agent_ref": u.agent_ref,
+                    "agent_task": u.agent_task, "agent_event": u.agent_event, "agent_ref": u.agent_ref, "mode": u.mode,
                 }),
             );
         }

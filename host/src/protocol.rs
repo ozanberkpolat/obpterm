@@ -106,6 +106,8 @@ pub enum Reply {
         agent_event: Option<String>,
         #[serde(default)]
         agent_ref: Option<String>,
+        #[serde(default)]
+        mode: Option<String>,
     },
 }
 

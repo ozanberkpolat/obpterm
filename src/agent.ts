@@ -35,6 +35,8 @@ export interface AgentState {
   workingSince: number;
   /** Agents this session spawned, newest last. Ended ones linger until the turn finishes. */
   fanned: FannedAgent[];
+  /** default | acceptEdits | bypassPermissions | plan — what the session is running as. */
+  mode: string | null;
 }
 
 export const blank = (): AgentState => ({
@@ -49,6 +51,7 @@ export const blank = (): AgentState => ({
   lastToolAt: 0,
   workingSince: 0,
   fanned: [],
+  mode: null,
 });
 
 const DONE_HOLDOFF_MS = 3000;
@@ -69,11 +72,13 @@ export interface AgentUpdate {
   agent_task?: string | null;
   agent_event?: string | null;
   agent_ref?: string | null;
+  mode?: string | null;
 }
 
 /** Applies one hook event. Returns what the app should do beyond repainting. */
 export function reduce(a: AgentState, u: AgentUpdate, focused: boolean): "notify" | "auto-pass" | null {
   if (u.session_id) a.sessionId = u.session_id;
+  if (u.mode) a.mode = u.mode;
   // Fan-out bookkeeping runs first and, for agent-owned events, INSTEAD of the session's own
   // state machine: one agent's tool call is not the session doing something new.
   if (u.agent_id && u.agent_event) {
@@ -257,6 +262,21 @@ const DANGER: RegExp[] = [
 export function isDangerous(a: AgentState): boolean {
   const hay = a.toolInput ?? a.detail ?? "";
   return !!hay && DANGER.some((re) => re.test(hay));
+}
+
+/** A session that bypasses permissions never asks, so answer buttons are noise on it. */
+export function asksPermission(a: AgentState): boolean {
+  return a.mode !== "bypassPermissions";
+}
+
+/** Short label for the session's mode, or "" for the ordinary one. */
+export function modeLabel(a: AgentState): string {
+  switch (a.mode) {
+    case "bypassPermissions": return "auto";
+    case "acceptEdits": return "accept edits";
+    case "plan": return "plan";
+    default: return "";
+  }
 }
 
 /** True when this pane runs Claude Code — the exe or an arg says so. */

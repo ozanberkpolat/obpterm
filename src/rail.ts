@@ -1,7 +1,7 @@
 // The vertical rail: tabs grouped by project, each group in its own colour, each row carrying
 // what its shell is doing. Rows are cached per tab and patched in place — a rebuild on every
 // title and cwd report would throw away an open rename and churn thirty rows a second.
-import { isDangerous } from "./agent";
+import { isDangerous, modeLabel } from "./agent";
 import type { Activity, App, Tab } from "./app";
 import { COLORS, openMenu } from "./menu";
 import { editInline } from "./ui";
@@ -223,12 +223,13 @@ function patchRow(app: App, tab: Tab) {
     ? Math.floor((Date.now() - agentPane.agent.workingSince) / 60_000)
     : 0;
   const working = workedMin >= 1 ? ` · ${workedMin}m` : "";
+  const mode = agentPane ? modeLabel(agentPane.agent) : "";
   const sub = exited
     ? `exited · code ${exited.exitCode}`
     : eco
       ? "agent sleeping — click to resume"
       : agentDetail
-        ? agentDetail + working
+        ? agentDetail + working + (mode ? ` · ${mode}` : "")
         : (tab.active.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? tab.active.profile.name);
 
   row.li.classList.toggle("active", tab === app.tab);

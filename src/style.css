@@ -5,6 +5,9 @@
 @font-face { font-family: "Plus Jakarta Sans"; font-style: normal; font-weight: 200 800; font-display: swap; src: url("./fonts/plusjakartasans-var-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 
 /* Sentinel console tokens (iot-stack DESIGN.md) */
+/* An element with [hidden] is hidden, whatever a later display rule says. */
+[hidden] { display: none !important; }
+
 :root {
   --bg: #0a0e14;
   --bg2: #0e131c;
@@ -712,3 +715,8 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 }
 .nnode .nreply input:focus { border-color: var(--accent); }
 .nnode .nact .always { background: none; border: 1px solid var(--border-2); color: var(--faint); }
+.nnode .nmode {
+  font: 700 8.5px var(--sans); text-transform: uppercase; letter-spacing: .07em;
+  padding: 2px 7px; border-radius: 999px; flex: none;
+  background: rgba(180, 140, 255, .16); color: #b48cff;
+}

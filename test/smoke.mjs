@@ -936,6 +936,62 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   devWs.close();
 }
 
+
+// ---- v0.20.1: auto mode has no answer buttons, and hidden means hidden -----------------------
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const injectDev = (update) =>
+    new Promise((r) => {
+      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
+      setTimeout(r, 150);
+    });
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; p.agent.fanned = []; p.agent.mode = null; }), window.obpterm.paint()");
+  await evaluate("void window.obpterm.newTab()");
+  await until("window.obpterm.tabs.length >= 2", "a tab for mode");
+  const mPane = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+
+  // A finished agent must not wear answer buttons — [hidden] has to beat display:flex.
+  await injectDev({ pane: mPane, state: "working", session_id: "sess-m2", detail: "Delegating", pending_id: null, options: [],
+    agent_id: "m-1", agent_kind: "general-purpose", agent_task: "Idle 15 seconds", agent_event: "spawned", mode: "default" });
+  await evaluate("window.obpterm.showView('agents')");
+  await until("!!document.querySelector('#nodemap .nnode.agent')", "the agent node");
+  assert.equal(
+    await evaluate("getComputedStyle(document.querySelector('#nodemap .nnode.agent .nact')).display"),
+    "none",
+    "an agent node never shows Allow/Deny",
+  );
+
+  // In auto mode a held request shows no buttons and the keys do nothing.
+  await injectDev({ pane: mPane, state: "blocked", session_id: "sess-m2", detail: "Running npm test", pending_id: "p-auto", options: [], tool: "Bash", tool_input: "npm test", mode: "bypassPermissions" });
+  await until("!!document.querySelector('#nodemap .nnode[data-state=blocked]')", "the blocked session node");
+  assert.equal(await evaluate("document.querySelector('#nodemap .nnode[data-state=blocked] .nmode').textContent"), "auto", "the node says which mode it runs in");
+  assert.equal(
+    await evaluate("getComputedStyle(document.querySelector('#nodemap .nnode[data-state=blocked] .nact')).display"),
+    "none",
+    "auto mode shows no answer buttons",
+  );
+  const before = await new Promise((resolve) => {
+    devWs.send(JSON.stringify({ t: "agent_answers", reqId: 2100 }));
+    devWs.on("message", function once(d) { const m = JSON.parse(d); if (m.reqId === 2100) { devWs.off("message", once); resolve(m.answered.length); } });
+  });
+  await evaluate("document.querySelector('#nodemap').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', key: 'a', bubbles: true, cancelable: true }))");
+  await new Promise((r) => setTimeout(r, 250));
+  const after = await new Promise((resolve) => {
+    devWs.send(JSON.stringify({ t: "agent_answers", reqId: 2101 }));
+    devWs.on("message", function once(d) { const m = JSON.parse(d); if (m.reqId === 2101) { devWs.off("message", once); resolve(m.answered.length); } });
+  });
+  assert.equal(after, before, "the answer keys are inert in auto mode");
+
+  // An ordinary session still gets them.
+  await injectDev({ pane: mPane, state: "blocked", session_id: "sess-m2", detail: "Running npm test", pending_id: "p-normal", options: [], tool: "Bash", tool_input: "npm test", mode: "default" });
+  await until("getComputedStyle(document.querySelector('#nodemap .nnode[data-state=blocked] .nact')).display !== 'none'", "default mode keeps the buttons");
+  await evaluate("window.obpterm.showView('sessions')");
+  await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
+  devWs.close();
+}
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

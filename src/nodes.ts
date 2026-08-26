@@ -3,7 +3,7 @@
 // band, and a forked session keeps a dashed line to where it came from. Nothing is dragged —
 // the layout is derived from the fleet, so a node is born where its parent is.
 import type { App, Tab } from "./app";
-import { isClaudePane, isDangerous, type FannedAgent } from "./agent";
+import { asksPermission, isClaudePane, isDangerous, modeLabel, type FannedAgent } from "./agent";
 import type { Pane } from "./pane";
 import { toast } from "./ui";
 
@@ -153,7 +153,7 @@ export class Nodes {
     el.className = `nnode ${n.kind} born`;
     el.dataset.id = n.id;
     el.innerHTML =
-      `<header><span class="ndot"></span><span class="nname"></span><span class="nproj" hidden></span><span class="npill"></span></header>` +
+      `<header><span class="ndot"></span><span class="nname"></span><span class="nmode" hidden></span><span class="nproj" hidden></span><span class="npill"></span></header>` +
       `<div class="nbody"></div>` +
       `<footer class="nfoot"></footer>` +
       `<div class="nact" hidden><button class="allow">Allow</button><button class="deny">Deny</button><button class="always" title="Allow, and never ask for this command in this project again">Always</button></div>` +
@@ -257,8 +257,13 @@ export class Nodes {
         .filter(Boolean)
         .join(" · "),
     );
-    act.hidden = !(a.state === "blocked" && a.pendingId);
+    // In auto mode nothing ever asks; the buttons would be decoration.
+    act.hidden = !(a.state === "blocked" && a.pendingId && asksPermission(a));
     el.querySelector<HTMLElement>(".nreply")!.hidden = !(a.state === "blocked" || a.state === "waiting");
+    const mode = el.querySelector<HTMLElement>(".nmode")!;
+    const label = modeLabel(a);
+    mode.hidden = !label;
+    set(mode, label);
     el.classList.toggle("danger", a.state === "blocked" && isDangerous(a));
   }
 
@@ -351,14 +356,15 @@ export class Nodes {
     const n = this.nodes[this.sel];
     const pane = n?.pane;
     const danger = pane ? isDangerous(pane.agent) : false;
+    const asks = pane ? asksPermission(pane.agent) : true;
     if (e.code === "ArrowRight" || e.code === "KeyJ") move(1);
     else if (e.code === "ArrowLeft" || e.code === "KeyK") move(-1);
-    else if (e.code === "KeyA" && pane?.agent.pendingId) {
+    else if (e.code === "KeyA" && pane?.agent.pendingId && asks) {
       if (danger) toast("That one is dangerous — press y to allow it, d to deny");
       else void this.app.answerAgent(pane, true);
     } else if (e.code === "KeyY" && pane?.agent.pendingId && danger) void this.app.answerAgent(pane, true);
-    else if (e.code === "KeyD" && pane?.agent.pendingId) void this.app.answerAgent(pane, false);
-    else if (e.code === "KeyW" && pane?.agent.pendingId) void this.alwaysAllow(pane);
+    else if (e.code === "KeyD" && pane?.agent.pendingId && asks) void this.app.answerAgent(pane, false);
+    else if (e.code === "KeyW" && pane?.agent.pendingId && asks) void this.alwaysAllow(pane);
     else if (e.code === "KeyT" && pane && (pane.agent.state === "blocked" || pane.agent.state === "waiting")) {
       this.els.get(n!.id)?.querySelector<HTMLInputElement>(".nreply input")?.focus();
     } else if (e.code === "KeyF") this.fit();
