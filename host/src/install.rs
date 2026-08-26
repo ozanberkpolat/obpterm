@@ -45,6 +45,25 @@ pub fn installed(settings: &Value) -> bool {
     })
 }
 
+/// True when our installed block is the CURRENT command, not an older one. A settings file
+/// written by an earlier version carries the same mark but a stale command; without this the
+/// installer would skip it forever and the app would wait on events that never come.
+pub fn current(settings: &Value) -> bool {
+    let want = hook_command();
+    EVENTS.iter().all(|event| {
+        settings
+            .pointer(&format!("/hooks/{event}"))
+            .and_then(|v| v.as_array())
+            .is_some_and(|entries| {
+                entries.iter().any(|e| {
+                    e.get("hooks").and_then(|h| h.as_array()).is_some_and(|hooks| {
+                        hooks.iter().any(|h| h.get("command").and_then(|c| c.as_str()) == Some(want.as_str()))
+                    })
+                })
+            })
+    })
+}
+
 /// Adds (or refreshes) the block, leaving every other hook exactly as it was.
 pub fn install(settings: &mut Value) {
     remove(settings);
@@ -185,6 +204,22 @@ mod tests {
         assert!(!statusline_install(&mut theirs));
         assert!(!statusline_remove(&mut theirs));
         assert_eq!(theirs.pointer("/statusLine/command").unwrap(), "starship prompt");
+    }
+
+    #[test]
+    fn a_stale_block_is_recognised_and_refreshed() {
+        let mut settings = json!({});
+        install(&mut settings);
+        assert!(installed(&settings) && current(&settings));
+        // Simulate a block written by an older version: our mark, a different command.
+        for event in EVENTS {
+            let entries = settings.pointer_mut(&format!("/hooks/{event}")).unwrap().as_array_mut().unwrap();
+            entries[0]["hooks"][0]["command"] = json!(format!("old-command ; : {MARK}"));
+        }
+        assert!(installed(&settings), "it still carries our mark");
+        assert!(!current(&settings), "but it is not the command we ship now");
+        install(&mut settings);
+        assert!(current(&settings), "installing again refreshes it");
     }
 
     #[test]

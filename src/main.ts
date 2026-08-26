@@ -50,6 +50,7 @@ async function main() {
   // Hooks go in automatically (the user chose that): the default login's dir plus every
   // account's. A marked block; Settings can remove it.
   const hookDirs = [...new Set(["~/.claude", ...config.accounts.map((a) => a.claude_dir).filter((d): d is string => !!d)])];
+  app.hookDirs = hookDirs;
   void tp
     .hooksEnsure(hookDirs)
     .then((changed) => {

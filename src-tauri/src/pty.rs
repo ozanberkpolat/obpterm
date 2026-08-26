@@ -103,7 +103,7 @@ pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>) -> Result<Vec<Strin
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or(serde_json::json!({}));
-        let hooks_done = obpterm_host::install::installed(&settings);
+        let hooks_done = obpterm_host::install::installed(&settings) && obpterm_host::install::current(&settings);
         let mut wrote = false;
         if !hooks_done {
             obpterm_host::install::install(&mut settings);
