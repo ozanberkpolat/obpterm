@@ -261,3 +261,80 @@ async fn a_real_fan_out_reaches_the_window_as_agent_events() {
     let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
     let _ = std::fs::remove_dir_all(dir);
 }
+
+
+/// The nested fan-out, driven from payloads captured off a real run (`fixtures-nested.jsonl`):
+/// an agent that spawned an agent of its own. The lineage rule is the whole point — on a Task
+/// call, the top-level `agent_id` is the CALLER, and the id of the agent being born arrives on
+/// the matching PostToolUse as `tool_response.agentId`.
+#[tokio::test]
+async fn a_nested_fan_out_keeps_the_agent_that_spawned_it() {
+    use obpterm_host::client::AgentUpdate;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // The two ids the capture recorded, in the order they were born.
+    const PARENT: &str = "a922a834869763a99";
+    const CHILD: &str = "a79bb991a511167a2";
+
+    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), "test"));
+    let dir = std::env::temp_dir().join(format!("obpterm-nest-{}", obpterm_host::random_hex(4)));
+    std::fs::create_dir_all(&dir).unwrap();
+    host.start_hooks(&dir).await.unwrap();
+    let advert = host.advert.clone();
+    let server = tokio::spawn(Arc::clone(&host).serve());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let env = std::fs::read_to_string(dir.join("hook-endpoint.env")).unwrap();
+    let get = |k: &str| env.lines().find_map(|l| l.strip_prefix(&format!("{k}="))).unwrap().to_string();
+    let (port, token) = (get("OBPTERM_HOOK_PORT").parse::<u16>().unwrap(), get("OBPTERM_HOOK_TOKEN"));
+
+    let c = Client::connect(&advert).await.unwrap();
+    let (atx, mut agents) = mpsc::unbounded_channel::<AgentUpdate>();
+    c.watch_agents(atx);
+
+    for line in include_str!("fixtures-nested.jsonl").lines().filter(|l| !l.trim().is_empty()) {
+        let mut s = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        let req = format!("POST /hook/{token}/7 HTTP/1.1\r\nhost: x\r\ncontent-length: {}\r\n\r\n{line}", line.len());
+        s.write_all(req.as_bytes()).await.unwrap();
+        let mut out = String::new();
+        let _ = s.read_to_string(&mut out).await;
+    }
+
+    let mut got: Vec<AgentUpdate> = Vec::new();
+    while let Ok(Some(u)) = tokio::time::timeout(Duration::from_millis(400), agents.recv()).await {
+        got.push(u);
+    }
+
+    let linked = |id: &str| -> Option<&AgentUpdate> {
+        got.iter().find(|u| u.agent_event.as_deref() == Some("linked") && u.agent_id.as_deref() == Some(id))
+    };
+    let parent_link = linked(PARENT).expect("the session's own agent was linked");
+    assert_eq!(parent_link.agent_parent, None, "an agent the SESSION spawned has no parent agent");
+
+    let child_link = linked(CHILD).expect("the nested agent was linked");
+    assert_eq!(
+        child_link.agent_parent.as_deref(),
+        Some(PARENT),
+        "the agent that made the Task call is the parent of the agent it spawned",
+    );
+    assert_ne!(child_link.agent_id, child_link.agent_parent, "child and parent are different agents");
+
+    // And the child's own work is filed under the child, not under whoever spawned it.
+    let child_tool = got
+        .iter()
+        .find(|u| u.agent_event.as_deref() == Some("tool") && u.agent_id.as_deref() == Some(CHILD))
+        .expect("the nested agent's tool call");
+    assert!(child_tool.detail.as_deref().unwrap_or_default().contains("echo"), "its feed line is its own");
+
+    // Each SubagentStop closes its own agent — the child's does not end the parent.
+    for id in [CHILD, PARENT] {
+        assert!(
+            got.iter().any(|u| u.agent_event.as_deref() == Some("finished") && u.agent_id.as_deref() == Some(id)),
+            "{id} was closed by its own SubagentStop",
+        );
+    }
+
+    c.shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
+    let _ = std::fs::remove_dir_all(dir);
+}

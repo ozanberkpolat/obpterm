@@ -41,11 +41,6 @@ pub struct AgentEvent {
     pub agent_event: Option<String>,
     /// On `linked`: the spawn's tool_use_id, so the window can rekey the agent it opened.
     pub agent_ref: Option<String>,
-    /// Who spawned this agent: `None` for the session's own fan-out, an agent id when an agent
-    /// delegated again. Captured from a real nested run — the Task call an agent makes carries
-    /// that agent's own id at the top level, while the id of the agent being BORN arrives on
-    /// the matching PostToolUse as `tool_response.agentId`.
-    pub agent_parent: Option<String>,
     /// The session's permission mode at the moment of the event: default | acceptEdits |
     /// bypassPermissions | plan. In bypass ("auto") nothing ever asks, so the answer buttons
     /// are noise.
@@ -70,7 +65,6 @@ pub fn normalize(pane: u32, payload: &serde_json::Value) -> Option<AgentEvent> {
         agent_task: None,
         agent_event: None,
         agent_ref: None,
-        agent_parent: None,
         mode: payload.get("permission_mode").and_then(|v| v.as_str()).map(str::to_string),
     };
     Some(match event {
@@ -83,9 +77,6 @@ pub fn normalize(pane: u32, payload: &serde_json::Value) -> Option<AgentEvent> {
         "PreToolUse" | "PostToolUse" if is_task(payload) => {
             let call = payload.get("tool_use_id").and_then(|v| v.as_str()).map(str::to_string);
             let mut e = mk("working", tool_activity(payload));
-            // Read the caller BEFORE `agent_id` is overwritten with the new agent's key: on a
-            // Task call, the top-level agent_id is whoever is delegating, not who is born.
-            e.agent_parent = agent_of(payload);
             e.agent_kind = payload.pointer("/tool_input/subagent_type").and_then(|v| v.as_str()).map(str::to_string);
             e.agent_task = payload
                 .pointer("/tool_input/description")

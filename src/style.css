@@ -681,6 +681,12 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 .agent-pill i { width: 5px; height: 5px; border-radius: 999px; background: #4c8dff; flex: none; }
 .agent-pill.live { background: color-mix(in srgb, var(--accent) 12%, transparent); color: #ffcf9e; }
 .agent-pill.live i { background: #2fd6a3; box-shadow: 0 0 5px rgba(47, 214, 163, .7); }
+/* Spawned by another agent, not by the session: one notch in, with the thread that says so. */
+.agent-pill.nested { margin-left: 11px; position: relative; }
+.agent-pill.nested::before {
+  content: ""; position: absolute; left: -9px; top: 50%; width: 7px; height: 1px;
+  background: var(--border-2);
+}
 .agent-pill b {
   font-weight: 600; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }

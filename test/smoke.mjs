@@ -1300,6 +1300,46 @@ await evaluate("window.obpterm.config.update_repo = null");
 }
 
 
+// ---- v0.21.15: an agent that spawned an agent gets its own branch ------------------------
+{
+  // Lineage comes off real payloads (host/tests/fixtures-nested.jsonl): the Task call an agent
+  // makes carries that agent's id, so the agent it spawns hangs off IT, not off the session.
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const tabsBefore = await evaluate("window.obpterm.tabs.length");
+  await evaluate("void window.obpterm.newTab()");
+  await until(`window.obpterm.tabs.length === ${tabsBefore + 1}`, "a tab of its own");
+  const pane = await evaluate("window.obpterm.tabs.at(-1).active.id");
+  const fire = (u) => devWs.send(JSON.stringify({ t: "agent_inject", reqId: 800, update: { pane, state: "working", session_id: "s-nest", detail: null, pending_id: null, options: [], ...u } }));
+
+  fire({ agent_id: "parent-1", agent_kind: "general-purpose", agent_task: "outer", agent_event: "spawned", agent_parent: null });
+  fire({ agent_id: "child-1", agent_kind: "general-purpose", agent_task: "inner", agent_event: "spawned", agent_parent: "parent-1" });
+  fire({ agent_id: "child-1", detail: "Running echo child", agent_event: "tool", agent_parent: null });
+  await until(`window.obpterm.tabs.at(-1).active.agent.fanned.length === 2`, "both agents are known");
+
+  const parented = await evaluate("window.obpterm.tabs.at(-1).active.agent.fanned.find(f => f.id === 'child-1').parent");
+  assert.equal(parented, "parent-1", "the nested agent remembers who spawned it");
+
+  await evaluate("window.obpterm.activate(window.obpterm.tabs.at(-1))");
+  await evaluate("window.obpterm.showView('agents')");
+  await until("document.querySelectorAll('#nodemap .nnode').length >= 3", "session plus two agents on the map");
+  await until("document.querySelector('#nodemap .nnode.born') === null", "the entrance animations have landed");
+  const shape = JSON.parse(await evaluate(`(() => {
+    const n = window.obpterm.nodes.nodes;
+    const p = n.find((x) => x.agent?.id === 'parent-1');
+    const c = n.find((x) => x.agent?.id === 'child-1');
+    return JSON.stringify({ childParent: c.parent, parentId: p.id, px: p.x, cx: c.x });
+  })()`));
+  assert.equal(shape.childParent, shape.parentId, "the child branches off its parent node, not the session");
+  assert.ok(shape.cx > shape.px, `the generation sits further out (${shape.px} -> ${shape.cx})`);
+
+  await evaluate("window.obpterm.nodes.close()");
+  await evaluate(`(() => { const t = window.obpterm.tabs.at(-1); if (window.obpterm.tabs.length > 1) window.obpterm.closeTab(t); })()`);
+  await until(`window.obpterm.tabs.length === ${tabsBefore}`, "its tab is gone again");
+  devWs.close();
+}
+
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

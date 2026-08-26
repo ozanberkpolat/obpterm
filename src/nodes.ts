@@ -34,6 +34,8 @@ const AGENT_W = 250;
 const AGENT_H = 104;
 /** Left edge of the agent column, measured from the spine. */
 const BRANCH_X = 500;
+/** One column per generation: an agent that delegated sits left of what it delegated to. */
+const DEPTH_X = AGENT_W + 110;
 /** Vertical air between agents of one session, and between sessions. */
 const AGENT_GAP = 20;
 const SESSION_GAP = 46;
@@ -95,15 +97,53 @@ export class Nodes {
     for (const s of sessions) {
       // The map is what is happening: an agent that has finished is gone from it.
       const agents = s.pane!.agent.fanned.filter((a) => a.endedAt === null);
-      const fanH = agents.length ? agents.length * AGENT_H + (agents.length - 1) * AGENT_GAP : 0;
+      // Agents delegate too, so the branch is a tree, not a column. An agent whose parent has
+      // already finished (and been pruned) hangs off the session rather than off nothing.
+      const live = new Set(agents.map((a) => a.id));
+      const childrenOf = (id: string | null) =>
+        agents.filter((a) => (a.parent && live.has(a.parent) ? a.parent : null) === id);
+      const placed: Node[] = [];
+      /** Lays a subtree out top-down and returns the height it claimed. */
+      const place = (a: (typeof agents)[number], depth: number, top: number): number => {
+        const kids = childrenOf(a.id);
+        let cursor = top;
+        let kidsH = 0;
+        for (const kid of kids) {
+          const h = place(kid, depth + 1, cursor);
+          cursor += h + AGENT_GAP;
+          kidsH += h + AGENT_GAP;
+        }
+        kidsH = Math.max(0, kidsH - AGENT_GAP);
+        const height = Math.max(AGENT_H, kidsH);
+        const parentId = a.parent && live.has(a.parent) ? `${s.id}:${a.parent}` : s.id;
+        placed.push({
+          id: `${s.id}:${a.id}`,
+          kind: "agent",
+          agent: a,
+          pane: s.pane,
+          tab: s.tab,
+          parent: parentId,
+          x: BRANCH_X + depth * DEPTH_X,
+          y: top + (height - AGENT_H) / 2,
+          w: AGENT_W,
+          h: AGENT_H,
+        });
+        return height;
+      };
+      let fanH = 0;
+      for (const root of childrenOf(null)) {
+        fanH += place(root, 0, fanH) + AGENT_GAP;
+      }
+      fanH = Math.max(0, fanH - AGENT_GAP);
       const bandH = Math.max(s.h, fanH);
       s.x = 0;
       s.y = y + (bandH - s.h) / 2;
       out.push(s);
-      let ay = y + (bandH - fanH) / 2;
-      for (const a of agents) {
-        out.push({ id: `${s.id}:${a.id}`, kind: "agent", agent: a, pane: s.pane, tab: s.tab, parent: s.id, x: BRANCH_X, y: ay, w: AGENT_W, h: AGENT_H });
-        ay += AGENT_H + AGENT_GAP;
+      // The subtree was laid out from 0; drop it into the band, centred against the session.
+      const offset = y + (bandH - fanH) / 2;
+      for (const n of placed) {
+        n.y += offset;
+        out.push(n);
       }
       // A restored fork keeps a dashed thread back to where it came from — to its left.
       if (s.pane!.claudeSessionId && s.tab?.name && s.pane!.profile.args.includes("--resume")) {

@@ -196,6 +196,9 @@ function patchAgentPills(tab: Tab, row: Row) {
       window.setTimeout(() => pill?.classList.remove("enter"), 420);
     }
     pill.classList.toggle("live", a.endedAt === null);
+    // An agent that was spawned BY an agent is marked, so the rail does not read as a flat
+    // fan-out when it is two deep. The map is where the shape is; this is the hint.
+    pill.classList.toggle("nested", !!a.parent && agents.some((p) => p.id === a.parent));
     const secs = Math.round(((a.endedAt ?? Date.now()) - a.startedAt) / 1000);
     set(pill.querySelector<HTMLElement>("b")!, a.task || a.feed || a.kind);
     pill.title = `${a.kind} · ${a.task || a.feed || "working"} · ${secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m`}${a.tools ? ` · ${a.tools} tools` : ""}`;

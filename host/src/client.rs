@@ -26,6 +26,8 @@ pub struct AgentUpdate {
     pub agent_task: Option<String>,
     pub agent_event: Option<String>,
     pub agent_ref: Option<String>,
+    /// The agent that spawned this one, when an agent delegated instead of the session.
+    pub agent_parent: Option<String>,
     pub mode: Option<String>,
 }
 
@@ -142,9 +144,9 @@ impl Client {
                                 me.watchers.lock().unwrap().remove(&id);
                             }
                             Reply::Hello { .. } => {}
-                            Reply::Agent { pane, state, session_id, detail, pending_id, options, tool, tool_input, agent_id, agent_kind, agent_task, agent_event, agent_ref, mode } => {
+                            Reply::Agent { pane, state, session_id, detail, pending_id, options, tool, tool_input, agent_id, agent_kind, agent_task, agent_event, agent_ref, agent_parent, mode } => {
                                 if let Some(tx) = me.agent_watcher.lock().unwrap().as_ref() {
-                                    let _ = tx.send(AgentUpdate { pane, state, session_id, detail, pending_id, options, tool, tool_input, agent_id, agent_kind, agent_task, agent_event, agent_ref, mode });
+                                    let _ = tx.send(AgentUpdate { pane, state, session_id, detail, pending_id, options, tool, tool_input, agent_id, agent_kind, agent_task, agent_event, agent_ref, agent_parent, mode });
                                 }
                             }
                         }
