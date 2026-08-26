@@ -3,7 +3,7 @@
 // band, and a forked session keeps a dashed line to where it came from. Nothing is dragged —
 // the layout is derived from the fleet, so a node is born where its parent is.
 import type { App, Tab } from "./app";
-import { asksPermission, isClaudePane, isDangerous, modeLabel, type FannedAgent } from "./agent";
+import { asksPermission, hasLiveDescendant, isClaudePane, isDangerous, modeLabel, type FannedAgent } from "./agent";
 import type { Pane } from "./pane";
 import { toast } from "./ui";
 
@@ -96,7 +96,10 @@ export class Nodes {
     let y = 0;
     for (const s of sessions) {
       // The map is what is happening: an agent that has finished is gone from it.
-      const agents = s.pane!.agent.fanned.filter((a) => a.endedAt === null);
+      // What is running, plus the agents those are hanging from: a parent that launched
+      // background sub-agents is already finished, and without it the branch has no trunk.
+      const fan = s.pane!.agent.fanned;
+      const agents = fan.filter((a) => a.endedAt === null || hasLiveDescendant(s.pane!.agent, a.id));
       // Agents delegate too, so the branch is a tree, not a column. An agent whose parent has
       // already finished (and been pruned) hangs off the session rather than off nothing.
       const live = new Set(agents.map((a) => a.id));
@@ -252,9 +255,13 @@ export class Nodes {
     if (n.kind === "agent") {
       const a = n.agent!;
       const live = a.endedAt === null;
+      // A finished agent only survives on the map while it is the trunk something else is
+      // still hanging from. Say so, rather than showing it as work in progress.
+      const trunk = !live && this.nodes.some((x) => x.parent === n.id);
+      el.classList.toggle("trunk", trunk);
       el.dataset.state = live ? "working" : "done";
       set(name, a.kind.toUpperCase().slice(0, 16));
-      set(pill, live ? "running" : "done");
+      set(pill, live ? "running" : trunk ? "delegated" : "done");
       set(body, a.task || a.feed || "working");
       const secs = Math.round(((a.endedAt ?? Date.now()) - a.startedAt) / 1000);
       set(foot, [a.feed && a.task ? a.feed : null, secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m`, a.tools ? `${a.tools} tools` : null].filter(Boolean).join(" · "));

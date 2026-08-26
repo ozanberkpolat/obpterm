@@ -647,6 +647,9 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 .nnode.agent { background: linear-gradient(180deg, #0e1219, #101620); }
 .nnode.agent .nname { font: 700 9px var(--sans); letter-spacing: .12em; color: var(--accent); }
 .nnode.agent .nbody { font: 600 11.5px var(--sans); color: var(--ink); white-space: normal; min-height: 34px; }
+/* Finished, but still the trunk its children hang from: present, and plainly not working. */
+.nnode.trunk { opacity: .72; box-shadow: 0 8px 24px rgba(0, 0, 0, .4); }
+.nnode.trunk .npill { background: rgba(140, 160, 190, .16); color: var(--faint); }
 .nnode.origin { border-style: dashed; opacity: .8; box-shadow: none; }
 .nnode.origin .nname { font: 700 9px var(--mono); letter-spacing: .1em; color: #b48cff; }
 .nnode.shell .nname { color: var(--faint); }

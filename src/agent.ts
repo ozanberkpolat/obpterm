@@ -199,12 +199,21 @@ function applyFan(a: AgentState, u: AgentUpdate) {
 }
 
 /** Agents drop off the views a few seconds after they finish — a finished agent is history,
- *  and the map is for what is happening. */
+ *  and the map is for what is happening. With one exception: an agent that spawned agents of
+ *  its own is the trunk they hang from. A parent that launched background sub-agents finishes
+ *  the moment they are launched, so dropping it would strand three running children and
+ *  re-parent them onto the session — the fan-out would look flat when it is two deep. */
 export function pruneFan(a: AgentState): boolean {
   const cutoff = Date.now() - 6000;
   const before = a.fanned.length;
-  a.fanned = a.fanned.filter((f) => f.endedAt === null || f.endedAt > cutoff);
+  a.fanned = a.fanned.filter((f) => f.endedAt === null || f.endedAt > cutoff || hasLiveDescendant(a, f.id));
   return a.fanned.length !== before;
+}
+
+/** True when some agent below this one — at any depth — is still running. */
+export function hasLiveDescendant(a: AgentState, id: string): boolean {
+  const kids = a.fanned.filter((f) => f.parent === id);
+  return kids.some((k) => k.endedAt === null || hasLiveDescendant(a, k.id));
 }
 
 /** Agents still running for this session. */

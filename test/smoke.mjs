@@ -1333,6 +1333,22 @@ await evaluate("window.obpterm.config.update_repo = null");
   assert.equal(shape.childParent, shape.parentId, "the child branches off its parent node, not the session");
   assert.ok(shape.cx > shape.px, `the generation sits further out (${shape.px} -> ${shape.cx})`);
 
+  // v0.21.17: a parent that launched background sub-agents finishes at once. It must stay on
+  // the map while they run — dropping it would strand the children on the session.
+  fire({ agent_id: "parent-1", agent_event: "finished", agent_parent: null });
+  await until("window.obpterm.tabs.at(-1).active.agent.fanned.find(f => f.id === 'parent-1').endedAt !== null", "the parent finished");
+  await evaluate("(() => { const p = window.obpterm.tabs.at(-1).active.agent; p.fanned.find(f => f.id === 'parent-1').endedAt = Date.now() - 60000; })()");
+  await evaluate("window.obpterm.onPaneActivity()");  // the sweep that prunes finished agents
+  await evaluate("window.obpterm.paint()");
+  const kept = JSON.parse(await evaluate(`(() => {
+    const n = window.obpterm.nodes.nodes;
+    const p = n.find((x) => x.agent?.id === 'parent-1');
+    const c = n.find((x) => x.agent?.id === 'child-1');
+    return JSON.stringify({ trunk: !!p, childParent: c?.parent ?? null, trunkId: p?.id ?? null });
+  })()`));
+  assert.ok(kept.trunk, "the finished parent stays while its child runs");
+  assert.equal(kept.childParent, kept.trunkId, "and the child still hangs from it, not the session");
+
   await evaluate("window.obpterm.nodes.close()");
   await evaluate(`(() => { const t = window.obpterm.tabs.at(-1); if (window.obpterm.tabs.length > 1) window.obpterm.closeTab(t); })()`);
   await until(`window.obpterm.tabs.length === ${tabsBefore}`, "its tab is gone again");
