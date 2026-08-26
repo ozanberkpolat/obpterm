@@ -8,48 +8,15 @@ import { newProject } from "./rail";
 export function installHeader(app: App) {
   const bar = document.querySelector<HTMLElement>("#titlebar")!;
 
-  // Dragging the window. Two paths, because the obvious one has failed here twice: Windows
-  // accepts `start_dragging` and leaves the window where it is. So we ask for the real caption
-  // drag first (it gives us Aero Snap), and if the webview is still getting mousemove with the
-  // button down a moment later, the drag plainly never started — from then on, this session
-  // moves the window itself, one pointer delta at a time.
-  let nativeDragBroken = false;
+  // Dragging the window. `data-tauri-drag-region` and the JS `startDragging()` both depend on
+  // webview permissions that have silently failed here; a title bar you cannot pick up is too
+  // central for that. Ask the Rust side to start the drag, and say so out loud if it refuses.
   bar.addEventListener("mousedown", (e) => {
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
     if (target.closest("button, input, .menus")) return; // controls keep their clicks
     if (!app.tp.native) return;
-
-    let last = { x: e.screenX, y: e.screenY };
-    let pending = false;
-    const startedAt = performance.now();
-    if (!nativeDragBroken) void app.tp.startDrag().catch((err) => toast(`Can't drag the window: ${err}`));
-
-    const move = (ev: MouseEvent) => {
-      if (ev.buttons !== 1) return stop();
-      const dx = ev.screenX - last.x;
-      const dy = ev.screenY - last.y;
-      // A real caption drag swallows every event until the button comes up, so mousemove
-      // arriving at all — with the pointer actually travelling — means it never took.
-      if (!nativeDragBroken) {
-        if (performance.now() - startedAt < 120 || (Math.abs(dx) < 3 && Math.abs(dy) < 3)) return;
-        nativeDragBroken = true;
-      }
-      last = { x: ev.screenX, y: ev.screenY };
-      if (pending) return; // one move per frame; the IPC round trip is not free
-      pending = true;
-      const scale = window.devicePixelRatio || 1;
-      void app.tp
-        .dragMove(Math.round(dx * scale), Math.round(dy * scale))
-        .catch(() => {})
-        .finally(() => (pending = false));
-    };
-    const stop = () => {
-      window.removeEventListener("mousemove", move, true);
-      window.removeEventListener("mouseup", stop, true);
-    };
-    window.addEventListener("mousemove", move, true);
-    window.addEventListener("mouseup", stop, true);
+    void app.tp.startDrag().catch((err) => toast(`Can't drag the window: ${err}`));
   });
   // Double-click the bar to maximize, the way every title bar does.
   bar.addEventListener("dblclick", (e) => {

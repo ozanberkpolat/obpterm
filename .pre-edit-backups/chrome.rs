@@ -21,18 +21,6 @@ pub fn start_drag(app: AppHandle) -> Result<(), String> {
     window.start_dragging().map_err(|e| e.to_string())
 }
 
-/// The fallback when `start_dragging` is accepted and the window still does not move — which is
-/// what has actually happened here, twice. Moves the window by a pointer delta in physical
-/// pixels, so the title bar works whatever Windows does with the caption-drag message.
-#[tauri::command]
-pub fn drag_move(app: AppHandle, dx: i32, dy: i32) -> Result<(), String> {
-    let window = app.get_webview_window("main").ok_or("no main window")?;
-    let at = window.outer_position().map_err(|e| e.to_string())?;
-    window
-        .set_position(tauri::PhysicalPosition::new(at.x + dx, at.y + dy))
-        .map_err(|e| e.to_string())
-}
-
 /// minimize | maximize | close, for the buttons in our own header bar.
 #[tauri::command]
 pub fn window_action(app: AppHandle, label: String, action: String) -> Result<(), String> {

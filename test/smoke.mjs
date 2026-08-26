@@ -1167,6 +1167,40 @@ await evaluate("window.obpterm.config.update_repo = null");
   await evaluate("window.obpterm.tab.active.claudeSessionId = null");
 }
 
+// ---- v0.21.10: the title bar falls back to moving the window itself -----------------------
+{
+  // The native caption drag is accepted and ignored on this machine's Windows build, so the bar
+  // watches for mousemove still arriving with the button down and takes over. That handover is
+  // the part no Windows build can prove for us — drive it here.
+  await evaluate(`(() => {
+    window.__drag = [];
+    window.__wasNative = window.obpterm.tp.native;
+    window.obpterm.tp.native = true;   // the bar ignores mousedown on a non-native transport
+    window.obpterm.tp.startDrag = async () => {};
+    window.obpterm.tp.dragMove = async (dx, dy) => { window.__drag.push([dx, dy]); };
+  })()`);
+  const fire = (type, x, y, buttons) => evaluate(`(() => {
+    const bar = document.querySelector('#titlebar');
+    const target = ${type === "mousedown" ? "bar.querySelector('.grow')" : "window"};
+    target.dispatchEvent(new MouseEvent(${JSON.stringify(type)}, {
+      bubbles: true, button: 0, buttons: ${buttons}, screenX: ${x}, screenY: ${y},
+    }));
+  })()`);
+  await fire("mousedown", 400, 10, 1);
+  await new Promise((r) => setTimeout(r, 200)); // past the 120ms the native drag gets to prove itself
+  await fire("mousemove", 460, 40, 1);   // 60x30 — past the 3px threshold
+  await until("window.__drag.length >= 1", "the bar moves the window itself once the native drag no-shows");
+  const [dx, dy] = await evaluate("window.__drag[0]");
+  const scale = await evaluate("window.devicePixelRatio || 1");
+  assert.equal(dx, Math.round(60 * scale), "the delta is the pointer's, in physical pixels");
+  assert.equal(dy, Math.round(30 * scale), "vertically too");
+  await fire("mouseup", 460, 40, 0);
+  await fire("mousemove", 600, 200, 1);  // after mouseup nothing should move
+  assert.equal(await evaluate("window.__drag.length"), 1, "and it stops listening when the button comes up");
+  await evaluate("window.obpterm.tp.native = window.__wasNative");
+}
+
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

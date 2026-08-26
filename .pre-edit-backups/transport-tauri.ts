@@ -52,7 +52,6 @@ export function tauriTransport(): Transport {
     claudeAccountNames: (dir) => invoke<string[]>("claude_account_names", { dir }),
     windowAction: (label, action) => invoke("window_action", { label, action }),
     startDrag: () => invoke("start_drag"),
-    dragMove: (dx: number, dy: number) => invoke("drag_move", { dx, dy }),
     async notify(title, body) {
       // Asking on first use, not at launch: a terminal that demands notification permission
       // before it has anything to say is the wrong first impression.

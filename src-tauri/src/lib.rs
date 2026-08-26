@@ -49,6 +49,7 @@ pub fn run() {
             chrome::taskbar_badge,
             chrome::keep_awake,
             chrome::start_drag,
+            chrome::drag_move,
             update::ntfy_publish,
             metrics::rss_for,
             claude::session_context,

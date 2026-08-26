@@ -101,7 +101,6 @@ export function wsTransport(): Transport {
     claudeAccountNames: async (dir) => (await call("claude_account_names", { dir })).names as string[],
     windowAction: async () => {},
     startDrag: async () => {},
-    dragMove: async () => {},
     async notify(title, body) {
       // The browser loop gets the same behaviour through the standard API.
       if (!("Notification" in window)) return false;
