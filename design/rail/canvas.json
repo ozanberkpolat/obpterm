@@ -1,0 +1,69 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "A \u00b7 Segmented (shipped)"
+    },
+    {
+      "file": "Underline.dc.html",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "B \u00b7 Underline"
+    },
+    {
+      "file": "Swap.dc.html",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "C \u00b7 One line, one swap"
+    },
+    {
+      "file": "Segmented.dc.html",
+      "x": 0,
+      "y": 1040,
+      "w": 1440,
+      "h": 900,
+      "title": "A (source copy)"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "how-to-read",
+      "x": 0,
+      "y": -150,
+      "w": 900,
+      "text": "Three whole screens. Everything right of the rail is identical in all three \u2014 only the switch at the top of the left nav changes, so compare that and nothing else.\n\nState shown: two agents running under the focused session (the pills), one session waiting on you (the badge and the orange line), one auto-mode session, one sleeping."
+    },
+    {
+      "id": "opt-a",
+      "x": 0,
+      "y": 930,
+      "w": 420,
+      "text": "A \u00b7 SEGMENTED \u2014 what ships today. A pill pair in a tray: unmistakable, and the lit half is where you are. Costs a full row of rail height, and the tray is a shape the app uses nowhere else."
+    },
+    {
+      "id": "opt-b",
+      "x": 1560,
+      "y": 930,
+      "w": 420,
+      "text": "B \u00b7 UNDERLINE \u2014 two words on a hairline, the active one lit by the orange accent. This is the grammar the rail already speaks for an active row, so it adds no new shape and saves a line. My pick."
+    },
+    {
+      "id": "opt-c",
+      "x": 3120,
+      "y": 930,
+      "w": 420,
+      "text": "C \u00b7 ONE LINE, ONE SWAP \u2014 names only where you are; the other side is a quiet swap on the right. Shortest of the three, and the badge still reads because it describes the side you are NOT on. Costs you the constant sight of both destinations."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

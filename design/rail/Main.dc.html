@@ -1,0 +1,105 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .mono { font-family: "JetBrains Mono", monospace; }
+    .rail { width: 244px; flex: none; display: flex; flex-direction: column; padding: 10px 8px;
+      background: linear-gradient(180deg, #141a24, #0e131c); border-right: 1px solid rgba(140,160,190,.12); }
+    .tab { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 6px 8px 6px 10px;
+      border-radius: 999px; color: #8b97a8; font-size: 12.5px; }
+    .tab .lab { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+    .tab .t { font-weight: 600; color: #eaf0f7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tab .s { font-size: 11px; color: #76879c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+    .ghead { display: flex; align-items: center; gap: 8px; padding: 5px 8px 3px 10px; color: #5b6878;
+      font: 700 10.5px "Plus Jakarta Sans"; text-transform: uppercase; letter-spacing: .07em; }
+    .glist { display: flex; flex-direction: column; gap: 2px; margin-left: 13px; padding-left: 6px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 3px; padding: 1px 6px 5px 24px; }
+    .pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+      background: rgba(255,138,30,.12); color: #ffcf9e; font-size: 10.5px; max-width: 100%; }
+    .pill i { width: 5px; height: 5px; border-radius: 999px; background: #2fd6a3; box-shadow: 0 0 5px rgba(47,214,163,.7); flex: none; }
+    .pill b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .badge { font: 700 9.5px "JetBrains Mono", monospace; min-width: 17px; height: 16px;
+      display: inline-flex; align-items: center; justify-content: center; padding: 0 5px;
+      border-radius: 999px; background: #ff8a1e; color: #04101f; flex: none; }
+    .foot { margin-top: auto; display: flex; gap: 6px; padding-top: 8px; }
+    .foot span { flex: 1; text-align: center; padding: 7px; border-radius: 999px;
+      border: 1px dashed rgba(140,160,190,.2); font-size: 11px; color: #5b6878; }
+    .agentline { margin: 0 4px 6px; font-size: 11px; color: #ff8a1e;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .term { font: 12px/1.6 "JetBrains Mono", monospace; white-space: pre; color: #aab6c8; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #0a0e14; overflow: hidden">
+  <div style="flex: none; height: 34px; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: #0e131c; border-bottom: 1px solid rgba(140,160,190,.1)">
+    <div style="width: 15px; height: 15px; border-radius: 5px; border: 1.5px solid #ff8a1e; display: flex; align-items: center; justify-content: center">
+      <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#ff8a1e" stroke-width="3" stroke-linecap="round"><polyline points="8 6 14 12 8 18"/></svg>
+    </div>
+    <span style="font: 800 11px 'Plus Jakarta Sans'; letter-spacing: .05em; color: #76879c">OBPTERM</span>
+    <span class="mono" style="font-size: 11px; color: #3d4654">Shell · Panes · Project · View</span>
+    <span style="flex: 1"></span>
+    <span class="mono" style="font-size: 10.5px; color: #5b6878">Ctrl+K search</span>
+  </div>
+
+  <div style="flex: 1; display: flex; min-height: 0">
+    <div class="rail">
+      <div style="display:flex; gap:3px; margin:0 -2px 6px; padding:3px; border-radius:999px; background:rgba(10,14,20,.55)">
+        <button style="flex:1; padding:6px 10px; border:0; border-radius:999px; background:rgba(140,160,190,.16); color:#eaf0f7; font:700 11.5px 'Plus Jakarta Sans'">Sessions</button>
+        <button style="flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:6px 10px; border:0; border-radius:999px; background:none; color:#ff8a1e; font:700 11.5px 'Plus Jakarta Sans'">Agents<span class="badge">1</span></button>
+      </div>
+      <div class="agentline">ntfy tokens · docker restart ntfy?</div>
+      <div class="ghead"><span class="dot" style="background:#4c8dff"></span><span style="flex:1">iot-stack</span>3</div>
+      <div class="glist" style="border-left: 2px solid rgba(76,141,255,.4)">
+        <div class="tab" style="background: linear-gradient(135deg, color-mix(in srgb, #4c8dff 88%, white), #4c8dff); color: #04101f">
+          <span class="dot" style="background:#04101f"></span>
+          <span class="lab"><span class="t" style="color:#04101f">portal resolver</span><span class="s" style="color:rgba(4,16,31,.7)">Editing nginx.conf · 12m</span></span>
+        </div>
+        <div class="pills"><span class="pill"><i></i><b>Audit upstreams</b></span><span class="pill"><i></i><b>Smoke routes</b></span></div>
+        <div class="tab"><span class="dot" style="background:#ff8a1e; box-shadow:0 0 6px rgba(255,138,30,.8)"></span>
+          <span class="lab"><span class="t">ntfy tokens</span><span class="s" style="color:#ffa23e">docker restart ntfy?</span></span></div>
+        <div class="tab"><span class="dot" style="background:#3d4654"></span><span class="lab"><span class="t" style="color:#8b97a8">ssh · vps</span><span class="s">idle</span></span></div>
+      </div>
+      <div class="ghead" style="margin-top:6px"><span class="dot" style="background:#2fd6a3"></span><span style="flex:1">invest</span>2</div>
+      <div class="glist" style="border-left: 2px solid rgba(47,214,163,.4)">
+        <div class="tab"><span class="dot" style="background:#2fd6a3"></span><span class="lab"><span class="t">grading refactor</span><span class="s">Migrating rows · 41m · auto</span></span></div>
+        <div class="tab" style="opacity:.55"><span class="dot" style="background:#3d4654"></span><span class="lab"><span class="t">journal check</span><span class="s">sleeping</span></span></div>
+      </div>
+
+      <div class="foot"><span>+ Tab</span><span>+ Project</span></div>
+    </div>
+
+    <div style="flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 8px">
+      <div style="flex: 1; border: 1px solid rgba(255,138,30,.3); border-radius: 10px; background: #0a0e14; display: flex; flex-direction: column; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 14px; border-bottom: 1px solid rgba(140,160,190,.1); font: 500 10.5px 'JetBrains Mono', monospace; color: #5b6878">
+          <span style="color: #ffcf9e">claude · portal resolver</span><span style="color: #4c8dff">wt/portal-fix</span><span style="flex: 1"></span><span>ctx 36% · +214 −38</span>
+        </div>
+        <div class="term" style="flex: 1; padding: 14px 16px">⏺ Fanned out 2 agents to check the resolver change.
+
+• Edit(<span style="color:#c3cddb">nginx.conf</span>) <span style="color:#2fd6a3">✓</span>
+• Bash(<span style="color:#c3cddb">nginx -t</span>) — test successful
+
+<span style="color:#76879c">rebuilding container…</span>
+<span style="color:#ff8a1e">▊</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex: none; height: 26px; display: flex; align-items: center; gap: 14px; padding: 0 12px; background: #0e131c; border-top: 1px solid rgba(140,160,190,.1); font: 500 10px 'JetBrains Mono', monospace; color: #5b6878">
+    <span>obp@main</span><span>5h 6%</span><span>wk 62%</span><span>ctx 36%</span><span style="flex: 1"></span><span>☕ awake</span><span>v0.20.1</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

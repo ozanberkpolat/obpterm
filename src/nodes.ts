@@ -26,14 +26,19 @@ interface Node {
   h: number;
 }
 
+// The spine: sessions stack down the left, their agents branch to the right. Nothing ever
+// moves sideways, so ten sessions scroll instead of forcing a pan.
 const SESSION_W = 330;
 const SESSION_H = 172;
 const AGENT_W = 250;
 const AGENT_H = 104;
 const SHELL_W = 250;
 const SHELL_H = 96;
-const GAP_X = 40;
-const ROW_Y = 250;
+/** Left edge of the agent column, measured from the spine. */
+const BRANCH_X = 500;
+/** Vertical air between agents of one session, and between sessions. */
+const AGENT_GAP = 20;
+const SESSION_GAP = 46;
 
 /** Loudest first, so the eye lands on what waits. */
 const ORDER = ["blocked", "waiting", "working", "done", null] as const;
@@ -69,13 +74,16 @@ export class Nodes {
     for (const tab of this.app.tabs) {
       for (const pane of this.app.panesOf(tab)) {
         const id = `p${pane.id}`;
-        // The map is for what is awake. Sleeping, eco'd and exited panes are still in the
-        // rail; here they would only cost space the live work needs.
+        // The map is what is RUNNING. A session earns a node by working, by waiting on you,
+        // or by having a live agent out; idle, finished, sleeping and exited ones stay in the
+        // rail, where they belong. Plain shells only make it while they are printing.
         const dormant = pane.asleep || pane.eco || pane.exited;
+        const a = pane.agent;
+        const liveAgents = a.fanned.some((f) => f.endedAt === null);
+        const busy = a.state === "working" || a.state === "blocked" || a.state === "waiting" || liveAgents;
         if (isClaudePane(pane)) {
-          if (!dormant) sessions.push({ id, kind: "session", pane, tab, parent: null, x: 0, y: 0, w: SESSION_W, h: SESSION_H });
-        } else if (!dormant && (pane.agent.state !== null || Date.now() - pane.lastOutput < 5 * 60_000)) {
-          // …and a plain shell earns its node by having done something recently.
+          if (!dormant && busy) sessions.push({ id, kind: "session", pane, tab, parent: null, x: 0, y: 0, w: SESSION_W, h: SESSION_H });
+        } else if (!dormant && Date.now() - pane.lastOutput < 60_000) {
           shells.push({ id, kind: "shell", pane, tab, parent: null, x: 0, y: 0, w: SHELL_W, h: SHELL_H });
         }
       }
@@ -85,34 +93,34 @@ export class Nodes {
       return danger || ORDER.indexOf(a.pane!.agent.state) - ORDER.indexOf(b.pane!.agent.state);
     });
 
-    // Row 1: sessions. Row 2: each session's agents, centred under their parent.
-    let x = 0;
+    // One band per session: the session on the spine, its agents stacked in the branch column
+    // beside it, the band as tall as whichever side is taller.
+    let y = 0;
     for (const s of sessions) {
       // The map is what is happening: an agent that has finished is gone from it.
       const agents = s.pane!.agent.fanned.filter((a) => a.endedAt === null);
-      const fanW = agents.length ? agents.length * AGENT_W + (agents.length - 1) * 16 : 0;
-      const slotW = Math.max(s.w, fanW);
-      s.x = x + (slotW - s.w) / 2;
-      s.y = 0;
+      const fanH = agents.length ? agents.length * AGENT_H + (agents.length - 1) * AGENT_GAP : 0;
+      const bandH = Math.max(s.h, fanH);
+      s.x = 0;
+      s.y = y + (bandH - s.h) / 2;
       out.push(s);
-      let ax = x + (slotW - fanW) / 2;
+      let ay = y + (bandH - fanH) / 2;
       for (const a of agents) {
-        out.push({ id: `${s.id}:${a.id}`, kind: "agent", agent: a, pane: s.pane, tab: s.tab, parent: s.id, x: ax, y: ROW_Y, w: AGENT_W, h: AGENT_H });
-        ax += AGENT_W + 16;
+        out.push({ id: `${s.id}:${a.id}`, kind: "agent", agent: a, pane: s.pane, tab: s.tab, parent: s.id, x: BRANCH_X, y: ay, w: AGENT_W, h: AGENT_H });
+        ay += AGENT_H + AGENT_GAP;
       }
-      // A restored fork keeps a dashed thread back to where it came from.
+      // A restored fork keeps a dashed thread back to where it came from — to its left.
       if (s.pane!.claudeSessionId && s.tab?.name && s.pane!.profile.args.includes("--resume")) {
-        out.push({ id: `${s.id}:origin`, kind: "origin", parent: s.id, tab: s.tab, x: s.x + 40, y: -140, w: 240, h: 62 });
+        out.push({ id: `${s.id}:origin`, kind: "origin", parent: s.id, tab: s.tab, x: -300, y: s.y + 40, w: 240, h: 62 });
       }
-      x += slotW + GAP_X;
+      y += bandH + SESSION_GAP;
     }
 
-    // Row 3: plain shells, so the map is the whole workspace and not only agents.
-    let sx = 0;
+    // Plain shells finish the spine, below the sessions.
     for (const sh of shells) {
-      sh.x = sx;
-      sh.y = ROW_Y * 2;
-      sx += SHELL_W + 16;
+      sh.x = 0;
+      sh.y = y;
+      y += sh.h + AGENT_GAP;
       out.push(sh);
     }
     return out;
@@ -138,8 +146,12 @@ export class Nodes {
       }
     }
     this.drawEdges();
-    const hidden = this.app.tabs.flatMap((t) => this.app.panesOf(t)).filter((p) => p.asleep || p.eco || p.exited).length;
-    set($("#nodemap .nsummary"), [summary(this.app), hidden ? `${hidden} resting` : null].filter(Boolean).join(" · "));
+    const none = $("#nodemap .nnone");
+    none.hidden = this.nodes.length > 0;
+    // Say what the map is deliberately not showing, so nothing feels lost.
+    const shown = new Set(this.nodes.filter((n) => n.pane).map((n) => n.pane!.id));
+    const quiet = this.app.tabs.flatMap((t) => this.app.panesOf(t)).filter((p) => !shown.has(p.id) && !p.exited).length;
+    set($("#nodemap .nsummary"), [summary(this.app), quiet ? `${quiet} idle` : null].filter(Boolean).join(" · "));
     const diag = $("#nodemap .ndiag");
     diag.hidden = !!this.app.lastFanEventAt;
     if (!this.app.lastFanEventAt) set(diag, this.app.agentsDiagnosis());
@@ -275,16 +287,17 @@ export class Nodes {
       const p = this.nodes.find((x) => x.id === n.parent);
       if (!p) continue;
       const isOrigin = n.kind === "origin";
-      // Origin hangs above its session, so the anchors flip.
-      const x1 = p.x + p.w / 2;
-      const y1 = isOrigin ? p.y : p.y + p.h;
-      const x2 = n.x + n.w / 2;
-      const y2 = isOrigin ? n.y + n.h : n.y;
-      const dy = (y2 - y1) / 2;
+      // Sideways now: out of the session's right edge, into the agent's left. An origin sits
+      // to the LEFT of its session, so its anchors mirror.
+      const x1 = isOrigin ? p.x : p.x + p.w;
+      const y1 = p.y + p.h / 2;
+      const x2 = isOrigin ? n.x + n.w : n.x;
+      const y2 = n.y + n.h / 2;
+      const dx = (x2 - x1) / 2;
       const stroke = isOrigin ? "rgba(180,140,255,.35)" : n.agent?.endedAt === null ? "rgba(255,138,30,.5)" : "rgba(140,160,190,.3)";
       const dash = isOrigin ? ' stroke-dasharray="4 4"' : "";
       paths.push(
-        `<path d="M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}" stroke="${stroke}" stroke-width="1.5" fill="none"${dash}/>` +
+        `<path d="M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}" stroke="${stroke}" stroke-width="1.5" fill="none"${dash}/>` +
           `<circle cx="${x1}" cy="${y1}" r="3" fill="${stroke}"/><circle cx="${x2}" cy="${y2}" r="3" fill="${stroke}"/>`,
       );
     }
@@ -357,8 +370,22 @@ export class Nodes {
     const pane = n?.pane;
     const danger = pane ? isDangerous(pane.agent) : false;
     const asks = pane ? asksPermission(pane.agent) : true;
-    if (e.code === "ArrowRight" || e.code === "KeyJ") move(1);
-    else if (e.code === "ArrowLeft" || e.code === "KeyK") move(-1);
+    if (e.code === "ArrowDown" || e.code === "KeyJ") move(1);
+    else if (e.code === "ArrowUp" || e.code === "KeyK") move(-1);
+    else if (e.code === "ArrowRight") {
+      // Into this session's first agent, if it has one out.
+      const first = this.nodes.findIndex((x) => x.parent === n?.id && x.kind === "agent");
+      if (first >= 0) {
+        this.sel = first;
+        this.paint();
+      }
+    } else if (e.code === "ArrowLeft" && n?.parent) {
+      const back = this.nodes.findIndex((x) => x.id === n.parent);
+      if (back >= 0) {
+        this.sel = back;
+        this.paint();
+      }
+    }
     else if (e.code === "KeyA" && pane?.agent.pendingId && asks) {
       if (danger) toast("That one is dangerous — press y to allow it, d to deny");
       else void this.app.answerAgent(pane, true);

@@ -1,0 +1,61 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "A \u00b7 Fleet row"
+    },
+    {
+      "file": "Focus.dc.html",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "B \u00b7 Centre stage"
+    },
+    {
+      "file": "Lanes.dc.html",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "C \u00b7 Spine & branches"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "read-me",
+      "x": 0,
+      "y": -140,
+      "w": 900,
+      "text": "Three node layouts, same data in each: one session waiting on you with an agent out, one working with two agents, one in auto mode, two idle left in the rail. Edges are anchored to the cards (they follow them live). Ideas drawn from NodeTerm's published canvas; built fresh in our tokens, none of their code."
+    },
+    {
+      "id": "a",
+      "x": 0,
+      "y": 930,
+      "w": 430,
+      "text": "A \u00b7 FLEET ROW \u2014 sessions across the top, each one's agents hanging directly beneath it. Closest to what you liked: the whole fleet is legible at once and lineage reads downward. Weakness: with six busy sessions it needs panning."
+    },
+    {
+      "id": "b",
+      "x": 1560,
+      "y": 930,
+      "w": 430,
+      "text": "B \u00b7 CENTRE STAGE \u2014 the session that needs you takes the middle at full size with its agents below; everything else shrinks to the sides. Zero hunting when something waits, and \u2190/\u2192 promotes another. Weakness: layout moves as states change."
+    },
+    {
+      "id": "c",
+      "x": 3120,
+      "y": 930,
+      "w": 430,
+      "text": "C \u00b7 SPINE & BRANCHES \u2014 sessions stacked down the left, agents branching to the right. Nothing ever moves horizontally, so it stays readable at ten sessions and scrolls instead of panning. Weakness: less of a 'map', more of an outline."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

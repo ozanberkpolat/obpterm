@@ -39,6 +39,10 @@
     {
       "id": "page-12",
       "name": "View switcher"
+    },
+    {
+      "id": "page-13",
+      "name": "Rail switcher"
     }
   ],
   "artboards": [
@@ -270,6 +274,14 @@
       "w": 1320,
       "h": 700,
       "page": "page-12"
+    },
+    {
+      "file": "RailSwitcher.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1320,
+      "h": 700,
+      "page": "page-13"
     }
   ],
   "annotations": [
@@ -384,10 +396,18 @@
       "w": 300,
       "page": "page-12",
       "text": "Replacing the Agents button with something that both OPENS and SWITCHES.\n\nA \u00b7 Segmented \u2014 words, no learning curve, the lit half tells you what Ctrl+G will open. Costs ~64px of row width, so the loudest-hold subtitle truncates sooner in the alert state.\n\nB \u00b7 Icon pair \u2014 narrowest (48px), subtitle keeps its width, but 'which glyph is which' takes one look to learn.\n\nC \u00b7 Two destinations \u2014 most discoverable and matches how projects already expand into rows; adds two rows of rail height permanently.\n\nMy pick: A. The row is a switcher only in appearance \u2014 the badge, subtitle and Ctrl+G behaviour are untouched, and words beat glyphs on a control you touch a few times a day. If the alert subtitle feels cramped in practice, B is the same design with the labels swapped for glyphs."
+    },
+    {
+      "id": "railswitch-take",
+      "x": 1400,
+      "y": 40,
+      "w": 300,
+      "page": "page-13",
+      "text": "The Sessions / Agents switch now that the card view is gone and the surface is one map.\n\nA \u00b7 Segmented \u2014 what shipped in v0.20.0. Unambiguous, but a whole row of tray.\n\nB \u00b7 Underline \u2014 the app already lights the active thing with the orange accent; this is that same grammar, minus the tray. Lightest touch, one line shorter.\n\nC \u00b7 One line, one swap \u2014 names only where you are and offers the other side as a quiet swap. Shortest of all; the badge stays because it describes the side you are NOT on.\n\nMy pick: B. It costs nothing new visually, matches the rail's own active-row language, and keeps both destinations named \u2014 which C gives up. Say the word and I swap A for it."
     }
   ],
   "launch": {
     "view": "canvas",
-    "page": "page-12"
+    "page": "page-13"
   }
 }

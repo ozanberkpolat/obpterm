@@ -316,7 +316,8 @@ await until("!document.querySelector('#palette').hidden", "Ctrl+K opening the pa
 await evaluate("window.obpterm.palette.close()");
 
 // Collapsed, every row is the same 30px circle and idle rows show no glyph.
-await evaluate("(() => { window.obpterm.config.rail_collapsed = false; window.obpterm.toggleRail(); })()");
+// Collapse from whatever state the saved config left behind, not from an assumed one.
+await evaluate("(() => { if (!document.querySelector('#rail').classList.contains('collapsed')) window.obpterm.toggleRail(); })()");
 await until("document.querySelector('#rail').classList.contains('collapsed')", "the collapsed rail");
 const box = JSON.parse(
   await evaluate("(() => { const r = document.querySelector('.tab').getBoundingClientRect(); return JSON.stringify([r.width, r.height]); })()"),
@@ -882,7 +883,7 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   const nodeIds = await evaluate("[...document.querySelectorAll('#nodemap .nnode')].map(n => n.dataset.id).join(',')");
   const restingId = await evaluate("'p' + window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
   assert.ok(!nodeIds.split(",").includes(restingId), "a resting pane gets no node");
-  assert.match(await evaluate("document.querySelector('#nodemap .nsummary').textContent"), /resting/, "the map says what it left out");
+  assert.match(await evaluate("document.querySelector('#nodemap .nsummary').textContent"), /idle/, "the map says what it left out");
   await evaluate("window.obpterm.nodes.close()");
   await evaluate("(() => { const p = window.obpterm.panesOf(window.obpterm.tabs[1])[0]; p.eco = false; })()");
   await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
@@ -989,6 +990,84 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   await until("getComputedStyle(document.querySelector('#nodemap .nnode[data-state=blocked] .nact')).display !== 'none'", "default mode keeps the buttons");
   await evaluate("window.obpterm.showView('sessions')");
   await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
+  devWs.close();
+}
+
+
+// ---- v0.20.2: the map is what is running ---------------------------------------------------
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const injectDev = (update) =>
+    new Promise((r) => {
+      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
+      setTimeout(r, 150);
+    });
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; p.agent.fanned = []; p.lastOutput = 0; }), window.obpterm.paint()");
+  await evaluate("void window.obpterm.newTab()");
+  await until("window.obpterm.tabs.length >= 2", "a second session");
+  const busy = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
+  const idle = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[0])[0].id");
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+
+  // One session working, one idle: only the working one is on the map.
+  await injectDev({ pane: busy, state: "working", session_id: "sess-r2", detail: "Editing pty.rs", pending_id: null, options: [], mode: "default" });
+  await evaluate("window.obpterm.showView('agents')");
+  await until("document.querySelectorAll('#nodemap .nnode.session').length === 1", "only the running session");
+  assert.match(await evaluate("document.querySelector('#nodemap .nsummary').textContent"), /idle/, "the map says how many it left in the rail");
+
+  // When it finishes it leaves the map too — the map is the present tense.
+  await injectDev({ pane: busy, state: "done", session_id: "sess-r2", detail: "All green.", pending_id: null, options: [] });
+  await until("document.querySelectorAll('#nodemap .nnode.session').length === 0", "a finished session leaves the map");
+  await until("!document.querySelector('#nodemap .nnone').hidden", "and the map says why it is empty");
+  void idle;
+  await evaluate("window.obpterm.showView('sessions')");
+  await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
+  devWs.close();
+}
+
+
+// ---- v0.21.0: the spine — sessions down the left, agents branching right ---------------------
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const injectDev = (update) =>
+    new Promise((r) => {
+      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
+      setTimeout(r, 150);
+    });
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; p.agent.fanned = []; p.lastOutput = 0; }), window.obpterm.paint()");
+  await evaluate("void window.obpterm.newTab()");
+  await until("window.obpterm.tabs.length >= 2", "two sessions");
+  const one = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[0])[0].id");
+  const two = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
+  for (const p of [one, two]) {
+    await injectDev({ pane: p, state: "working", session_id: `s-${p}`, detail: "Editing pty.rs", pending_id: null, options: [], mode: "default" });
+  }
+  await injectDev({ pane: one, state: "working", session_id: `s-${one}`, detail: "Delegating", pending_id: null, options: [],
+    agent_id: "sp-1", agent_kind: "Explore", agent_task: "Map the routes", agent_event: "spawned" });
+  await evaluate("window.obpterm.showView('agents')");
+  await until("document.querySelectorAll('#nodemap .nnode.session').length === 2", "both sessions on the spine");
+
+  const geom = JSON.parse(await evaluate(`(() => {
+    const at = (el) => { const m = /translate\\((-?[\\d.]+)px, (-?[\\d.]+)px\\)/.exec(el.style.transform); return { x: +m[1], y: +m[2] }; };
+    const s = [...document.querySelectorAll('#nodemap .nnode.session')].map(at);
+    const a = [...document.querySelectorAll('#nodemap .nnode.agent')].map(at);
+    return JSON.stringify({ s, a });
+  })()`));
+  assert.equal(new Set(geom.s.map((p) => p.x)).size, 1, "every session shares the spine's x");
+  assert.ok(geom.s[1].y > geom.s[0].y, "sessions stack downward");
+  assert.ok(geom.a[0].x > geom.s[0].x, "agents branch to the right of the spine");
+
+  // Right steps into the session's agent, left comes back.
+  await evaluate("document.querySelector('#nodemap').dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowRight', key: 'ArrowRight', bubbles: true, cancelable: true }))");
+  await until("document.querySelector('#nodemap .nnode.agent.sel') !== null", "right steps into the agents");
+  await evaluate("document.querySelector('#nodemap').dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowLeft', key: 'ArrowLeft', bubbles: true, cancelable: true }))");
+  await until("document.querySelector('#nodemap .nnode.session.sel') !== null", "left returns to the session");
+
+  await evaluate("window.obpterm.showView('sessions')");
+  await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.fanned = []; }), window.obpterm.paint()");
   devWs.close();
 }
 
