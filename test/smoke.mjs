@@ -1133,6 +1133,18 @@ await evaluate("window.obpterm.config.update_repo = null");
   })()`);
   assert.ok(onScreen, "the edge is drawn among the nodes, not off-screen");
 
+  // v0.21.11: laid out in the right place is not the same as painted. The SVG's own box was
+  // 0x0, so every path fell outside its viewport and never showed up on Windows.
+  const unclipped = await evaluate(`(() => {
+    const svg = document.querySelector('#nodemap .nedges');
+    const box = svg.getBoundingClientRect();
+    const e = document.querySelector('#nodemap .nedges path').getBoundingClientRect();
+    return box.width > 1 && box.height > 1 &&
+      e.left >= box.left - 1 && e.right <= box.right + 1 &&
+      e.top >= box.top - 1 && e.bottom <= box.bottom + 1;
+  })()`);
+  assert.ok(unclipped, "the edge lies inside the SVG's own viewport, so it is actually painted");
+
   // Closing the map puts the rail's tabs back on Sessions.
   await evaluate("window.obpterm.nodes.close()");
   await until("document.querySelector('#rail-views .rv.on')?.dataset.view === 'sessions'", "the switcher follows the view out");

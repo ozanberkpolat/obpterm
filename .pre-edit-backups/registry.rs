@@ -44,18 +44,6 @@ pub struct Registry {
 
 pub type Shared = Arc<Mutex<Registry>>;
 
-/// Ends a process and everything it started. Windows has no process groups to signal, and
-/// `TerminateProcess` on the parent orphans the children rather than taking them with it.
-#[cfg(windows)]
-fn kill_tree(pid: u32) {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let _ = std::process::Command::new("taskkill")
-        .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .status();
-}
-
 impl Registry {
     pub fn list(&self) -> Vec<SessionInfo> {
         let mut out: Vec<SessionInfo> = self.sessions.values().map(|s| s.info.clone()).collect();
@@ -253,19 +241,7 @@ impl Registry {
     pub fn kill(&mut self, id: u32) -> Result<(), String> {
         let mut s = self.sessions.remove(&id).ok_or_else(|| format!("no session {id}"))?;
         if s.info.exited.is_none() {
-            // The shell is not the only process in the pane. `claude` runs as its child, and
-            // terminating the shell leaves it running with nothing attached to it — which is how
-            // a laptop ends up with 35 Claude Code processes behind 17 open sessions. Take the
-            // tree, then the shell (already gone by then on Windows, which is fine).
-            #[cfg(windows)]
-            if let Some(pid) = s.info.pid {
-                kill_tree(pid);
-            }
-            let killed = s.killer.kill();
-            #[cfg(not(windows))]
-            killed.map_err(|e| format!("kill: {e}"))?;
-            #[cfg(windows)]
-            drop(killed); // the tree kill got there first; its "no such process" is not an error
+            s.killer.kill().map_err(|e| format!("kill: {e}"))?;
         }
         // The waiter also drops its copy, but this session left the map before it could.
         drop(s.master.take());

@@ -270,7 +270,6 @@ export class Nodes {
 
   /** Edges are computed from real geometry: parent's bottom-centre to child's top-centre. */
   private drawEdges() {
-    if (!this.nodes.length) return void (this.edges.innerHTML = "");
     const paths: string[] = [];
     for (const n of this.nodes) {
       if (!n.parent) continue;
@@ -292,20 +291,6 @@ export class Nodes {
       );
     }
     this.edges.innerHTML = paths.join("");
-    // The SVG is 0×0 with `overflow: visible`, which is enough for the paths to LAY OUT in the
-    // right place — getBoundingClientRect agrees — and not enough for them to be painted. Give
-    // it a viewport that actually covers the nodes, in the same world coordinates the paths use.
-    const pad = 60;
-    const minX = Math.min(...this.nodes.map((n) => n.x)) - pad;
-    const minY = Math.min(...this.nodes.map((n) => n.y)) - pad;
-    const maxX = Math.max(...this.nodes.map((n) => n.x + n.w)) + pad;
-    const maxY = Math.max(...this.nodes.map((n) => n.y + n.h)) + pad;
-    const box = this.edges.style;
-    box.left = `${minX}px`;
-    box.top = `${minY}px`;
-    box.width = `${maxX - minX}px`;
-    box.height = `${maxY - minY}px`;
-    this.edges.setAttribute("viewBox", `${minX} ${minY} ${maxX - minX} ${maxY - minY}`);
   }
 
   // ---- view -------------------------------------------------------------------------------
