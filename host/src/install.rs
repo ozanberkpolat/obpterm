@@ -20,6 +20,12 @@ pub const EVENTS: [&str; 9] = [
 /// old entries are replaced instead of duplicated.
 pub const MARK: &str = "# obpterm-hooks v2";
 
+/// What makes a block OURS, whatever version wrote it. `MARK` carries a version so a stale
+/// block can be recognised as stale — but recognition has to ignore that version, or the day
+/// the suffix is bumped every older block becomes a stranger: `install` would leave it in place
+/// and add a second one beside it, and every hook event would fire twice, through both.
+pub const MARK_BASE: &str = "# obpterm-hooks";
+
 /// How the shell should spell the host's path. The commands run through a POSIX shell on
 /// Windows (Git Bash), where a backslash is an escape — so forward slashes, always.
 fn shell_path(exe: &str) -> String {
@@ -44,7 +50,7 @@ pub fn installed(settings: &Value) -> bool {
                 entries.iter().any(|e| {
                     e.get("hooks")
                         .and_then(|h| h.as_array())
-                        .is_some_and(|hooks| hooks.iter().any(|h| h.get("command").and_then(|c| c.as_str()).is_some_and(|c| c.contains(MARK))))
+                        .is_some_and(|hooks| hooks.iter().any(|h| h.get("command").and_then(|c| c.as_str()).is_some_and(|c| c.contains(MARK_BASE))))
                 })
             })
     })
@@ -107,7 +113,7 @@ pub fn remove(settings: &mut Value) {
         if let Some(list) = entries.as_array_mut() {
             for entry in list.iter_mut() {
                 if let Some(inner) = entry.get_mut("hooks").and_then(|h| h.as_array_mut()) {
-                    inner.retain(|h| !h.get("command").and_then(|c| c.as_str()).is_some_and(|c| c.contains(MARK)));
+                    inner.retain(|h| !h.get("command").and_then(|c| c.as_str()).is_some_and(|c| c.contains(MARK_BASE)));
                 }
             }
             list.retain(|entry| {
@@ -123,6 +129,11 @@ pub fn remove(settings: &mut Value) {
 /// Marks our statusLine so it is recognizably ours and never clobbers a user's own.
 pub const SL_MARK: &str = "# obpterm-statusline v3";
 
+/// The same problem, and the worse half of it: a statusLine we do not recognise is treated as
+/// the user's own and never touched. Bumping the suffix without this made every machine that
+/// had ever run an older version keep its old statusLine for good.
+pub const SL_MARK_BASE: &str = "# obpterm-statusline";
+
 /// Saves the payload (rate_limits included) where the token meters read it, and prints the
 /// model plus both percentages as Claude Code's own status line. POSIX sh, same as the hooks;
 /// staleness comes from the file's mtime, so no timestamp needs appending.
@@ -136,7 +147,7 @@ pub fn statusline_installed(settings: &Value) -> bool {
     settings
         .pointer("/statusLine/command")
         .and_then(|c| c.as_str())
-        .is_some_and(|c| c.contains(SL_MARK))
+        .is_some_and(|c| c.contains(SL_MARK_BASE))
 }
 
 /// Sets our statusLine only when the slot is empty or already ours. Returns whether it wrote.
@@ -171,6 +182,37 @@ mod tests {
 
     /// Where the host would live on a real machine; the commands embed it.
     const EXE: &str = "C:/Users/obp/AppData/Local/OBPTerm/host/obpterm-host-9.9.9.exe";
+
+    #[test]
+    fn a_block_written_by_an_older_version_is_upgraded_not_doubled() {
+        // The v1 shape, mark and all, as 0.21.12 and earlier wrote it.
+        let old = format!(r#"[ -n "$OBPTERM_PANE_ID" ] && curl -s --data-binary @- http://x; : # obpterm-hooks v1"#);
+        let mut hooks = serde_json::Map::new();
+        for event in EVENTS {
+            hooks.insert(event.to_string(), json!([{ "hooks": [{ "type": "command", "command": old }] }]));
+        }
+        let mut settings = json!({
+            "hooks": hooks,
+            "statusLine": { "type": "command", "command": "p=$(cat); printf '%s' \"$p\"; : # obpterm-statusline v2" },
+        });
+        assert!(installed(&settings), "an older block is still recognisably ours");
+        assert!(!current(&settings, EXE), "but it is not the command we ship now");
+
+        install(&mut settings, EXE);
+        let entries = settings.pointer("/hooks/PreToolUse").unwrap().as_array().unwrap();
+        let commands: Vec<&str> = entries
+            .iter()
+            .flat_map(|e| e.get("hooks").unwrap().as_array().unwrap())
+            .map(|h| h.get("command").unwrap().as_str().unwrap())
+            .collect();
+        assert_eq!(commands.len(), 1, "the old block is replaced, not joined: {commands:?}");
+        assert_eq!(commands[0], hook_command(EXE));
+
+        // And the statusLine an older version wrote is ours to replace — not a stranger's.
+        assert!(statusline_installed(&settings), "our own older statusLine is recognised");
+        assert!(statusline_install(&mut settings, EXE), "so it is upgraded");
+        assert_eq!(settings.pointer("/statusLine/command").unwrap(), &json!(statusline_command(EXE)));
+    }
 
     #[test]
     fn neither_command_spawns_a_shell_pipeline() {
