@@ -1431,6 +1431,67 @@ await evaluate("window.obpterm.config.update_repo = null");
 }
 
 
+// ---- v0.21.20: the three dead wires ------------------------------------------------------
+{
+  const row = () => "document.querySelector('.tab.active')";
+
+  // 1. What a session is holding, and the eco sweep choosing by that instead of by clock.
+  await evaluate("(() => { window.obpterm.tab.active.rss = 1.6e9; window.obpterm.paint(); })()");
+  await until(`${row()}.querySelector('.rss').hidden === false`, "the memory chip appears");
+  assert.equal(await evaluate(`${row()}.querySelector('.rss').textContent`), "1.6G", "in gigabytes");
+  assert.ok(await evaluate(`${row()}.querySelector('.rss').classList.contains('heavy')`), "and flagged when it is a lot");
+  await evaluate("(() => { window.obpterm.tab.active.rss = 40e6; window.obpterm.paint(); })()");
+  assert.equal(await evaluate(`${row()}.querySelector('.rss').hidden`), true, "a small shell says nothing");
+
+  // The victim order: biggest idle session first, not the one visited longest ago.
+  const tabsBefore = await evaluate("window.obpterm.tabs.length");
+  await evaluate("void window.obpterm.newTab()");
+  await evaluate("void window.obpterm.newTab()");
+  await until(`window.obpterm.tabs.length === ${tabsBefore + 2}`, "two idle sessions");
+  await until(`window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].id > 0 && window.obpterm.panesOf(window.obpterm.tabs.at(-2))[0].id > 0`, "both with shells");
+  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
+  await evaluate(`(() => {
+    const [small, big] = [window.obpterm.panesOf(window.obpterm.tabs.at(-2))[0], window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0]];
+    for (const [p, rss, visited] of [[small, 50e6, 0], [big, 2.2e9, Date.now()]]) {
+      p.claudeSessionId = "victim-" + rss; p.agent.state = "done"; p.rss = rss; p.lastVisited = visited;
+    }
+    window.obpterm.config.eco_memory_pct = 50;
+    window.obpterm.status.memoryPct = () => 96;
+  })()`);
+  await evaluate("window.obpterm.ecoSweep()");
+  const big = await evaluate("window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].eco");
+  assert.equal(big, true, "the 2.2 GB session is exited even though it was visited most recently");
+
+  // 2. The host's own agent state is adopted by a pane that has none.
+  await evaluate(`(() => {
+    const p = window.obpterm.panesOf(window.obpterm.tabs.at(-2))[0];
+    p.agent.state = null; p.agent.detail = null;
+    const real = window.obpterm.tp.listSessions;
+    window.obpterm.tp.listSessions = async () => (await real()).map((s) => (s.id === p.id
+      ? { ...s, agent_state: "blocked", agent_detail: "Bash: rm -rf build/" } : s));
+  })()`);
+  await evaluate("void window.obpterm.refreshHeld()");
+  await until(`window.obpterm.panesOf(window.obpterm.tabs.at(-2))[0].agent.state === "blocked"`, "the rail adopts what the host knew");
+  assert.equal(await evaluate(`window.obpterm.panesOf(window.obpterm.tabs.at(-2))[0].agent.detail`), "Bash: rm -rf build/", "detail and all");
+
+  // 3. A session that stopped reporting mid-task says so instead of looking idle.
+  await evaluate(`(() => {
+    const p = window.obpterm.tab.active;
+    p.agent.state = "working";
+    p.agent.workingSince = Date.now() - 25 * 60_000;
+    window.obpterm.onPaneActivity();
+  })()`);
+  await until(`${row()}.classList.contains('stalled')`, "the row is marked stalled");
+  assert.match(await evaluate(`${row()}.querySelector('.sub').textContent`), /stalled — nothing reported for \d+m/, "and says how long");
+  await evaluate("(() => { const p = window.obpterm.tab.active; p.agent.state = 'working'; p.agent.workingSince = Date.now(); window.obpterm.onPaneActivity(); window.obpterm.paint(); })()");
+  assert.equal(await evaluate(`${row()}.classList.contains('stalled')`), false, "and clears the moment it talks again");
+
+  await evaluate("(() => { window.obpterm.config.eco_memory_pct = 0; window.obpterm.tab.active.agent.state = null; window.obpterm.tab.active.rss = 0; })()");
+  await evaluate(`(() => { while (window.obpterm.tabs.length > ${tabsBefore}) window.obpterm.closeTab(window.obpterm.tabs.at(-1)); })()`);
+  await until(`window.obpterm.tabs.length === ${tabsBefore}`, "its tabs are gone again");
+}
+
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

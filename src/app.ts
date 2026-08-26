@@ -347,15 +347,22 @@ export class App implements PaneHost {
     const pct = this.config.eco_memory_pct;
     const m = this.status?.memoryPct() ?? null;
     if (!pct || m === null || m < pct) return;
-    const queue = eligible().sort((a, b) => a.lastVisited - b.lastVisited);
+    // Which idle session to exit is a question about bytes, not about clocks: a 40 MB shell and
+    // a 2 GB session that has been fanning out all afternoon are both "idle", and only one of
+    // them gives the machine anything back. Biggest first, with age as the tie-break for the
+    // ones we have no measurement for.
+    const queue = eligible().sort((a, b) => b.rss - a.rss || a.lastVisited - b.lastVisited);
     let freed = 0;
+    let bytes = 0;
     for (const pane of queue) {
       if (freed >= 3) break; // a few per sweep, then look again — never a stampede
+      bytes += pane.rss;
       this.eco(pane);
       freed++;
     }
     if (freed) {
-      toast(`Memory at ${Math.round(m)}% — ${freed} idle session${freed > 1 ? "s" : ""} exited to free it; click a tab to resume`);
+      const gave = bytes ? ` (~${(bytes / 1e9).toFixed(1)} GB)` : "";
+      toast(`Memory at ${Math.round(m)}% — ${freed} idle session${freed > 1 ? "s" : ""}${gave} exited to free it; click a tab to resume`);
     }
   }
 
@@ -1046,6 +1053,39 @@ export class App implements PaneHost {
       }
     }
     if (lostChanged) this.paint();
+
+    // What each session's process tree is holding. `rss_for` was written for this and never
+    // called: at 98% RAM the difference between a 40 MB shell and a 2 GB stuck session is the
+    // whole decision, and nothing was asking. One batched call for every pid the host knows.
+    const pids = sessions.map((s) => s.pid).filter((p): p is number => !!p);
+    if (pids.length) {
+      const rss = await this.tp.rssFor(pids).catch(() => []);
+      const byPid = new Map(pids.map((pid, i) => [pid, rss[i] ?? 0]));
+      const pidOf = new Map(sessions.map((s) => [s.id, s.pid]));
+      for (const p of all) {
+        const pid = pidOf.get(p.id);
+        const bytes = pid ? byPid.get(pid) ?? 0 : 0;
+        if (bytes) p.rss = bytes;
+      }
+    }
+
+    // The host tracks agent state through hooks even with no window attached — and a restored
+    // pane threw that away and showed "idle" until the session's next hook, which after a
+    // reboot is exactly when the rail has to be honest. Adopt what the host already knows,
+    // but never over a live pane's own state: ours is fresher.
+    for (const p of all) {
+      if (p.agent.state !== null) continue;
+      const held = sessions.find((x) => x.id === p.id);
+      if (!held?.agent_state) continue;
+      const known = ["working", "done", "waiting", "blocked"] as const;
+      const state = known.find((k) => k === held.agent_state);
+      if (!state) continue;
+      p.agent.state = state;
+      p.agent.detail = held.agent_detail;
+      if (held.claude_session_id) p.claudeSessionId = held.claude_session_id;
+      this.paintSoon();
+    }
+
     if (!sleeping.length) return;
     const byId = new Map(sessions.map((s) => [s.id, s]));
     let changed = false;

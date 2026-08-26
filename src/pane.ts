@@ -76,6 +76,9 @@ export class Pane {
   diffstat: string | null = null;
   /** Rough context-window fill %, from the transcript tail. */
   ctxPct: number | null = null;
+  /** Bytes this pane's whole process tree is holding, from the host's pid. The number that
+   *  decides which session is worth exiting when the machine is out of RAM. */
+  rss = 0;
   /** Tokens and estimated dollars this conversation has spent, from its own transcript. */
   usage: import("./transport").SessionUsage | null = null;
   /** Set when this pane's shell is not in the host's list any more, or a write to it failed:

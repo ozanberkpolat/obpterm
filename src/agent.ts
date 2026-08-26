@@ -20,6 +20,9 @@ export interface FannedAgent {
 }
 
 export interface AgentState {
+  /** When a session that was working went quiet for good — it stopped reporting mid-task
+   *  rather than finishing. Null while it is talking. */
+  stalledSince?: number | null;
   /** working | done | waiting | blocked, or null = no agent seen in this pane. */
   state: "working" | "done" | "waiting" | "blocked" | null;
   /** "Editing pty.rs", the last message, or the permission request's words. */
@@ -52,6 +55,7 @@ export const blank = (): AgentState => ({
   unread: false,
   lastToolAt: 0,
   workingSince: 0,
+  stalledSince: null,
   fanned: [],
   mode: null,
 });
@@ -224,8 +228,18 @@ export function liveAgents(a: AgentState): FannedAgent[] {
 /** The decays that need no event: a lost Stop, and reading what was unread. */
 export function tick(a: AgentState): boolean {
   if (a.state === "working" && a.workingSince && Date.now() - a.workingSince > WORKING_STALE_MS) {
+    // It was working and has reported nothing for twenty minutes. This used to blank the state
+    // outright, which drew it as "idle" — identical to a session sitting quietly at a prompt.
+    // Those are the two states most worth telling apart when twenty agents are running: one is
+    // finished with you, the other stopped talking mid-task. Keep the fact, mark it stalled.
+    a.stalledSince = a.workingSince;
     a.state = null;
     a.detail = null;
+    return true;
+  }
+  // Any fresh state at all means it is talking again.
+  if (a.stalledSince && a.state !== null) {
+    a.stalledSince = null;
     return true;
   }
   return false;

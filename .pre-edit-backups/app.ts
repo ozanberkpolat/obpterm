@@ -220,9 +220,11 @@ export class App implements PaneHost {
     if (!tab) return;
     const account = this.account(tab.accountId);
     const dir = account?.claude_dir ?? "~/.claude";
+    void this.refreshContext();
     for (const pane of L.panes(tab.root)) {
       if (!pane.claudeSessionId) continue;
-      // The name only when the user has not chosen one; the context gauge always.
+      // The name only when the user has not chosen one; the gauge only for the pane whose gauge
+      // is on screen — it is a 256 KB read and a JSON parse per pane, every five seconds.
       if (!tab.name) {
         const title = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
         if (title && title !== pane.title) {
@@ -230,9 +232,49 @@ export class App implements PaneHost {
           this.paint();
         }
       }
-      pane.ctxPct = await this.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
+      if (pane === tab.active) pane.ctxPct = await this.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
     }
     this.status?.paintCtx();
+  }
+
+  /**
+   * The context gauge for every live Claude session, not just the one on screen — a background
+   * session filling its window is exactly the one nobody is watching. Cheap by construction:
+   * `session_context` caches on the transcript's size and mtime, so a quiet session costs one
+   * `stat`. Panes past the warning line are said out loud once, the way a bell is.
+   */
+  private async refreshContext() {
+    const warn = this.config.context_warn_pct;
+    for (const tab of this.tabs) {
+      const dir = this.account(tab.accountId)?.claude_dir ?? "~/.claude";
+      for (const pane of L.panes(tab.root)) {
+        if (!pane.claudeSessionId || pane.exited || pane.eco) continue;
+        const before = pane.ctxPct;
+        pane.ctxPct = await this.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
+        // Same pass, same file: what this conversation has spent. Both read the transcript and
+        // both cache on how far they got, so a quiet session costs a `stat` and nothing else.
+        pane.usage = await this.tp.sessionUsage(dir, pane.claudeSessionId, this.config.model_prices).catch(() => null);
+        if (!warn || pane.ctxPct === null) continue;
+        // Only on the crossing, and only once: a session sitting at 91% must not nag every poll.
+        if (pane.ctxPct >= warn && (before === null || before < warn)) {
+          this.agentAlert(this.title(tab), `context ${pane.ctxPct}% full — /compact soon`);
+        }
+      }
+    }
+    this.paintSoon();
+  }
+
+  /** What a tab has spent, in dollars — its panes summed. Null when nothing is known yet. */
+  tabCost(tab: Tab): number | null {
+    const costs = L.panes(tab.root).map((p) => p.usage?.cost_usd).filter((c): c is number => c !== undefined);
+    return costs.length ? costs.reduce((a, b) => a + b, 0) : null;
+  }
+
+  /** Hand the focused pane's conversation to `/compact`. */
+  compact(pane: Pane) {
+    if (!pane.claudeSessionId || pane.exited) return;
+    void this.tp.write(pane.id, "/compact\r").catch(() => {});
+    toast("Compacting the conversation…");
   }
 
   /** The rail's verdict on a pane's held permission request. */
@@ -270,18 +312,57 @@ export class App implements PaneHost {
    */
   ecoSweep() {
     const minutes = this.config.eco_after_minutes;
-    if (!minutes) return;
-    const cutoff = Date.now() - minutes * 60_000;
-    for (const tab of this.tabs) {
-      if (tab === this.tab) continue;
-      for (const pane of L.panes(tab.root)) {
-        if (pane.eco || pane.exited || pane.asleep) continue;
-        if (pane.agent.state !== "done" || !pane.claudeSessionId) continue;
+    const cutoff = Date.now() - (minutes || 0) * 60_000;
+    // Eligible: a Claude session with a conversation to come back to, not on screen, not mid-
+    // turn and not holding a question. A SLEEPING pane counts — that was the hole. Sleep frees
+    // a terminal (a few MB); the ~400 MB is the `claude` process, and skipping asleep panes
+    // meant eighteen of them held about seven gigabytes that nothing was ever going to reclaim.
+    // Writing to a detached pane is fine: the host owns the pty either way.
+    const eligible = () =>
+      this.tabs
+        .filter((t) => t !== this.tab)
+        .flatMap((t) => L.panes(t.root))
+        .filter(
+          (p) =>
+            !p.eco &&
+            !p.exited &&
+            p.id > 0 &&
+            p.claudeSessionId &&
+            (p.agent.state === "done" || p.agent.state === null) &&
+            !p.agent.fanned.some((f) => f.endedAt === null),
+        );
+
+    if (minutes) {
+      for (const pane of eligible()) {
+        if (pane.agent.state !== "done") continue; // the timed path stays as it was: finished only
         if (pane.lastOutput > cutoff || pane.lastVisited > cutoff) continue;
-        pane.eco = true;
-        void this.tp.write(pane.id, "/exit\r").catch(() => {});
+        this.eco(pane);
       }
     }
+
+    // Memory pressure. The machine running out of RAM is what actually freezes this window —
+    // it thrashes on swap and everything stalls for minutes — and the sessions holding it are
+    // idle ones nobody is reading. Above the threshold, the oldest of them are exited early;
+    // the tab stays, and clicking it resumes the same conversation.
+    const pct = this.config.eco_memory_pct;
+    const m = this.status?.memoryPct() ?? null;
+    if (!pct || m === null || m < pct) return;
+    const queue = eligible().sort((a, b) => a.lastVisited - b.lastVisited);
+    let freed = 0;
+    for (const pane of queue) {
+      if (freed >= 3) break; // a few per sweep, then look again — never a stampede
+      this.eco(pane);
+      freed++;
+    }
+    if (freed) {
+      toast(`Memory at ${Math.round(m)}% — ${freed} idle session${freed > 1 ? "s" : ""} exited to free it; click a tab to resume`);
+    }
+  }
+
+  /** `/exit` a session and mark the tab: clicking it runs `claude --resume` on the same id. */
+  private eco(pane: Pane) {
+    pane.eco = true;
+    void this.tp.write(pane.id, "/exit\r").catch(() => {});
   }
 
   /**
@@ -452,7 +533,7 @@ export class App implements PaneHost {
     for (const p of L.panes(tab.root)) {
       p.lastVisited = Date.now();
       p.agent.unread = false;
-      if (p.asleep) void p.wake().then(() => this.paint());
+      if (p.asleep) void this.wakePane(p);
       if (p.eco) void this.resumeEco(p);
     }
     this.mru = [tab, ...this.mru.filter((t) => t !== tab && this.tabs.includes(t))];
@@ -895,14 +976,49 @@ export class App implements PaneHost {
    * most of it. The shells keep running in the host; clicking the tab brings the terminal
    * back with the shell's recent output.
    */
+  /** Every awake pane, oldest visit first. */
+  private awakePanes(): Pane[] {
+    return this.tabs
+      .flatMap((t) => L.panes(t.root))
+      .filter((p) => !p.asleep && !p.exited && p.id > 0)
+      .sort((a, b) => a.lastVisited - b.lastVisited);
+  }
+
+  /**
+   * Wakes a pane, and keeps the window under its ceiling while doing it. A live terminal holds
+   * a WebGL context; past about sixteen Chromium takes them back, every terminal that loses one
+   * falls back to the DOM renderer, and the window seizes. So the oldest awake pane goes to
+   * sleep to make room — its shell keeps running, and it wakes on click like any other.
+   */
+  async wakePane(pane: Pane) {
+    await pane.wake();
+    const cap = this.config.max_live_panes;
+    if (cap) {
+      const current = this.tab ? L.panes(this.tab.root) : [];
+      const spare = this.awakePanes().filter((p) => p !== pane && !current.includes(p));
+      let slept = 0;
+      while (spare.length && spare.length + current.length > cap) {
+        const oldest = spare.shift()!;
+        if (oldest.agent.state === "blocked" || oldest.agent.state === "waiting") continue;
+        await oldest.sleep();
+        slept++;
+      }
+      if (slept) toast(`${slept} background session${slept > 1 ? "s" : ""} put to sleep — click one to wake it`);
+    }
+    this.paint();
+  }
+
   async sleepIdleTabs() {
-    const minutes = this.config.sleep_after_minutes;
-    if (!minutes || !this.hostInstance) return;
-    const cutoff = Date.now() - minutes * 60_000;
+    const seconds = this.config.sleep_after_seconds;
+    if (!seconds || !this.hostInstance) return;
+    const cutoff = Date.now() - seconds * 1000;
     let slept = 0;
     for (const tab of this.tabs) {
       if (tab === this.tab) continue;
       for (const p of L.panes(tab.root)) {
+        // A pane holding a permission question keeps its shell: the rail's Allow/Deny writes
+        // to it, and answering a question through a torn-down terminal is not a thing.
+        if (p.agent.state === "blocked" || p.agent.state === "waiting") continue;
         if (!p.asleep && !p.exited && p.id > 0 && p.lastVisited < cutoff && !p.logPath) {
           await p.sleep();
           slept++;
@@ -1190,6 +1306,22 @@ export class App implements PaneHost {
   }
 
   /** Repaint the rail. Cheap: the rail is the only derived view. */
+  /**
+   * A repaint at the next frame, and only one however many times it was asked for. Hook events
+   * arrive in bursts — a ten-agent fan-out is a PreToolUse and a PostToolUse per tool call per
+   * agent — and each one used to repaint the rail, the deck and the map synchronously. The
+   * screen cannot show more than one frame anyway.
+   */
+  paintSoon() {
+    if (this.paintQueued) return;
+    this.paintQueued = true;
+    requestAnimationFrame(() => {
+      this.paintQueued = false;
+      this.paint();
+    });
+  }
+  private paintQueued = false;
+
   paint() {
     renderRail(this);
     this.nodes?.paint();
@@ -1311,8 +1443,13 @@ export class App implements PaneHost {
     const saved = (session?.tabs as SavedTab[] | null) ?? [];
     this.claimed.clear();
     let restored = 0;
-    for (const tab of Array.isArray(saved) ? saved : []) {
-      if (await this.restoreTab(tab)) restored++;
+    const list = Array.isArray(saved) ? saved : [];
+    // Everything except the tab that will be in front comes back asleep. Restoring twenty live
+    // terminals at once is the worst moment the window has, and nineteen of them were for tabs
+    // nobody was looking at.
+    const front = Math.min(session?.active ?? 0, list.length - 1);
+    for (const [i, tab] of list.entries()) {
+      if (await this.restoreTab(tab, i !== front)) restored++;
     }
     // Activate once, at the end, on the tab that was in front — not on whichever happened to
     // be built last, and without repainting the whole rail per restored tab.
@@ -1382,7 +1519,7 @@ export class App implements PaneHost {
     return pane;
   }
 
-  private async restoreTab(saved: SavedTab): Promise<boolean> {
+  private async restoreTab(saved: SavedTab, asleep = false): Promise<boolean> {
     const build = (n: L.SavedNode): L.Node | null => {
       if (n.kind === "leaf") {
         return L.leaf(this.restorePane(n, saved));
@@ -1413,6 +1550,8 @@ export class App implements PaneHost {
     this.tabs.push(tab);
     this.layout(tab);
     // ConPTY spawns are independent: 24 panes should not be 24 round trips in series.
+    // A capture profile has to attach: its log is written from the stream it would not receive.
+    for (const p of list) if (asleep && p.attachTo !== null && !p.profile.capture) p.startAsleep = true;
     await Promise.all(list.map((p) => this.startPane(tab, p)));
     for (const p of list) {
       if (!p.typeResume || p.exited || p.id < 0) continue;

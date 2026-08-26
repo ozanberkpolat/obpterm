@@ -689,6 +689,13 @@ button.chip:hover { background: var(--border); color: var(--ink); }
    worse than no number — this is what makes the CPU bar appear stuck at 100%. */
 #metrics.stale { opacity: .45; }
 #metrics.stale::after { content: "stale"; font: 600 9px var(--mono); color: var(--faint); margin-left: 6px; }
+/* Stopped reporting mid-task. Not an error, not idle — the subtitle says which, and the row
+   carries a dim amber edge so it is findable in a rail of twenty. Nothing animates. */
+.tab.stalled { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+.tab.stalled .sub { color: var(--accent); }
+/* What a session is holding. Silent until it is big enough to be worth exiting. */
+.tab .rss { font: 600 9px var(--mono); color: var(--faint); flex: none; }
+.tab .rss.heavy { color: var(--bad); }
 /* What a session has spent. Quiet by default — it is context, not a headline. */
 .tab .cost { font: 600 9px var(--mono); color: var(--faint); flex: none; }
 /* A conversation close to full. Amber says "soon"; red says "now", and neither moves. */

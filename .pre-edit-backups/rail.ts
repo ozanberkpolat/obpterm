@@ -13,8 +13,6 @@ interface Row {
   num: HTMLElement;
   title: HTMLElement;
   sub: HTMLElement;
-  /** "1.4G" — what this session's process tree is holding, once that is a lot. */
-  rss: HTMLElement;
   /** "$1.24" — what this session has spent, once it is worth mentioning. */
   cost: HTMLElement;
   /** "ctx 88%", only once the conversation is close to full. */
@@ -154,7 +152,6 @@ function rowFor(app: App, tab: Tab): Row {
   li.innerHTML =
     `<span class="num"></span>` +
     `<span class="label"><span class="title"></span><span class="sub"></span></span>` +
-    `<span class="rss" hidden></span>` +
     `<span class="cost" hidden></span>` +
     `<span class="ctx" hidden></span>` +
     `<span class="badge" hidden></span><span class="rec" hidden title="capturing to a log file">●</span>` +
@@ -165,7 +162,6 @@ function rowFor(app: App, tab: Tab): Row {
     num: li.querySelector(".num")!,
     title: li.querySelector(".title")!,
     sub: li.querySelector(".sub")!,
-    rss: li.querySelector(".rss")!,
     cost: li.querySelector(".cost")!,
     ctx: li.querySelector(".ctx")!,
     badge: li.querySelector(".badge")!,
@@ -246,23 +242,16 @@ function patchRow(app: App, tab: Tab) {
     : 0;
   const working = workedMin >= 1 ? ` · ${workedMin}m` : "";
   const mode = agentPane ? modeLabel(agentPane.agent) : "";
-  // A session that stopped reporting mid-task is not the same as one sitting at a prompt, and
-  // for twenty minutes it drew identically. Say which it is.
-  const stalled = panes.find((p) => p.agent.stalledSince && !p.eco && !p.exited);
-  const stalledMin = stalled?.agent.stalledSince ? Math.floor((Date.now() - stalled.agent.stalledSince) / 60_000) : 0;
   const sub = exited
     ? `exited · code ${exited.exitCode}`
-    : stalled
-      ? `stalled — nothing reported for ${stalledMin}m`
-      : eco
-        ? "agent sleeping — click to resume"
-        : agentDetail
-          ? agentDetail + working + (mode ? ` · ${mode}` : "")
-          : (tab.active.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? tab.active.profile.name);
+    : eco
+      ? "agent sleeping — click to resume"
+      : agentDetail
+        ? agentDetail + working + (mode ? ` · ${mode}` : "")
+        : (tab.active.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? tab.active.profile.name);
 
   row.li.classList.toggle("active", tab === app.tab);
   row.li.classList.toggle("dead", state === "exited");
-  row.li.classList.toggle("stalled", !!stalled);
   row.li.style.setProperty("--tab-accent", app.accent(tab));
   row.li.title = `${title}\n${tab.active.profile.name}${tab.active.cwd ? `\n${tab.active.cwd}` : ""}`;
 
@@ -278,16 +267,6 @@ function patchRow(app: App, tab: Tab) {
     set(row.ctx, `ctx ${full}%`);
     row.ctx.classList.toggle("hot", full >= 95);
     row.ctx.title = "This conversation is nearly full — right-click the tab to /compact it";
-  }
-  // What it is holding. Only the ones big enough to be worth exiting say so out loud; the
-  // tooltip carries the number regardless, and the eco sweep sorts on it whether or not it
-  // is drawn.
-  const rss = panes.reduce((n, p) => n + p.rss, 0);
-  row.rss.hidden = rss < 400e6;
-  if (rss) {
-    set(row.rss, rss >= 1e9 ? `${(rss / 1e9).toFixed(1)}G` : `${Math.round(rss / 1e6)}M`);
-    row.rss.title = `${Math.round(rss / 1e6)} MB resident — this session's whole process tree`;
-    row.rss.classList.toggle("heavy", rss >= 1.5e9);
   }
   // What it has cost. Below a dime it is noise; the tooltip carries the tokens either way.
   const cost = app.tabCost(tab);

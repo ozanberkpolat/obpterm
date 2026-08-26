@@ -15,6 +15,8 @@ export interface FannedAgent {
   startedAt: number;
   endedAt: number | null;
   tools: number;
+  /** The agent that spawned it, or null when the session did. Agents delegate too. */
+  parent: string | null;
 }
 
 export interface AgentState {
@@ -72,6 +74,8 @@ export interface AgentUpdate {
   agent_task?: string | null;
   agent_event?: string | null;
   agent_ref?: string | null;
+  /** Who spawned it: null for the session's own fan-out, an agent id when an agent delegated. */
+  agent_parent?: string | null;
   mode?: string | null;
 }
 
@@ -160,16 +164,29 @@ function applyFan(a: AgentState, u: AgentUpdate) {
   if (u.agent_event === "linked" && u.agent_ref) {
     const opened = a.fanned.find((f) => f.id === u.agent_ref);
     if (opened) {
+      // Anything keyed to the old id follows it: a grandchild opened against the call id would
+      // otherwise be orphaned the moment its parent is rekeyed.
+      for (const f of a.fanned) if (f.parent === opened.id) f.parent = id;
       opened.id = id;
       if (u.agent_kind) opened.kind = u.agent_kind;
       if (u.agent_task) opened.task = u.agent_task;
+      if (u.agent_parent !== undefined) opened.parent = u.agent_parent ?? null;
       return;
     }
   }
   let agent = a.fanned.find((f) => f.id === id);
   if (!agent) {
     if (u.agent_event === "finished") return; // a close for an agent we never saw open
-    agent = { id, kind: u.agent_kind || "agent", task: u.agent_task || "", feed: null, startedAt: Date.now(), endedAt: null, tools: 0 };
+    agent = {
+      id,
+      kind: u.agent_kind || "agent",
+      task: u.agent_task || "",
+      feed: null,
+      startedAt: Date.now(),
+      endedAt: null,
+      tools: 0,
+      parent: u.agent_parent ?? null,
+    };
     a.fanned.push(agent);
   }
   if (u.agent_kind) agent.kind = u.agent_kind;
@@ -182,12 +199,21 @@ function applyFan(a: AgentState, u: AgentUpdate) {
 }
 
 /** Agents drop off the views a few seconds after they finish — a finished agent is history,
- *  and the map is for what is happening. */
+ *  and the map is for what is happening. With one exception: an agent that spawned agents of
+ *  its own is the trunk they hang from. A parent that launched background sub-agents finishes
+ *  the moment they are launched, so dropping it would strand three running children and
+ *  re-parent them onto the session — the fan-out would look flat when it is two deep. */
 export function pruneFan(a: AgentState): boolean {
   const cutoff = Date.now() - 6000;
   const before = a.fanned.length;
-  a.fanned = a.fanned.filter((f) => f.endedAt === null || f.endedAt > cutoff);
+  a.fanned = a.fanned.filter((f) => f.endedAt === null || f.endedAt > cutoff || hasLiveDescendant(a, f.id));
   return a.fanned.length !== before;
+}
+
+/** True when some agent below this one — at any depth — is still running. */
+export function hasLiveDescendant(a: AgentState, id: string): boolean {
+  const kids = a.fanned.filter((f) => f.parent === id);
+  return kids.some((k) => k.endedAt === null || hasLiveDescendant(a, k.id));
 }
 
 /** Agents still running for this session. */
