@@ -519,7 +519,7 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
 }
 
 
-// ---- the Agent Deck + the rail's Agents badge ---------------------------------------------
+// ---- the agents surface answers a held request, from the map ------------------------------
 {
   const devWs = new WebSocket("ws://127.0.0.1:1421");
   await new Promise((r) => devWs.on("open", r));
@@ -528,63 +528,32 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
       devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
       setTimeout(r, 150);
     });
-  // The earlier block leaves its auto-passed pane blocked (nobody typed the in-pane answer);
-  // start this one from silence so the counts are its own.
-  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; }), window.obpterm.paint()");
-  // A blocked session on a tab the user is not looking at: the badge must say so.
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; p.agent.fanned = []; }), window.obpterm.paint()");
   await evaluate("void window.obpterm.newTab()");
-  await until("window.obpterm.tabs.length >= 2", "a second tab for the deck case");
-  const deckPane = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
+  await until("window.obpterm.tabs.length >= 2", "a second tab");
+  const askPane = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
   await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
-  await injectDev({ pane: deckPane, state: "blocked", session_id: "sess-9", detail: "Running git push --tags", pending_id: "p-99", options: ["Yes", "No, ask again"] });
-  await until("!document.querySelector('#rail-agents').hidden", "the Agents entry appearing");
-  await until("document.querySelector('#rail-agents .abadge').textContent === '1'", "the waiting badge");
-  assert.ok(await evaluate("document.querySelector('#rail-agents').classList.contains('alert')"), "the entry is loud");
-  assert.ok(
-    (await evaluate("document.querySelector('#rail-agents .asub').textContent")).includes("git push"),
-    "the subtitle names the loudest hold",
+  await injectDev({ pane: askPane, state: "blocked", session_id: "sess-a", detail: "Running git push --tags", pending_id: "p-ask", options: [], tool: "Bash", tool_input: "git push --tags" });
+  await evaluate("window.obpterm.showView('agents')");
+  await until("!!document.querySelector('#nodemap .nnode[data-state=blocked]')", "the waiting node");
+  assert.equal(
+    await evaluate("document.querySelector('#nodemap .nnode[data-state=blocked] .npill').textContent"),
+    "needs you",
+    "the node says it is waiting on you",
   );
-
-  // Ctrl+G at the terminal's own textarea opens the deck (ownsKey must claim it there too).
-  await evaluate(
-    "(document.querySelector('.tab-panes.active .xterm-helper-textarea') || document.querySelector('.xterm-helper-textarea')).dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyG', key: 'g', ctrlKey: true, bubbles: true, cancelable: true }))",
-  );
-  await until("window.obpterm.deck.isOpen", "the deck open on Ctrl+G");
-  await until("document.querySelector('.dcard[data-state=blocked]') !== null", "the blocked card");
-  assert.ok(
-    (await evaluate("document.querySelector('.dcard[data-state=blocked] .dask .q').textContent")).includes("git push"),
-    "the card carries the question",
-  );
-  assert.equal(await evaluate("document.querySelectorAll('.dcard[data-state=blocked] .opts li').length"), 2, "its options render");
-  assert.ok((await evaluate("document.querySelector('#deck .dsummary .hot').textContent")).startsWith("1 need"), "the summary counts it");
-
-  // Allow from the card: the verdict reaches the host and the card quiets down.
-  await evaluate("document.querySelector('.dcard[data-state=blocked] .allow').click()");
-  const deckAnswers = await new Promise((resolve) => {
-    devWs.send(JSON.stringify({ t: "agent_answers", reqId: 1002 }));
+  await evaluate("document.querySelector('#nodemap .nnode[data-state=blocked] .allow').click()");
+  const answers = await new Promise((resolve) => {
+    devWs.send(JSON.stringify({ t: "agent_answers", reqId: 2001 }));
     devWs.on("message", function once(d) {
       const m = JSON.parse(d);
-      if (m.reqId === 1002) { devWs.off("message", once); resolve(m.answered); }
+      if (m.reqId === 2001) { devWs.off("message", once); resolve(m.answered); }
     });
   });
-  assert.deepEqual(deckAnswers.at(-1), { pending: "p-99", allow: true }, "the deck's Allow reached the host");
-  await until("document.querySelector('#rail-agents .abadge').hidden", "the badge cleared");
-
-  // Clicking a card jumps to its pane; Escape closes the deck.
-  await evaluate("window.obpterm.deck.open()");
-  await evaluate("document.querySelector('.dcard').click()");
-  await until("!window.obpterm.deck.isOpen", "the deck closed by the jump");
-  assert.equal(await evaluate(`window.obpterm.panesOf(window.obpterm.tab)[0].id`), deckPane, "the jump landed on the card's tab");
-  await evaluate("window.obpterm.deck.open()");
-  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true, cancelable: true }))");
-  await until("!window.obpterm.deck.isOpen", "the deck closed by Escape");
-
-  devWs.close();
+  assert.deepEqual(answers.at(-1), { pending: "p-ask", allow: true }, "the answer reached the host");
+  await evaluate("window.obpterm.showView('sessions')");
   await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
+  devWs.close();
 }
-
-
-
 
 // ---- v0.14.0: deck keyboard, needs-you jump, duplicate tab, progress, find count ----------
 {
@@ -608,14 +577,11 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   await until(`window.obpterm.tab.active.id === ${busyPane}`, "the jump landing on the waiting pane");
   await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
 
-  // The deck takes focus and answers from the keyboard: first card is the loudest, 'a' allows.
-  await evaluate("window.obpterm.deck.open()");
-  await until("document.activeElement === document.querySelector('#deck .dgrid')", "the deck holding focus");
-  await until("document.querySelector('.dcard[data-state=blocked]') !== null", "the blocked card");
-  assert.ok(await evaluate("document.querySelector('.dcard').classList.contains('selected')"), "the loudest card is selected");
-  // Working chip carries elapsed time once workingSince is old enough.
-  await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${busyPane}); p.agent.workingSince = Date.now() - 300000; })()`);
-  await evaluate("document.querySelector('#deck .dgrid').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', key: 'a', bubbles: true, cancelable: true }))");
+  // The agents surface takes focus and answers from the keyboard.
+  await evaluate("window.obpterm.showView('agents')");
+  await until("document.activeElement === document.querySelector('#nodemap')", "the map holding focus");
+  await until("!!document.querySelector('#nodemap .nnode[data-state=blocked]')", "the waiting node");
+  await evaluate("document.querySelector('#nodemap').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', key: 'a', bubbles: true, cancelable: true }))");
   const a14 = await new Promise((resolve) => {
     devWs.send(JSON.stringify({ t: "agent_answers", reqId: 1400 }));
     devWs.on("message", function once(d) {
@@ -624,7 +590,7 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
     });
   });
   assert.deepEqual(a14.at(-1), { pending: "p-140", allow: true }, "keyboard Allow reached the host");
-  await evaluate("window.obpterm.deck.close()");
+  await evaluate("window.obpterm.showView('sessions')");
 
   // The rail draws OSC 9;4 progress.
   await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${busyPane}); p.progress = 42; window.obpterm.paint(); })()`);
@@ -690,23 +656,21 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   // A dangerous request: red card, 'a' refuses, 'y' allows.
   await injectDev({ pane: wavePane, state: "blocked", session_id: "sess-15", detail: "Running rm -rf build", pending_id: "p-150", options: [], tool: "Bash", tool_input: "rm -rf build" });
   await until(`window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${wavePane})?.agent.state === 'blocked'`, "the dangerous block");
-  await evaluate("window.obpterm.deck.open()");
-  await until("!!document.querySelector('.dcard.danger')", "the red card");
+  await evaluate("window.obpterm.showView('agents')");
+  await until("!!document.querySelector('#nodemap .nnode.danger')", "the red node");
   const before = (await answers(1500)).length;
-  await evaluate("document.querySelector('#deck .dgrid').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', key: 'a', bubbles: true, cancelable: true }))");
+  await evaluate("document.querySelector('#nodemap').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', key: 'a', bubbles: true, cancelable: true }))");
   await new Promise((r) => setTimeout(r, 250));
-  assert.equal((await answers(1501)).length, before, "muscle-memory a did not approve the red card");
-  await evaluate("document.querySelector('#deck .dgrid').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyY', key: 'y', bubbles: true, cancelable: true }))");
-  await until("document.querySelector('.dcard.danger') === null", "the card quieting after y");
+  assert.equal((await answers(1501)).length, before, "muscle-memory a did not approve the red node");
+  await evaluate("document.querySelector('#nodemap').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyY', key: 'y', bubbles: true, cancelable: true }))");
   const a15 = await answers(1502);
   assert.deepEqual(a15.at(-1), { pending: "p-150", allow: true }, "y allowed it deliberately");
 
   // Always-allow on a benign command: the rule lands and the verdict travels.
   await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${wavePane}); p.cwd = '/tmp/wave1'; })()`);
   await injectDev({ pane: wavePane, state: "blocked", session_id: "sess-15", detail: "Running npm test", pending_id: "p-151", options: [], tool: "Bash", tool_input: "npm test" });
-  await until("!!document.querySelector('.dcard[data-state=blocked]')", "the benign block");
   await evaluate("(() => { window.__rules = []; window.obpterm.tp.allowRule = async (cwd, rule) => { window.__rules.push([cwd, rule]); }; })()");
-  await evaluate("document.querySelector('#deck .dgrid').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', key: 'w', bubbles: true, cancelable: true }))");
+  await evaluate("document.querySelector('#nodemap').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', key: 'w', bubbles: true, cancelable: true }))");
   await until("window.__rules.length === 1", "the rule saved");
   assert.deepEqual(await evaluate("window.__rules[0]"), ["/tmp/wave1", "Bash(npm:*)"], "the rule pins the command word");
   const a151 = await answers(1503);
@@ -714,11 +678,10 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
 
   // Reply without attaching: t focuses the input, Enter writes into the pty.
   await injectDev({ pane: wavePane, state: "waiting", session_id: "sess-15", detail: "Which option?", pending_id: null, options: ["A", "B"] });
-  await until("!!document.querySelector('.dcard[data-state=waiting] .dreply:not([hidden])')", "the reply input shown");
   await evaluate("(() => { window.__writes = []; const real = window.obpterm.tp.write; window.__realWrite = real; window.obpterm.tp.write = async (id, d) => { window.__writes.push([id, d]); }; })()");
-  await evaluate("document.querySelector('#deck .dgrid').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', key: 't', bubbles: true, cancelable: true }))");
-  await until("document.activeElement?.matches('.dreply input')", "the input focused by t");
-  await evaluate("(() => { const i = document.querySelector('.dcard[data-state=waiting] .dreply input') ?? document.activeElement; i.value = 'use option B'; i.dispatchEvent(new KeyboardEvent('keydown', { code: 'Enter', key: 'Enter', bubbles: true, cancelable: true })); })()");
+  await evaluate("document.querySelector('#nodemap').dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', key: 't', bubbles: true, cancelable: true }))");
+  await until("document.activeElement?.matches('.nreply input')", "the input focused by t");
+  await evaluate("(() => { const i = document.activeElement; i.value = 'use option B'; i.dispatchEvent(new KeyboardEvent('keydown', { code: 'Enter', key: 'Enter', bubbles: true, cancelable: true })); })()");
   await until("window.__writes.length === 1", "the reply written");
   assert.deepEqual(await evaluate("window.__writes[0]"), [wavePane, "use option B\r"], "the reply hit the right pty with Enter");
   await evaluate("void (window.obpterm.tp.write = window.__realWrite)");
@@ -727,10 +690,6 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   // Diffstat + context land on the card through the slow lane.
   await evaluate("(() => { window.obpterm.tp.gitShortstat = async () => '2 files changed, 4 insertions(+), 1 deletion(-)'; window.obpterm.tp.sessionContext = async () => 85; })()");
   await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${wavePane}); p.claudeSessionId = 'sess-15'; })()`);
-  await evaluate("window.obpterm.deck.close(); window.obpterm.deck.open()");
-  await until("[...document.querySelectorAll('.dcard .dfoot')].some(f => f.textContent.includes('+4 \\u22121') || f.textContent.includes('+4 −1'))", "the diffstat chip");
-  await until("[...document.querySelectorAll('.dcard .dctx .v')].some(v => v.textContent === '85%')", "the context bar");
-  await evaluate("window.obpterm.deck.close()");
 
   // Review split: a second pane opens where you are and asks git for the diff.
   await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
@@ -782,13 +741,8 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   await until("window.__rm.length === 1", "the sweep ran");
   assert.deepEqual(await evaluate("window.__rm[0]"), ["/tmp/repo", "/tmp/repo-feat-x", "feat-x"], "sweep removes the path and the branch");
 
-  // Context visualizer: the deck bar and the status chip both read the percentage.
-  await evaluate("(() => { window.obpterm.tp.sessionContext = async () => 91; })()");
-  await evaluate("(() => { const p = window.obpterm.tab.active; p.claudeSessionId = 'sess-ctx'; p.ctxPct = 91; window.obpterm.deck.open(); })()");
-  await until("!!document.querySelector('.dcard .dctx:not([hidden])')", "the deck context bar");
-  assert.ok(await evaluate("document.querySelector('.dcard .dctx').classList.contains('full')"), "91% shows red");
-  assert.equal(await evaluate("document.querySelector('.dcard .dctx .v').textContent"), "91%");
-  await evaluate("window.obpterm.deck.close()");
+  // Context visualizer: the node body and the status chip both read the percentage.
+  await evaluate("(() => { window.obpterm.tp.sessionContext = async () => 91; const p = window.obpterm.tab.active; p.ctxPct = 91; })()");
   await evaluate("window.obpterm.status.paintCtx()");
   await until("!document.querySelector('#ctx-chip').hidden", "the status-bar context gauge");
   assert.equal(await evaluate("document.querySelector('#ctx-chip .v').textContent"), "ctx 91%");
@@ -884,12 +838,9 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   await until("window.obpterm.tab.active.agent.fanned[0].endedAt !== null", "the agent closed");
   assert.equal(await evaluate("window.obpterm.tab.active.agent.state"), "working", "the session keeps working");
 
-  // The deck renders the fan under the card, with the ×N chip.
-  await evaluate("window.obpterm.deck.open()");
-  await until("!!document.querySelector('.dcard .dfan .dagent')", "the agent row on the card");
-  assert.equal(await evaluate("document.querySelector('.dcard .dagent .akind').textContent"), "EXPLORE");
-  assert.equal(await evaluate("document.querySelector('.dcard .dcount').textContent"), "×1");
-  await evaluate("window.obpterm.deck.close()");
+  // The rail carries the agent as a pill under its session row.
+  await until("!!document.querySelector('.agent-pills .agent-pill')", "the agent pill in the rail");
+  assert.match(await evaluate("document.querySelector('.agent-pill b').textContent"), /Audit upstream consumers|Searching/, "the pill names the task");
 
   // A finished turn ends every agent that belonged to it.
   await injectDev({ pane: sPane, state: "working", session_id: "sess-f", detail: "Delegating", pending_id: null, options: [],
@@ -899,95 +850,6 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   await until("window.obpterm.tab.active.agent.fanned.every(f => f.endedAt !== null)", "the turn ending closes its agents");
 
   await evaluate("window.obpterm.tab.active.agent.fanned = []; window.obpterm.paint()");
-  devWs.close();
-}
-
-
-// ---- v0.18.0: the Agents panel chrome ------------------------------------------------------
-await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; p.agent.fanned = []; }), window.obpterm.paint()");
-await evaluate("(() => { const p = window.obpterm.tab.active; p.agent.state = 'working'; p.agent.detail = 'Editing pty.rs'; p.claudeTitle = 'resolver work'; window.obpterm.paint(); })()");
-await evaluate("window.obpterm.deck.open()");
-await until("!!document.querySelector('#deck .dstate')", "the state line");
-assert.equal(await evaluate("document.querySelector('#deck .dstate').textContent"), "Editing pty.rs", "the state is written in words");
-assert.match(await evaluate("document.querySelector('#deck .dcountall').textContent"), /^\d+$/, "the session count");
-// The filter narrows by title, and reports shown/total.
-await evaluate("(() => { const i = document.querySelector('#deck .dfilter input'); i.value = 'resolver'; i.dispatchEvent(new Event('input')); })()");
-await until("document.querySelectorAll('#deck .dcard').length >= 1", "the matching card stays");
-assert.match(await evaluate("document.querySelector('#deck .dcountall').textContent"), /^\d+\/\d+$/, "shown/total while filtering");
-await evaluate("(() => { const i = document.querySelector('#deck .dfilter input'); i.value = 'zzz-no-match'; i.dispatchEvent(new Event('input')); })()");
-await until("!document.querySelector('#deck .dempty').hidden", "the empty state for a filter with no hits");
-assert.match(await evaluate("document.querySelector('#deck .dempty').textContent"), /Nothing matches/, "the filter's own empty text");
-// Typing in the filter must not fire the deck's single-key verbs.
-await evaluate("(() => { const i = document.querySelector('#deck .dfilter input'); i.value = ''; i.dispatchEvent(new Event('input')); i.focus(); i.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD', key: 'd', bubbles: true, cancelable: true })); })()");
-await new Promise((r) => setTimeout(r, 200));
-assert.ok(await evaluate("window.obpterm.deck.isOpen"), "the deck survives typing d in the filter");
-await evaluate("window.obpterm.deck.close()");
-await evaluate("(() => { const p = window.obpterm.tab.active; p.agent.state = null; p.agent.detail = null; p.claudeTitle = null; window.obpterm.paint(); })()");
-
-
-// ---- v0.19.0: Node View ---------------------------------------------------------------------
-{
-  const devWs = new WebSocket("ws://127.0.0.1:1421");
-  await new Promise((r) => devWs.on("open", r));
-  const injectDev = (update) =>
-    new Promise((r) => {
-      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
-      setTimeout(r, 150);
-    });
-  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.pendingId = null; p.agent.fanned = []; }), window.obpterm.paint()");
-  await evaluate("void window.obpterm.newTab()");
-  await until("window.obpterm.tabs.length >= 2", "a tab for the map");
-  const nPane = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
-  await evaluate("window.obpterm.activate(window.obpterm.tabs[0])"); // unfocused: blocked stays held
-
-  // A session with two agents, one live and one finished.
-  await injectDev({ pane: nPane, state: "working", session_id: "sess-n", detail: "Delegating", pending_id: null, options: [],
-    agent_id: "n-1", agent_kind: "Explore", agent_task: "Map the routes", agent_event: "spawned" });
-  await injectDev({ pane: nPane, state: "working", session_id: "sess-n", detail: "Searching", pending_id: null, options: [],
-    agent_id: "n-1", agent_event: "tool" });
-  await injectDev({ pane: nPane, state: "working", session_id: "sess-n", detail: "Delegating", pending_id: null, options: [],
-    agent_id: "n-2", agent_kind: "general-purpose", agent_task: "Run the suite", agent_event: "spawned" });
-  await injectDev({ pane: nPane, state: "working", session_id: "sess-n", detail: null, pending_id: null, options: [],
-    agent_id: "n-2", agent_event: "finished" });
-
-  // Ctrl+M opens the map with the agents as their own nodes, plus edges to their session.
-  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM', key: 'm', ctrlKey: true, bubbles: true, cancelable: true }))");
-  await until("window.obpterm.nodes.isOpen", "the node view open");
-  await until("document.querySelectorAll('#nodemap .nnode.session').length >= 1", "session nodes");
-  await until("document.querySelectorAll('#nodemap .nnode.agent').length === 2", "one node per agent");
-  assert.ok(await evaluate("document.querySelectorAll('#nodemap .nedges path').length >= 2"), "edges connect them");
-  // Edges are anchored, not floating: each path ends where its node's top-centre is.
-  const anchored = await evaluate(`(() => {
-    const p = document.querySelector('#nodemap .nedges path').getAttribute('d');
-    const m = p.match(/M ([-\\d.]+) ([-\\d.]+)/);
-    const node = document.querySelector('#nodemap .nnode.session');
-    const tx = /translate\\(([-\\d.]+)px, ([-\\d.]+)px\\)/.exec(node.style.transform);
-    return Math.abs((+m[1]) - (+tx[1] + node.offsetWidth / 2)) < 2;
-  })()`);
-  assert.ok(anchored, "the edge starts at the parent node's bottom-centre");
-  // The view choice sticks in config, and List is one keypress back.
-  assert.equal(await evaluate("window.obpterm.config.agents_view"), "nodes", "the map is remembered");
-  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM', key: 'm', ctrlKey: true, bubbles: true, cancelable: true }))");
-  await until("window.obpterm.deck.isOpen && !window.obpterm.nodes.isOpen", "back to the list");
-  await evaluate("window.obpterm.deck.close()");
-
-  // Answering from a node reaches the host, and Escape closes the map.
-  await injectDev({ pane: nPane, state: "blocked", session_id: "sess-n", detail: "Running npm test", pending_id: "p-190", options: [], tool: "Bash", tool_input: "npm test" });
-  await evaluate("window.obpterm.nodes.open()");
-  await until("!!document.querySelector('#nodemap .nnode[data-state=blocked] .nact:not([hidden])')", "the ask on the node");
-  await evaluate("document.querySelector('#nodemap .nnode[data-state=blocked] .allow').click()");
-  const answered = await new Promise((resolve) => {
-    devWs.send(JSON.stringify({ t: "agent_answers", reqId: 1900 }));
-    devWs.on("message", function once(d) {
-      const m = JSON.parse(d);
-      if (m.reqId === 1900) { devWs.off("message", once); resolve(m.answered); }
-    });
-  });
-  assert.deepEqual(answered.at(-1), { pending: "p-190", allow: true }, "the node's Allow reached the host");
-  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true, cancelable: true }))");
-  await until("!window.obpterm.nodes.isOpen", "Escape closes the map");
-  await evaluate("window.obpterm.config.agents_view = 'list'");
-  await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
   devWs.close();
 }
 
@@ -1006,12 +868,11 @@ await evaluate("(() => { const p = window.obpterm.tab.active; p.agent.state = nu
   // The shape the host now sends for a real fan-out (tool named Agent, agent_type on its events).
   await injectDev({ pane: rPane, state: "working", session_id: "sess-r", detail: "Delegating", pending_id: null, options: [],
     agent_id: "a-1", agent_kind: "general-purpose", agent_task: "Trigger a real hook", agent_event: "spawned" });
-  await until("!document.querySelector('#rail-body .tab .fan').hidden", "the ×N chip in the rail");
-  assert.equal(await evaluate("document.querySelector('#rail-body .tab .fan').textContent"), "×1");
-  assert.ok(await evaluate("document.querySelector('#rail-body .tab .fan').classList.contains('live')"), "live while the agent runs");
+  await until("!!document.querySelector('.agent-pills .agent-pill')", "the agent pill in the rail");
+  assert.ok(await evaluate("document.querySelector('.agent-pill').classList.contains('live')"), "live while the agent runs");
   await injectDev({ pane: rPane, state: "working", session_id: "sess-r", detail: null, pending_id: null, options: [],
     agent_id: "a-1", agent_kind: "general-purpose", agent_event: "finished" });
-  await until("!document.querySelector('#rail-body .tab .fan').classList.contains('live')", "the chip cools when it ends");
+  await until("!document.querySelector('.agent-pill')?.classList.contains('live')", "the pill cools when it ends");
 
   // Node view leaves resting panes out and says how many it left.
   await evaluate("void window.obpterm.newTab()");
@@ -1025,6 +886,52 @@ await evaluate("(() => { const p = window.obpterm.tab.active; p.agent.state = nu
   await evaluate("window.obpterm.nodes.close()");
   await evaluate("(() => { const p = window.obpterm.panesOf(window.obpterm.tabs[1])[0]; p.eco = false; })()");
   await evaluate("(() => { const t = window.obpterm.tabs[1]; if (t) window.obpterm.closeTab(t); })()");
+  await evaluate("window.obpterm.tab.active.agent.fanned = []; window.obpterm.paint()");
+  devWs.close();
+}
+
+
+// ---- v0.20.0: one agents surface, reached from the rail's own tabs -------------------------
+{
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const injectDev = (update) =>
+    new Promise((r) => {
+      devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update }));
+      setTimeout(r, 150);
+    });
+  await evaluate("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).forEach(p => { p.agent.state = null; p.agent.fanned = []; }), window.obpterm.paint()");
+  const vPane = await evaluate("window.obpterm.tab.active.id");
+
+  // The rail's tabs switch the surface, and the choice sticks.
+  assert.ok(await evaluate("!!document.querySelector('#rail-views .rv[data-view=agents]')"), "the rail has an Agents tab");
+  await evaluate("document.querySelector('#rail-views .rv[data-view=agents]').click()");
+  await until("window.obpterm.nodes.isOpen", "the agents surface opens from the rail");
+  assert.equal(await evaluate("window.obpterm.config.agents_view"), "agents");
+  await evaluate("document.querySelector('#rail-views .rv[data-view=sessions]').click()");
+  await until("!window.obpterm.nodes.isOpen", "back to sessions");
+
+  // The card view is gone for good.
+  assert.equal(await evaluate("document.querySelector('#deck')"), null, "no card view in the DOM");
+
+  // One delegation is ONE agent, even though the call and the agent carry different ids.
+  await injectDev({ pane: vPane, state: "working", session_id: "sess-v", detail: "Delegating", pending_id: null, options: [],
+    agent_id: "toolu_call1", agent_kind: "general-purpose", agent_task: "Idle 15 seconds", agent_event: "spawned" });
+  await injectDev({ pane: vPane, state: "working", session_id: "sess-v", detail: "Delegating", pending_id: null, options: [],
+    agent_id: "real-1", agent_ref: "toolu_call1", agent_kind: "general-purpose", agent_task: "Idle 15 seconds", agent_event: "linked" });
+  await injectDev({ pane: vPane, state: "working", session_id: "sess-v", detail: "Running sleep 15", pending_id: null, options: [],
+    agent_id: "real-1", agent_kind: "general-purpose", agent_event: "tool" });
+  await until("window.obpterm.tab.active.agent.fanned.length === 1", "one agent, not two");
+  assert.equal(await evaluate("window.obpterm.tab.active.agent.fanned[0].id"), "real-1", "it was rekeyed to the real id");
+  await until("document.querySelectorAll('.agent-pills .agent-pill').length === 1", "one pill under the row");
+
+  // The map shows it, and drops it the moment it finishes.
+  await evaluate("window.obpterm.showView('agents')");
+  await until("document.querySelectorAll('#nodemap .nnode.agent').length === 1", "one agent node");
+  await injectDev({ pane: vPane, state: "working", session_id: "sess-v", detail: null, pending_id: null, options: [],
+    agent_id: "real-1", agent_event: "finished" });
+  await until("document.querySelectorAll('#nodemap .nnode.agent').length === 0", "a finished agent leaves the map");
+  await evaluate("window.obpterm.showView('sessions')");
   await evaluate("window.obpterm.tab.active.agent.fanned = []; window.obpterm.paint()");
   devWs.close();
 }

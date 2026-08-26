@@ -37,8 +37,10 @@ pub struct AgentEvent {
     pub agent_kind: Option<String>,
     /// The Task's own description: "Audit upstream consumers".
     pub agent_task: Option<String>,
-    /// spawned | tool | finished — what just happened to that agent.
+    /// spawned | linked | tool | finished — what just happened to that agent.
     pub agent_event: Option<String>,
+    /// On `linked`: the spawn's tool_use_id, so the window can rekey the agent it opened.
+    pub agent_ref: Option<String>,
 }
 
 /// Maps one hook payload to an event. Pure, so it is testable without HTTP or hooks.
@@ -58,19 +60,35 @@ pub fn normalize(pane: u32, payload: &serde_json::Value) -> Option<AgentEvent> {
         agent_kind: None,
         agent_task: None,
         agent_event: None,
+        agent_ref: None,
     };
     Some(match event {
         "UserPromptSubmit" => mk("working", None),
         // A Task call IS the fan-out: PreToolUse opens an agent, PostToolUse closes it.
+        // The delegation itself. PreToolUse opens an agent keyed by the CALL's id; PostToolUse
+        // carries the real agent id in its response and only LINKS the two — it does not mean
+        // the agent finished (a background one returns `async_launched` immediately, and even a
+        // synchronous one is closed by SubagentStop).
         "PreToolUse" | "PostToolUse" if is_task(payload) => {
+            let call = payload.get("tool_use_id").and_then(|v| v.as_str()).map(str::to_string);
             let mut e = mk("working", tool_activity(payload));
-            e.agent_id = payload.get("tool_use_id").and_then(|v| v.as_str()).map(str::to_string);
             e.agent_kind = payload.pointer("/tool_input/subagent_type").and_then(|v| v.as_str()).map(str::to_string);
             e.agent_task = payload
                 .pointer("/tool_input/description")
                 .and_then(|v| v.as_str())
                 .map(|s| s.chars().take(80).collect());
-            e.agent_event = Some(if event == "PreToolUse" { "spawned" } else { "finished" }.into());
+            if event == "PreToolUse" {
+                e.agent_id = call;
+                e.agent_event = Some("spawned".into());
+            } else {
+                e.agent_id = payload
+                    .pointer("/tool_response/agentId")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .or_else(|| call.clone());
+                e.agent_ref = call;
+                e.agent_event = Some("linked".into());
+            }
             e
         }
         "PreToolUse" | "PostToolUse" => {

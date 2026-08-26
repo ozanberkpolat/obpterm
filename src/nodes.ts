@@ -57,7 +57,6 @@ export class Nodes {
     this.installDrag();
     $("#nodemap .nfit").addEventListener("click", () => this.fit());
     $("#nodemap .nclose").addEventListener("click", () => this.close());
-    $("#nodemap .nlist").addEventListener("click", () => this.app.toggleAgentsView());
     $("#nodemap .nzoom-in").addEventListener("click", () => this.setZoom(this.zoom * 1.2));
     $("#nodemap .nzoom-out").addEventListener("click", () => this.setZoom(this.zoom / 1.2));
   }
@@ -89,7 +88,8 @@ export class Nodes {
     // Row 1: sessions. Row 2: each session's agents, centred under their parent.
     let x = 0;
     for (const s of sessions) {
-      const agents = s.pane!.agent.fanned;
+      // The map is what is happening: an agent that has finished is gone from it.
+      const agents = s.pane!.agent.fanned.filter((a) => a.endedAt === null);
       const fanW = agents.length ? agents.length * AGENT_W + (agents.length - 1) * 16 : 0;
       const slotW = Math.max(s.w, fanW);
       s.x = x + (slotW - s.w) / 2;
@@ -156,7 +156,8 @@ export class Nodes {
       `<header><span class="ndot"></span><span class="nname"></span><span class="nproj" hidden></span><span class="npill"></span></header>` +
       `<div class="nbody"></div>` +
       `<footer class="nfoot"></footer>` +
-      `<div class="nact" hidden><button class="allow">Allow</button><button class="deny">Deny</button></div>`;
+      `<div class="nact" hidden><button class="allow">Allow</button><button class="deny">Deny</button><button class="always" title="Allow, and never ask for this command in this project again">Always</button></div>` +
+      `<div class="nreply" hidden><input type="text" placeholder="type an answer — Enter sends it" spellcheck="false"></div>`;
     // A node is born where its parent is: the entrance starts from the edge's anchor.
     const parent = this.nodes.find((p) => p.id === n.parent);
     if (parent) {
@@ -174,6 +175,27 @@ export class Nodes {
       e.stopPropagation();
       if (n.pane) void this.app.answerAgent(n.pane, false);
     };
+    el.querySelector<HTMLButtonElement>(".always")!.onclick = (e) => {
+      e.stopPropagation();
+      if (n.pane) void this.alwaysAllow(n.pane);
+    };
+    const reply = el.querySelector<HTMLInputElement>(".nreply input")!;
+    reply.addEventListener("click", (e) => e.stopPropagation());
+    reply.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.code === "Escape") {
+        reply.value = "";
+        this.root.focus();
+      } else if (e.code === "Enter" && reply.value.trim() && n.pane) {
+        void this.app.tp.write(n.pane.id, reply.value + "\r").catch(() => {});
+        n.pane.agent.state = "working";
+        n.pane.agent.workingSince = Date.now();
+        n.pane.agent.pendingId = null;
+        reply.value = "";
+        this.root.focus();
+        this.app.paint();
+      }
+    });
     this.world.appendChild(el);
     this.els.set(n.id, el);
     return el;
@@ -236,6 +258,7 @@ export class Nodes {
         .join(" · "),
     );
     act.hidden = !(a.state === "blocked" && a.pendingId);
+    el.querySelector<HTMLElement>(".nreply")!.hidden = !(a.state === "blocked" || a.state === "waiting");
     el.classList.toggle("danger", a.state === "blocked" && isDangerous(a));
   }
 
@@ -335,17 +358,37 @@ export class Nodes {
       else void this.app.answerAgent(pane, true);
     } else if (e.code === "KeyY" && pane?.agent.pendingId && danger) void this.app.answerAgent(pane, true);
     else if (e.code === "KeyD" && pane?.agent.pendingId) void this.app.answerAgent(pane, false);
-    else if (e.code === "KeyF") this.fit();
+    else if (e.code === "KeyW" && pane?.agent.pendingId) void this.alwaysAllow(pane);
+    else if (e.code === "KeyT" && pane && (pane.agent.state === "blocked" || pane.agent.state === "waiting")) {
+      this.els.get(n!.id)?.querySelector<HTMLInputElement>(".nreply input")?.focus();
+    } else if (e.code === "KeyF") this.fit();
     else if (e.code === "Enter" && n) this.activate(n);
     else return;
     e.preventDefault();
     e.stopPropagation();
   }
 
+  /** `w`: persist "always allow this" into the project's own Claude settings, then allow. */
+  private async alwaysAllow(pane: Pane) {
+    const a = pane.agent;
+    if (isDangerous(a)) return toast("Not making a standing rule out of a dangerous command");
+    if (a.tool !== "Bash" || !a.toolInput) return toast("Always-allow only knows shell commands so far — Allow it normally");
+    const word = a.toolInput.trim().split(/\s+/)[0];
+    if (!word || !pane.cwd) return toast("No command word or working directory to pin the rule to");
+    const rule = `Bash(${word}:*)`;
+    try {
+      await this.app.tp.allowRule(pane.cwd, rule);
+      await this.app.answerAgent(pane, true);
+      toast(`Allowed, and ${rule} is now always allowed in this project`);
+    } catch (e) {
+      toast(`Rule not saved: ${e}`);
+    }
+  }
+
   /** Clicking a node goes to the real thing: its tab and pane, terminal and all. */
   private activate(n: Node) {
     if (!n.pane || !n.tab) return;
-    this.close();
+    this.app.showView("sessions");
     this.app.activate(n.tab);
     this.app.focusPane(n.pane);
   }

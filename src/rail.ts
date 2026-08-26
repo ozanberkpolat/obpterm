@@ -47,21 +47,31 @@ export function renderRail(app: App) {
   patchAgents(app);
 }
 
-/** The pinned Agents row: hidden until a Claude session exists, loud only when one waits. */
+/** The rail's own tabs: Sessions and Agents. The badge rides the Agents tab, and the line
+ *  under them names whatever is waiting on you. */
 function patchAgents(app: App) {
-  const el = document.querySelector<HTMLElement>("#rail-agents")!;
+  const bar = document.querySelector<HTMLElement>("#rail-views")!;
   const c = app.agentCounts();
-  el.hidden = c.total === 0;
-  if (el.hidden) return;
-  el.classList.toggle("alert", c.needsYou > 0);
-  const badge = el.querySelector<HTMLElement>(".abadge")!;
+  const view = app.config.agents_view;
+  for (const b of bar.querySelectorAll<HTMLElement>(".rv")) {
+    b.classList.toggle("on", b.dataset.view === view);
+    if (!b.dataset.wired) {
+      b.dataset.wired = "1";
+      b.onclick = () => app.showView(b.dataset.view as "sessions" | "agents");
+    }
+  }
+  const badge = bar.querySelector<HTMLElement>(".rvbadge")!;
   const n = c.needsYou || c.doneUnread;
   badge.hidden = n === 0;
   set(badge, n ? String(n) : "");
   badge.classList.toggle("quietly", !c.needsYou && c.doneUnread > 0);
-  set(el.querySelector<HTMLElement>(".asub")!, c.needsYou ? (c.loudest ?? "") : "");
-  set(el.querySelector<HTMLElement>(".awork")!, c.working ? `${c.working} working` : c.sleeping ? `${c.sleeping} sleeping` : "");
-  el.onclick = () => app.deck.toggle();
+  bar.classList.toggle("alert", c.needsYou > 0);
+
+  const line = document.querySelector<HTMLElement>("#rail-agentline")!;
+  const text = c.needsYou ? (c.loudest ?? "") : c.working ? `${c.working} working` : "";
+  line.hidden = !text;
+  set(line, text);
+  line.classList.toggle("hot", c.needsYou > 0);
 }
 
 function patchHeader(app: App) {
@@ -131,7 +141,6 @@ function rowFor(app: App, tab: Tab): Row {
   li.innerHTML =
     `<span class="num"></span>` +
     `<span class="label"><span class="title"></span><span class="sub"></span></span>` +
-    `<span class="fan" hidden title="agents this session fanned out"></span>` +
     `<span class="badge" hidden></span><span class="rec" hidden title="capturing to a log file">●</span>` +
     `<span class="st"></span>` +
     `<button class="close" title="Close this tab (Ctrl+Shift+Q)">×</button>`;
@@ -157,6 +166,43 @@ function rowFor(app: App, tab: Tab): Row {
   };
   rows.set(tab, row);
   return row;
+}
+
+/** The agents a session fanned out, as small pills directly under its row. They appear as
+ *  they are spawned and leave when they finish — the rail says what is happening now. */
+function patchAgentPills(tab: Tab, row: Row) {
+  const agents = L.panes(tab.root).flatMap((p) => p.agent.fanned);
+  let holder = row.li.nextElementSibling as HTMLElement | null;
+  if (!holder?.classList.contains("agent-pills")) holder = null;
+  if (!agents.length) {
+    holder?.remove();
+    return;
+  }
+  if (!holder) {
+    holder = document.createElement("li");
+    holder.className = "agent-pills";
+    row.li.after(holder);
+  }
+  const seen = new Set<string>();
+  for (const a of agents) {
+    seen.add(a.id);
+    let pill = holder.querySelector<HTMLElement>(`[data-agent="${CSS.escape(a.id)}"]`);
+    if (!pill) {
+      pill = document.createElement("span");
+      pill.className = "agent-pill enter";
+      pill.dataset.agent = a.id;
+      pill.innerHTML = `<i></i><b></b>`;
+      holder.appendChild(pill);
+      window.setTimeout(() => pill?.classList.remove("enter"), 420);
+    }
+    pill.classList.toggle("live", a.endedAt === null);
+    const secs = Math.round(((a.endedAt ?? Date.now()) - a.startedAt) / 1000);
+    set(pill.querySelector<HTMLElement>("b")!, a.task || a.feed || a.kind);
+    pill.title = `${a.kind} · ${a.task || a.feed || "working"} · ${secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m`}${a.tools ? ` · ${a.tools} tools` : ""}`;
+  }
+  for (const pill of [...holder.children]) {
+    if (!seen.has((pill as HTMLElement).dataset.agent!)) pill.remove();
+  }
 }
 
 function patchRow(app: App, tab: Tab) {
@@ -196,13 +242,7 @@ function patchRow(app: App, tab: Tab) {
   row.badge.hidden = panes.length < 2;
   set(row.badge, panes.length > 1 ? String(panes.length) : "");
   row.rec.hidden = !panes.some((p) => p.logPath);
-  // The ×N chip belongs in the rail too: it is where the eye already is.
-  const fanned = panes.flatMap((p) => p.agent.fanned);
-  const liveFan = fanned.filter((f) => f.endedAt === null).length;
-  const fanEl = row.li.querySelector<HTMLElement>(".fan")!;
-  fanEl.hidden = fanned.length === 0;
-  set(fanEl, `×${fanned.length}`);
-  fanEl.classList.toggle("live", liveFan > 0);
+  patchAgentPills(tab, row);
   // The motion language: one word per row, priority ordered, and stillness is a state too.
   const motion = panes.some((p) => p.agent.state === "blocked" && isDangerous(p.agent))
     ? "danger"

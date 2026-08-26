@@ -8,7 +8,6 @@ import { installToolbar } from "./toolbar";
 import { installHeader } from "./header";
 import { installPalette } from "./palette";
 import { installSettings } from "./settings-panel";
-import { Deck } from "./deck";
 import { Nodes } from "./nodes";
 import { installAgentEvents } from "./agent";
 import "./settings.css";
@@ -30,7 +29,6 @@ async function main() {
   app.toolbar = installToolbar(app);
   app.palette = installPalette(app);
   app.settings = installSettings(app);
-  app.deck = new Deck(app);
   app.nodes = new Nodes(app);
   installHeader(app);
   app.applyRailWidth();

@@ -68,6 +68,7 @@ export interface AgentUpdate {
   agent_kind?: string | null;
   agent_task?: string | null;
   agent_event?: string | null;
+  agent_ref?: string | null;
 }
 
 /** Applies one hook event. Returns what the app should do beyond repainting. */
@@ -148,6 +149,18 @@ export function reduce(a: AgentState, u: AgentUpdate, focused: boolean): "notify
 /** Opens, feeds and closes the agents a session fanned out. */
 function applyFan(a: AgentState, u: AgentUpdate) {
   const id = u.agent_id!;
+  // The delegation and the agent have different ids; `linked` is where they meet. Rekey the
+  // entry the spawn opened instead of starting a second one — counting both is what showed
+  // four agents for two.
+  if (u.agent_event === "linked" && u.agent_ref) {
+    const opened = a.fanned.find((f) => f.id === u.agent_ref);
+    if (opened) {
+      opened.id = id;
+      if (u.agent_kind) opened.kind = u.agent_kind;
+      if (u.agent_task) opened.task = u.agent_task;
+      return;
+    }
+  }
   let agent = a.fanned.find((f) => f.id === id);
   if (!agent) {
     if (u.agent_event === "finished") return; // a close for an agent we never saw open
@@ -161,6 +174,15 @@ function applyFan(a: AgentState, u: AgentUpdate) {
     if (u.detail) agent.feed = u.detail;
   }
   if (u.agent_event === "finished") agent.endedAt = Date.now();
+}
+
+/** Agents drop off the views a few seconds after they finish — a finished agent is history,
+ *  and the map is for what is happening. */
+export function pruneFan(a: AgentState): boolean {
+  const cutoff = Date.now() - 6000;
+  const before = a.fanned.length;
+  a.fanned = a.fanned.filter((f) => f.endedAt === null || f.endedAt > cutoff);
+  return a.fanned.length !== before;
 }
 
 /** Agents still running for this session. */

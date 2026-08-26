@@ -1,6 +1,6 @@
 // Tabs, panes and projects. A tab owns a pane tree; a project groups tabs, gives them a colour
 // and can save/restore its own set of tabs.
-import { isClaudePane, isDangerous, tick as agentTick } from "./agent";
+import { isClaudePane, isDangerous, pruneFan, tick as agentTick } from "./agent";
 import { withDefaults, type Account, type Config, type Host, type Profile, type Project, type Transport } from "./transport";
 import { ACTIVE_MS, Pane, type PaneHost } from "./pane";
 import * as L from "./layout";
@@ -86,7 +86,6 @@ export class App implements PaneHost {
   toolbar!: { paint(): void };
   palette!: import("./palette").Palette;
   settings!: import("./settings-panel").Settings;
-  deck!: import("./deck").Deck;
   nodes!: import("./nodes").Nodes;
   private panesEl = $("#panes");
   private sessionTimer = 0;
@@ -809,13 +808,13 @@ export class App implements PaneHost {
     this.checkSilence();
     for (const tab of this.tabs) {
       for (const pane of L.panes(tab.root)) {
+        pruneFan(pane.agent);
         if (agentTick(pane.agent)) {
           // fell stale; nothing else to do — the repaint below shows it
         }
       }
     }
     renderRail(this);
-    this.deck?.paint();
     // The orbit rim must follow the agent state without a full repaint.
     const tab = this.tab;
     if (tab) {
@@ -1009,23 +1008,17 @@ export class App implements PaneHost {
     void this.tp.keepAwake(on).catch(() => {});
   }
 
-  /** The agents surface, in whichever view was last used. */
-  openAgents() {
-    if (this.config.agents_view === "nodes") this.nodes.open();
-    else this.deck.open();
+  /** The two surfaces the rail switches between: the terminal, and the agents map. */
+  showView(view: "sessions" | "agents") {
+    if (view === "agents") this.nodes.open();
+    else this.nodes.close();
+    this.config.agents_view = view;
+    this.persistConfig();
+    this.paint();
   }
 
   toggleAgentsView() {
-    const toNodes = !this.nodes.isOpen;
-    this.config.agents_view = toNodes ? "nodes" : "list";
-    this.persistConfig();
-    if (toNodes) {
-      this.deck.close();
-      this.nodes.open();
-    } else {
-      this.nodes.close();
-      this.deck.open();
-    }
+    this.showView(this.nodes.isOpen ? "sessions" : "agents");
   }
 
   /** Ctrl+Shift+G: the next Claude session that waits on the user, cycling. */
@@ -1104,7 +1097,6 @@ export class App implements PaneHost {
   /** Repaint the rail. Cheap: the rail is the only derived view. */
   paint() {
     renderRail(this);
-    this.deck?.paint();
     this.nodes?.paint();
     const counts = this.agentCounts();
     this.syncBadge(counts.needsYou);

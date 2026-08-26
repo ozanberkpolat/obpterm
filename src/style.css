@@ -486,87 +486,7 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 #rail.collapsed #rail-agents.alert .abadge { color: var(--accent); }
 #rail.collapsed #rail-agents:has(.abadge:not([hidden])) .spark { display: none; }
 
-#deck {
-  position: fixed; inset: 0; z-index: 24;
-  display: flex; justify-content: center; align-items: stretch;
-  padding: 6vh 4vw; background: rgba(4, 7, 12, .55);
-}
 #deck[hidden] { display: none; }
-.dbox {
-  flex: 1; min-width: 0; display: flex; flex-direction: column;
-  background: linear-gradient(180deg, var(--panel), var(--panel2));
-  border: 1px solid var(--border-2); border-radius: 18px;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, .55); overflow: hidden;
-}
-.dhead {
-  flex: none; display: flex; align-items: baseline; gap: 14px;
-  padding: 16px 20px 12px; border-bottom: 1px solid var(--border);
-}
-.dtitle { font-size: 16px; font-weight: 800; color: var(--ink); }
-.dsummary { display: flex; gap: 12px; font: 600 11px var(--mono); color: var(--faint); }
-.dsummary .hot { color: var(--accent); }
-.dhead .grow { flex: 1; }
-.dhint { font-size: 11.5px; color: var(--faint); }
-.dclose {
-  align-self: center; width: 26px; height: 26px; border-radius: 999px;
-  background: none; border: 0; color: var(--faint); font-size: 16px; cursor: pointer;
-}
-.dclose:hover { background: var(--border); color: var(--ink); }
-.dgrid {
-  flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  grid-auto-rows: minmax(180px, max-content); gap: 12px; padding: 14px 20px 20px;
-  overflow-y: auto; align-content: start;
-}
-.dempty { padding: 30px 24px; color: var(--faint); font-size: 13px; }
-.dcard {
-  display: flex; flex-direction: column; min-width: 0; cursor: pointer;
-  border: 1px solid var(--border-2); border-radius: 14px;
-  background: linear-gradient(180deg, var(--panel), var(--panel2)); overflow: hidden;
-}
-.dcard:hover { border-color: color-mix(in srgb, var(--card-accent, var(--accent)) 45%, transparent); }
-.dcard[data-state="blocked"], .dcard[data-state="waiting"] {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
-}
-.dcard header {
-  display: flex; align-items: center; gap: 8px; padding: 9px 12px;
-  border-bottom: 1px solid var(--border);
-}
-.ddot { width: 8px; height: 8px; border-radius: 999px; flex: none; background: var(--card-accent, var(--accent)); }
-.dname {
-  flex: 1; min-width: 0; font-weight: 700; font-size: 12.5px; color: var(--ink);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.dchip {
-  font: 600 9.5px var(--sans); text-transform: uppercase; letter-spacing: .06em;
-  padding: 2px 8px; border-radius: 999px; flex: none;
-  background: var(--border); color: var(--faint);
-}
-.dcard[data-state="blocked"] .dchip, .dcard[data-state="waiting"] .dchip {
-  background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent);
-}
-.dcard[data-state="working"] .dchip { background: rgba(47, 214, 163, .14); color: #2fd6a3; }
-.dcard[data-state="done"] .dchip { background: rgba(76, 141, 255, .16); color: #4c8dff; }
-.dtail {
-  flex: 1; margin: 0; padding: 10px 12px; min-height: 70px;
-  font: 10.5px/1.6 var(--mono); color: var(--faint);
-  white-space: pre; overflow: hidden; background: var(--bg);
-}
-.dask { padding: 9px 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--ink); }
-.dask .opts { margin: 6px 0 0; padding: 0 0 0 16px; color: var(--faint); font-size: 11.5px; }
-.dactions { display: flex; gap: 8px; padding: 0 12px 10px; }
-.dactions button {
-  padding: 5px 14px; border-radius: 999px; border: 0; cursor: pointer;
-  font-size: 11px; font-weight: 700;
-}
-.dactions .allow { background: var(--accent-fill); color: #04101f; }
-.dactions .deny { background: none; border: 1px solid var(--border-2); color: var(--faint); }
-.dactions .deny:hover { border-color: #ff6b73; color: #ff6b73; }
-.dfoot {
-  display: flex; align-items: center; gap: 8px; padding: 7px 12px;
-  border-top: 1px solid var(--border); font-size: 11px; color: var(--faint);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
 
 /* ---- v0.14.0: progress slivers, deck selection, capture/awake chips ---- */
 .tab.has-prog { position: relative; }
@@ -576,37 +496,12 @@ button.chip:hover { background: var(--border); color: var(--ink); }
   background: linear-gradient(to right, var(--tab-accent, var(--accent)) var(--prog, 0%), rgba(140, 160, 190, .18) var(--prog, 0%));
 }
 #rail.collapsed .tab.has-prog::after { left: 4px; right: 4px; }
-.dprog { height: 4px; margin: 0 12px 8px; border-radius: 999px; background: rgba(140, 160, 190, .18); overflow: hidden; }
-.dprog i { display: block; height: 100%; border-radius: 999px; background: var(--card-accent, var(--accent)); }
-.dcard.selected { outline: 2px solid color-mix(in srgb, var(--card-accent, var(--accent)) 65%, transparent); outline-offset: 1px; }
-.dgrid:focus { outline: none; }
 #capture { cursor: pointer; }
 #awake { color: var(--faint); font-size: 11px; }
 
 /* ---- v0.15.0: review & steer ---- */
-.dcard.danger { border-color: rgba(255, 107, 115, .65); box-shadow: 0 0 0 1px rgba(255, 107, 115, .3); }
-.dcard.danger .dchip { background: rgba(255, 107, 115, .18); color: #ff6b73; }
-.dcard.danger .dactions .allow { background: none; border: 1px solid rgba(255, 107, 115, .5); color: #ff6b73; }
-.dreply { padding: 0 12px 10px; }
-.dreply input {
-  width: 100%; padding: 6px 12px; border-radius: 999px;
-  background: var(--bg); border: 1px solid var(--border-2); color: var(--ink);
-  font: 12px var(--mono); outline: none;
-}
-.dreply input:focus { border-color: var(--card-accent, var(--accent)); }
-.dfoot.ctx-high { color: #ffb454; }
-.dactions .always { background: none; border: 1px solid var(--border-2); color: var(--faint); }
-.dactions .always:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ---- v0.16.0: worktrees + context visualizer ---- */
-.dctx { display: flex; align-items: center; gap: 6px; padding: 0 12px 8px; }
-.dctx .k { font: 600 9px var(--sans); text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
-.dctx .bar { flex: 1; height: 4px; border-radius: 999px; background: rgba(140, 160, 190, .18); overflow: hidden; }
-.dctx .bar i { display: block; height: 100%; border-radius: 999px; background: #2fd6a3; transition: width .3s; }
-.dctx.high .bar i { background: #ffb454; }
-.dctx.full .bar i { background: #ff6b73; }
-.dctx .v { font: 600 10px var(--mono); color: var(--faint); min-width: 32px; text-align: right; }
-.dctx.full .v { color: #ff6b73; }
 #ctx-chip .bar i { background: #2fd6a3; }
 #ctx-chip.high .bar i { background: #ffb454; }
 #ctx-chip.full .bar i { background: #ff6b73; }
@@ -657,52 +552,10 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 @keyframes orbit { to { --orbit: 480deg; } }
 
 /* ---- v0.18.0: the agents each session fanned out, under its card ------------------------ */
-.dcount {
-  font: 700 9.5px var(--mono); padding: 2px 7px; border-radius: 999px; flex: none;
-  background: var(--border); color: var(--faint);
-}
-.dcount.live { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-.dfan { display: flex; flex-direction: column; gap: 2px; padding: 0 10px 10px 22px; }
-.dagent {
-  display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 3px 9px;
-  border-radius: 9px; border-left: 1.5px solid rgba(140, 160, 190, .25); background: rgba(10, 14, 20, .5);
-}
-.dagent.live { border-left-color: color-mix(in srgb, var(--accent) 55%, transparent); }
-.dagent .adot { width: 6px; height: 6px; border-radius: 999px; flex: none; background: #4c8dff; }
-.dagent.live .adot { background: #2fd6a3; box-shadow: 0 0 5px rgba(47, 214, 163, .7); }
-.dagent .akind { font: 700 8px var(--sans); letter-spacing: .1em; color: var(--faint); flex: none; }
-.dagent.live .akind { color: var(--accent); }
-.dagent .atask {
-  flex: 1; min-width: 0; font-size: 11.5px; color: var(--ink);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.dagent .afeed { font: 500 9.5px var(--mono); color: var(--faint); flex: none; }
 /* born from an event: it arrives once, then holds still */
-.dagent.enter { animation: agent-in .42s cubic-bezier(.2, .8, .3, 1); }
 @keyframes agent-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
 
 /* ---- v0.18.0: the Agents panel chrome --------------------------------------------------- */
-.dfilter {
-  display: flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px;
-  background: var(--bg); border: 1px solid var(--border-2); color: var(--faint);
-}
-.dfilter:focus-within { border-color: var(--accent); color: var(--accent); }
-.dfilter input {
-  width: 150px; background: none; border: 0; outline: none;
-  color: var(--ink); font: 12px var(--sans);
-}
-.dcountall { font: 600 10px var(--mono); color: var(--faint); }
-.dproj {
-  font: 700 9px var(--mono); padding: 2px 7px; border-radius: 999px; flex: none;
-  letter-spacing: .02em;
-}
-.dstate {
-  padding: 7px 12px 0; font-size: 11.5px; color: var(--faint);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.dstate[data-state="blocked"], .dstate[data-state="waiting"] { color: var(--accent); }
-.dstate[data-state="done"] { color: #4c8dff; }
-.dcard.danger .dstate { color: #ff6b73; }
 
 /* ---- v0.19.0: Node View — the workspace as connected nodes ------------------------------ */
 #nodemap {
@@ -803,10 +656,59 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 #rail.collapsed .tab .fan { display: none; }
 
 /* why there are no agents, said where they are missing */
-.ddiag {
-  margin: 0 20px 10px; padding: 8px 14px; border-radius: 10px;
-  background: rgba(255, 180, 84, .08); border: 1px solid rgba(255, 180, 84, .25);
-  font-size: 11.5px; color: #ffb454;
-}
 .ndiag { left: 22px; top: 74px; right: 22px; color: #ffb454; font-size: 11.5px;
   background: rgba(255, 180, 84, .1); border-color: rgba(255, 180, 84, .3); }
+
+/* agents a session fanned out, as pills beneath its rail row */
+.agent-pills { display: flex; flex-wrap: wrap; gap: 3px; padding: 1px 8px 4px 26px; list-style: none; }
+.agent-pill {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  padding: 2px 8px; border-radius: 999px; background: rgba(140, 160, 190, .1);
+  font-size: 10.5px; color: var(--faint);
+}
+.agent-pill i { width: 5px; height: 5px; border-radius: 999px; background: #4c8dff; flex: none; }
+.agent-pill.live { background: color-mix(in srgb, var(--accent) 12%, transparent); color: #ffcf9e; }
+.agent-pill.live i { background: #2fd6a3; box-shadow: 0 0 5px rgba(47, 214, 163, .7); }
+.agent-pill b {
+  font-weight: 600; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.agent-pill.enter { animation: pill-in .35s cubic-bezier(.2, .8, .3, 1); }
+@keyframes pill-in { from { opacity: 0; transform: translateY(-4px); } }
+#rail.collapsed .agent-pills { display: none; }
+
+/* ---- v0.20.0: the rail's own tabs ------------------------------------------------------ */
+#rail-views {
+  display: flex; gap: 3px; margin: 0 6px 6px; padding: 3px; border-radius: 999px;
+  background: rgba(10, 14, 20, .55);
+}
+#rail-views .rv {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px 10px; border: 0; border-radius: 999px; cursor: pointer;
+  background: none; color: var(--faint); font: 700 11.5px var(--sans);
+}
+#rail-views .rv:hover { color: var(--ink); }
+#rail-views .rv.on { background: var(--border); color: var(--ink); }
+#rail-views.alert .rv[data-view="agents"] { color: var(--accent); }
+#rail-views.alert .rv[data-view="agents"].on { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.rvbadge {
+  font: 700 9.5px var(--mono); min-width: 17px; height: 16px;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 5px;
+  border-radius: 999px; background: var(--accent); color: #04101f;
+}
+.rvbadge.quietly { background: rgba(76, 141, 255, .2); color: #4c8dff; }
+#rail-agentline {
+  margin: 0 12px 6px; font-size: 11px; color: var(--faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#rail-agentline.hot { color: var(--accent); }
+#rail.collapsed #rail-views { flex-direction: column; margin: 0 4px 6px; }
+#rail.collapsed #rail-views .rv { font-size: 0; padding: 7px 0; }
+#rail.collapsed #rail-views .rv .rvbadge { font-size: 9.5px; }
+#rail.collapsed #rail-agentline { display: none; }
+.nnode .nreply { padding: 0 12px 10px; }
+.nnode .nreply input {
+  width: 100%; padding: 5px 11px; border-radius: 999px; background: var(--bg);
+  border: 1px solid var(--border-2); color: var(--ink); font: 11.5px var(--mono); outline: none;
+}
+.nnode .nreply input:focus { border-color: var(--accent); }
+.nnode .nact .always { background: none; border: 1px solid var(--border-2); color: var(--faint); }

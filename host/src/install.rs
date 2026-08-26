@@ -116,14 +116,14 @@ pub fn remove(settings: &mut Value) {
 }
 
 /// Marks our statusLine so it is recognizably ours and never clobbers a user's own.
-pub const SL_MARK: &str = "# obpterm-statusline v1";
+pub const SL_MARK: &str = "# obpterm-statusline v2";
 
 /// Saves the payload (rate_limits included) where the token meters read it, and prints the
 /// model plus both percentages as Claude Code's own status line. POSIX sh, same as the hooks;
 /// staleness comes from the file's mtime, so no timestamp needs appending.
 pub fn statusline_command() -> String {
     format!(
-        r#"p=$(cat); d="${{CLAUDE_CONFIG_DIR:-$HOME/.claude}}"; printf '%s' "$p" >"$d/limits.json"; printf '%s 5h %s%% wk %s%%' "$(printf '%s' "$p" | sed -n 's/.*"display_name" *: *"\([^"]*\)".*/\1/p')" "$(printf '%s' "$p" | sed -n 's/.*"five_hour"[^0-9]*\([0-9]*\).*/\1/p')" "$(printf '%s' "$p" | sed -n 's/.*"weekly"[^0-9]*\([0-9]*\).*/\1/p')"; : {SL_MARK}"#
+        r#"p=$(cat); d="${{CLAUDE_CONFIG_DIR:-$HOME/.claude}}"; printf '%s' "$p" >"$d/limits.json"; printf '%s 5h %s%% wk %s%%' "$(printf '%s' "$p" | sed -n 's/.*"display_name" *: *"\([^"]*\)".*/\1/p')" "$(printf '%s' "$p" | sed -n 's/.*"five_hour"[^0-9]*\([0-9]*\).*/\1/p')" "$(printf '%s' "$p" | sed -n 's/.*"seven_day"[^0-9]*\([0-9]*\).*/\1/p')"; : {SL_MARK}"#
     )
 }
 
