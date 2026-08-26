@@ -21,8 +21,10 @@ pub struct Host {
     shutdown: tokio::sync::watch::Sender<bool>,
 }
 
-/// How long with no sessions and no client before the host leaves on its own.
-pub const IDLE_EXIT: Duration = Duration::from_secs(30);
+/// How long with no sessions AND no client before the host leaves on its own. Generous on
+/// purpose: an installer replacing the app can easily take longer than a few seconds, and a
+/// host that gave up in that window would take the shells it was holding with it.
+pub const IDLE_EXIT: Duration = Duration::from_secs(300);
 
 impl Host {
     pub fn new(socket: String, token: String, version: &str) -> Self {

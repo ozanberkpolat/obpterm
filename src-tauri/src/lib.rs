@@ -48,6 +48,7 @@ pub fn run() {
             chrome::attention,
             chrome::taskbar_badge,
             chrome::keep_awake,
+            chrome::start_drag,
             update::ntfy_publish,
             metrics::rss_for,
             claude::session_context,

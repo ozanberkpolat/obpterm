@@ -175,7 +175,12 @@ fn launch_host(config_dir: &PathBuf) -> Result<(), String> {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         const DETACHED_PROCESS: u32 = 0x0000_0008;
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        cmd.creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+        // The whole point of the host is to outlive this window. A process started inside a
+        // Job object dies with it when that job is set to kill on close — which is how an
+        // installer, or a launcher that wraps the app, can take every shell down with the app
+        // it replaced. Break out of the job so the host is nobody's child.
+        const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB);
     }
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())

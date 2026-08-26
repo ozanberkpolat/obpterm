@@ -162,6 +162,9 @@ export class Status {
     this.updateEl.disabled = true;
     this.updateEl.textContent = `Downloading ${update.version}…`;
     try {
+      // Write the session with the CURRENT host id last thing before the installer runs: the
+      // next window matches against it, and a stale one is what makes ten sessions respawn.
+      await this.app.connectHost();
       await this.app.flushSession();
       await this.app.tp.updateInstall(update, this.app.config.github_token);
       this.updateEl.textContent = "Installing, OBPTerm will restart…";

@@ -274,6 +274,8 @@ export interface Transport {
   claudeAccountNames(dir: string): Promise<string[]>;
   /** minimize | maximize | close, for our own title bar. */
   windowAction(label: string, action: "minimize" | "maximize" | "close"): Promise<void>;
+  /** Begins dragging the window from our own title bar. */
+  startDrag(): Promise<void>;
   /** A desktop notification. Resolves false when the OS refused permission. */
   notify(title: string, body: string): Promise<boolean>;
   /** Flash the window and its taskbar button until the app is focused. */

@@ -2,10 +2,28 @@
 // drag, and it is where the menus live — nothing should be reachable only by right-click.
 import type { App } from "./app";
 import { openMenu } from "./menu";
+import { toast } from "./ui";
 import { newProject } from "./rail";
 
 export function installHeader(app: App) {
   const bar = document.querySelector<HTMLElement>("#titlebar")!;
+
+  // Dragging the window. `data-tauri-drag-region` and the JS `startDragging()` both depend on
+  // webview permissions that have silently failed here; a title bar you cannot pick up is too
+  // central for that. Ask the Rust side to start the drag, and say so out loud if it refuses.
+  bar.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button, input, .menus")) return; // controls keep their clicks
+    if (!app.tp.native) return;
+    void app.tp.startDrag().catch((err) => toast(`Can't drag the window: ${err}`));
+  });
+  // Double-click the bar to maximize, the way every title bar does.
+  bar.addEventListener("dblclick", (e) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button, input, .menus")) return;
+    void app.tp.windowAction("main", "maximize").catch(() => {});
+  });
 
   const menus: [string, () => { label: string; hint?: string; danger?: boolean; onPick: () => void }[]][] = [
     ["Shell", () => [
