@@ -69,13 +69,16 @@ export class Nodes {
     for (const tab of this.app.tabs) {
       for (const pane of this.app.panesOf(tab)) {
         const id = `p${pane.id}`;
-        // The map is for what is awake. Sleeping, eco'd and exited panes are still in the
-        // rail; here they would only cost space the live work needs.
+        // The map is what is RUNNING. A session earns a node by working, by waiting on you,
+        // or by having a live agent out; idle, finished, sleeping and exited ones stay in the
+        // rail, where they belong. Plain shells only make it while they are printing.
         const dormant = pane.asleep || pane.eco || pane.exited;
+        const a = pane.agent;
+        const liveAgents = a.fanned.some((f) => f.endedAt === null);
+        const busy = a.state === "working" || a.state === "blocked" || a.state === "waiting" || liveAgents;
         if (isClaudePane(pane)) {
-          if (!dormant) sessions.push({ id, kind: "session", pane, tab, parent: null, x: 0, y: 0, w: SESSION_W, h: SESSION_H });
-        } else if (!dormant && (pane.agent.state !== null || Date.now() - pane.lastOutput < 5 * 60_000)) {
-          // …and a plain shell earns its node by having done something recently.
+          if (!dormant && busy) sessions.push({ id, kind: "session", pane, tab, parent: null, x: 0, y: 0, w: SESSION_W, h: SESSION_H });
+        } else if (!dormant && Date.now() - pane.lastOutput < 60_000) {
           shells.push({ id, kind: "shell", pane, tab, parent: null, x: 0, y: 0, w: SHELL_W, h: SHELL_H });
         }
       }
@@ -138,8 +141,12 @@ export class Nodes {
       }
     }
     this.drawEdges();
-    const hidden = this.app.tabs.flatMap((t) => this.app.panesOf(t)).filter((p) => p.asleep || p.eco || p.exited).length;
-    set($("#nodemap .nsummary"), [summary(this.app), hidden ? `${hidden} resting` : null].filter(Boolean).join(" · "));
+    const none = $("#nodemap .nnone");
+    none.hidden = this.nodes.length > 0;
+    // Say what the map is deliberately not showing, so nothing feels lost.
+    const shown = new Set(this.nodes.filter((n) => n.pane).map((n) => n.pane!.id));
+    const quiet = this.app.tabs.flatMap((t) => this.app.panesOf(t)).filter((p) => !shown.has(p.id) && !p.exited).length;
+    set($("#nodemap .nsummary"), [summary(this.app), quiet ? `${quiet} idle` : null].filter(Boolean).join(" · "));
     const diag = $("#nodemap .ndiag");
     diag.hidden = !!this.app.lastFanEventAt;
     if (!this.app.lastFanEventAt) set(diag, this.app.agentsDiagnosis());

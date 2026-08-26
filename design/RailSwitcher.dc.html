@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0a0e14; color: #eaf0f7;
+      font: 13px/1.4 "Plus Jakarta Sans", "Segoe UI Variable", system-ui, sans-serif; }
+    a { color: #ff8a1e; } a:hover { color: #ffa23e; }
+    .mono { font-family: "JetBrains Mono", monospace; }
+    .rail { width: 232px; display: flex; flex-direction: column; padding: 10px 8px;
+      background: linear-gradient(180deg, #141a24, #0e131c);
+      border: 1px solid rgba(140,160,190,.12); border-radius: 14px; }
+    .tab { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 6px 8px 6px 10px;
+      border-radius: 999px; color: #8b97a8; font-size: 12.5px; }
+    .tab .t { flex: 1; font-weight: 600; color: #eaf0f7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tab .s { font-size: 11px; color: #76879c; }
+    .dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+    .sect { font-weight: 700; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #5b6878; padding: 6px 6px 3px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 3px; padding: 1px 8px 5px 26px; }
+    .pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+      background: rgba(255,138,30,.12); color: #ffcf9e; font-size: 10.5px; }
+    .pill i { width: 5px; height: 5px; border-radius: 999px; background: #2fd6a3; box-shadow: 0 0 5px rgba(47,214,163,.7); }
+    .badge { font: 700 9.5px "JetBrains Mono", monospace; min-width: 17px; height: 16px;
+      display: inline-flex; align-items: center; justify-content: center; padding: 0 5px;
+      border-radius: 999px; background: #ff8a1e; color: #04101f; }
+    .h { font-weight: 800; font-size: 14px; }
+    .cap { font-size: 12px; color: #76879c; line-height: 1.6; }
+    .cap b { color: #eaf0f7; }
+
+    /* A — segmented tabs (shipped) */
+    .segbar { display: flex; gap: 3px; margin: 0 -2px 6px; padding: 3px; border-radius: 999px; background: rgba(10,14,20,.55); }
+    .segbar button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 6px 10px; border: 0; border-radius: 999px; background: none; color: #76879c;
+      font: 700 11.5px "Plus Jakarta Sans"; }
+    .segbar button.on { background: rgba(140,160,190,.16); color: #eaf0f7; }
+    .agentline { margin: 0 4px 6px; font-size: 11px; color: #ff8a1e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* B — underline tabs */
+    .ubar { display: flex; gap: 16px; margin: 2px 6px 8px; border-bottom: 1px solid rgba(140,160,190,.14); }
+    .ubar button { position: relative; padding: 4px 0 8px; border: 0; background: none; color: #5b6878;
+      font: 700 12px "Plus Jakarta Sans"; display: inline-flex; align-items: center; gap: 7px; }
+    .ubar button.on { color: #eaf0f7; }
+    .ubar button.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+      border-radius: 999px; background: #ff8a1e; box-shadow: 0 2px 10px rgba(255,138,30,.5); }
+
+    /* C — one line, one swap */
+    .swap { display: flex; align-items: center; gap: 8px; margin: 0 2px 8px; padding: 6px 10px;
+      border-radius: 999px; background: rgba(140,160,190,.08); }
+    .swap .now { font-weight: 800; font-size: 12.5px; color: #eaf0f7; flex: 1; }
+    .swap .to { font: 600 11px "Plus Jakarta Sans"; color: #76879c; display: inline-flex; align-items: center; gap: 5px; }
+    .swap svg { width: 13px; height: 13px; }
+  </style>
+</helmet>
+
+<div style="width: 1320px; height: 700px; background: #0a0e14; padding: 26px 30px; display: flex; flex-direction: column; gap: 18px">
+
+  <div style="display: flex; align-items: baseline; gap: 14px">
+    <span style="font-size: 17px; font-weight: 800">Sessions / Agents — three ways to hold the switch</span>
+    <span class="cap" style="max-width: 700px">Each shown with two agents running and one waiting on you: the badge belongs to Agents, and the line beneath names the loudest hold.</span>
+  </div>
+
+  <div style="flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 34px">
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div><div class="h">A · Segmented (shipped)</div><div class="cap">A pill pair in a tray. Reads as one control, the lit half is where you are. Costs a full row of height.</div></div>
+      <div class="rail">
+        <div class="segbar"><button>Sessions</button><button class="on">Agents<span class="badge">1</span></button></div>
+        <div class="agentline">portal resolver · nginx -s reload?</div>
+        <div class="sect">Sessions</div>
+        <div class="tab" style="background: rgba(140,160,190,.12)"><span class="dot" style="background:#2fd6a3"></span><span class="t">portal resolver</span></div>
+        <div class="pills"><span class="pill"><i></i>Audit upstreams</span><span class="pill"><i></i>Smoke routes</span></div>
+        <div class="tab"><span class="dot" style="background:#3d4654"></span><span class="t" style="color:#8b97a8">pwsh</span></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div><div class="h">B · Underline</div><div class="cap">Two words on a hairline, the active one lit by the accent — the same grammar the app already uses for the active tab. Lightest; no tray, no box.</div></div>
+      <div class="rail">
+        <div class="ubar"><button>Sessions</button><button class="on">Agents<span class="badge">1</span></button></div>
+        <div class="agentline">portal resolver · nginx -s reload?</div>
+        <div class="sect">Sessions</div>
+        <div class="tab" style="background: rgba(140,160,190,.12)"><span class="dot" style="background:#2fd6a3"></span><span class="t">portal resolver</span></div>
+        <div class="pills"><span class="pill"><i></i>Audit upstreams</span><span class="pill"><i></i>Smoke routes</span></div>
+        <div class="tab"><span class="dot" style="background:#3d4654"></span><span class="t" style="color:#8b97a8">pwsh</span></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div><div class="h">C · One line, one swap</div><div class="cap">Only where you ARE is named; the other side is a quiet swap affordance on the right. Shortest, and the badge still shows because it belongs to the other side.</div></div>
+      <div class="rail">
+        <div class="swap">
+          <span class="now">Agents</span>
+          <span class="badge">1</span>
+          <span class="to">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 7h11M8 7l3-3M8 7l3 3"/><path d="M16 17H5M16 17l-3-3M16 17l-3 3"/></svg>
+            Sessions
+          </span>
+        </div>
+        <div class="agentline">portal resolver · nginx -s reload?</div>
+        <div class="sect">Sessions</div>
+        <div class="tab" style="background: rgba(140,160,190,.12)"><span class="dot" style="background:#2fd6a3"></span><span class="t">portal resolver</span></div>
+        <div class="pills"><span class="pill"><i></i>Audit upstreams</span><span class="pill"><i></i>Smoke routes</span></div>
+        <div class="tab"><span class="dot" style="background:#3d4654"></span><span class="t" style="color:#8b97a8">pwsh</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap" style="border-top: 1px solid rgba(140,160,190,.12); padding-top: 12px">
+    All three: <b>Ctrl+G</b> flips, the badge is orange when something waits and blue when work finished unread, and the collapsed rail keeps two stacked glyphs with the count. B is the smallest change to the app's existing vocabulary; C buys the most vertical room in a tall rail.
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
