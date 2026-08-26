@@ -140,6 +140,9 @@ export class Nodes {
     this.drawEdges();
     const hidden = this.app.tabs.flatMap((t) => this.app.panesOf(t)).filter((p) => p.asleep || p.eco || p.exited).length;
     set($("#nodemap .nsummary"), [summary(this.app), hidden ? `${hidden} resting` : null].filter(Boolean).join(" · "));
+    const diag = $("#nodemap .ndiag");
+    diag.hidden = !!this.app.lastFanEventAt;
+    if (!this.app.lastFanEventAt) set(diag, this.app.agentsDiagnosis());
   }
 
   /** Creates a node's element once; its entrance animation therefore plays exactly once. */

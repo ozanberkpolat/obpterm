@@ -801,3 +801,12 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 .tab .fan.live { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
 .tab.active .fan { background: rgba(0, 0, 0, .22); color: #04101f; }
 #rail.collapsed .tab .fan { display: none; }
+
+/* why there are no agents, said where they are missing */
+.ddiag {
+  margin: 0 20px 10px; padding: 8px 14px; border-radius: 10px;
+  background: rgba(255, 180, 84, .08); border: 1px solid rgba(255, 180, 84, .25);
+  font-size: 11.5px; color: #ffb454;
+}
+.ndiag { left: 22px; top: 74px; right: 22px; color: #ffb454; font-size: 11.5px;
+  background: rgba(255, 180, 84, .1); border-color: rgba(255, 180, 84, .3); }

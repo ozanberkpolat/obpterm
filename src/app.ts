@@ -94,6 +94,31 @@ export class App implements PaneHost {
   private mru: Tab[] = [];
   /** The session host's instance id, or null when shells die with the window. */
   hostInstance: string | null = null;
+  /** When an agent event (of any kind) last arrived — the proof the chain works. */
+  lastAgentEventAt = 0;
+  /** Whether any FAN-OUT event has ever arrived: the thing that draws ×N. */
+  lastFanEventAt = 0;
+  /** Host version reported at connect, so the panel can name a stale host. */
+  hostVersion = "";
+  appVersion = "";
+  /** Which settings files carry our hook block, learned at boot. */
+  hookDirs: string[] = [];
+
+  /** One line saying why there are no agents, when there are none. */
+  agentsDiagnosis(): string {
+    const ago = (t: number) => `${Math.round((Date.now() - t) / 1000)}s ago`;
+    if (this.hostVersion && this.appVersion && olderThan(this.hostVersion, this.appVersion)) {
+      return `session host is ${this.hostVersion}, app is ${this.appVersion} — restart the host (Quit and reopen) or agents stay invisible`;
+    }
+    if (!this.lastAgentEventAt) {
+      return this.hookDirs.length
+        ? `no hook events yet — hooks are in ${this.hookDirs.join(", ")}; if this stays empty while Claude works, the hooks are not reaching OBPTerm`
+        : "Claude Code hooks are not installed — Settings ▸ Files can reinstall them";
+    }
+    if (!this.lastFanEventAt) return `hooks are live (last event ${ago(this.lastAgentEventAt)}) — no delegation seen yet`;
+    return `last agent event ${ago(this.lastFanEventAt)}`;
+  }
+
   /** Shells the host was holding when this window connected, by id. */
   private held = new Map<number, import("./transport").HostSession>();
   private reattachable = false;
@@ -1169,6 +1194,8 @@ export class App implements PaneHost {
     // host that predates the features it is drawing (agent fan-out arrived in 0.18). Say so,
     // and offer the one action that fixes it: end the shells, restart on the new host.
     const mine = await this.tp.appVersion().catch(() => "");
+    this.hostVersion = info?.version ?? "";
+    this.appVersion = mine;
     if (info && mine && olderThan(info.version, mine)) {
       toast(`Shells are still on the older session host ${info.version} — agents stay invisible until it restarts`, {
         label: "Restart host",

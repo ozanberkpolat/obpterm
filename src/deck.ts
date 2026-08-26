@@ -232,6 +232,11 @@ export class Deck {
     const empty = $("#deck .dempty");
     empty.hidden = entries.length > 0;
     set(empty, this.filter ? `Nothing matches “${this.filter}”.` : "No Claude sessions running. Open a tab with a claude profile and its state shows up here.");
+    // When no delegation has ever been seen, say which link is missing rather than nothing.
+    const diag = $("#deck .ddiag");
+    const quiet = !this.app.lastFanEventAt;
+    diag.hidden = !quiet || entries.length === 0;
+    if (quiet) set(diag, this.app.agentsDiagnosis());
   }
 
   private patch(pane: Pane, tab: Tab): Card {

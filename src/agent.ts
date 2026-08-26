@@ -180,6 +180,8 @@ export function tick(a: AgentState): boolean {
 
 export function installAgentEvents(app: App) {
   app.tp.onAgent((u) => {
+    app.lastAgentEventAt = Date.now();
+    if (u.agent_id) app.lastFanEventAt = Date.now();
     const pane = app.tabs.flatMap((t) => app.panesOf(t)).find((p) => p.id === u.pane);
     if (!pane) return;
     const focused = app.isFocused(pane);
