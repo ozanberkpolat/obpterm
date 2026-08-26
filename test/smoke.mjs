@@ -326,11 +326,11 @@ const box = JSON.parse(
   await evaluate("(() => { const r = document.querySelector('.tab').getBoundingClientRect(); return JSON.stringify([r.width, r.height]); })()"),
 );
 assert.deepEqual(box, [30, 30], "a collapsed row is a 30px circle");
-await until("!!document.querySelector('.tab .st.idle')", "a row going idle"); // running decays 2s after the last byte
-assert.equal(
-  await evaluate("getComputedStyle(document.querySelector('.tab .st.idle')).display"),
-  "none",
-  "an idle glyph is hidden when collapsed",
+// A row flips between running and idle as output decays, so poll the live element rather
+// than measuring one that may have changed class between the wait and the assertion.
+await until(
+  "(() => { const e = document.querySelector('.tab .st.idle'); return !!e && getComputedStyle(e).display === 'none'; })()",
+  "an idle glyph hidden when collapsed",
 );
 await evaluate("window.obpterm.toggleRail()");
 await until("!document.querySelector('#rail').classList.contains('collapsed')", "the rail expanded again");
@@ -1107,6 +1107,40 @@ await evaluate("void window.obpterm.status.checkUpdates()");
 await until("/^v\\d+\\.\\d+\\.\\d+/.test(document.querySelector('#update-chip').textContent)", "a failed check restores the version");
 assert.equal(await evaluate("document.querySelector('#update-chip').disabled"), false, "and the chip is clickable again");
 await evaluate("window.obpterm.config.update_repo = null");
+
+
+// ---- v0.21.7: edges are visible where the nodes are, and leaving the map resets the tabs ----
+{
+  // Hermetic: its own tab, its own state, and everything put back before it returns.
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const tabsBefore = await evaluate("window.obpterm.tabs.length");
+  await evaluate("void window.obpterm.newTab()");
+  await until(`window.obpterm.tabs.length === ${tabsBefore + 1}`, "a tab of its own");
+  const ePane = await evaluate("window.obpterm.tabs.at(-1).active.id");
+  devWs.send(JSON.stringify({ t: "agent_inject", reqId: 999, update: { pane: ePane, state: "working", session_id: "s-edge", detail: "Delegating", pending_id: null, options: [], agent_id: "e-1", agent_kind: "general-purpose", agent_task: "Idle 15 seconds", agent_event: "spawned" } }));
+  await new Promise((r) => setTimeout(r, 300));
+  await evaluate("window.obpterm.showView('agents')");
+  await until("document.querySelectorAll('#nodemap .nedges path').length >= 1", "an edge is drawn");
+  // A node is still travelling from its parent's anchor while `born` is on it; measure after.
+  await until("document.querySelector('#nodemap .nnode.born') === null", "the entrance animation has landed");
+  // The bug was an SVG offset that put every path thousands of pixels away.
+  const onScreen = await evaluate(`(() => {
+    const e = document.querySelector('#nodemap .nedges path').getBoundingClientRect();
+    const boxes = [...document.querySelectorAll('#nodemap .nnode')].map((n) => n.getBoundingClientRect());
+    const left = Math.min(...boxes.map((b) => b.left)), right = Math.max(...boxes.map((b) => b.right));
+    return e.width > 0 && e.left >= left - 60 && e.right <= right + 60;
+  })()`);
+  assert.ok(onScreen, "the edge is drawn among the nodes, not off-screen");
+
+  // Closing the map puts the rail's tabs back on Sessions.
+  await evaluate("window.obpterm.nodes.close()");
+  await until("document.querySelector('#rail-views .rv.on')?.dataset.view === 'sessions'", "the switcher follows the view out");
+
+  await evaluate("(() => { const t = window.obpterm.tabs.at(-1); if (window.obpterm.tabs.length > 1) window.obpterm.closeTab(t); })()");
+  await until(`window.obpterm.tabs.length === ${tabsBefore}`, "its tab is gone again");
+  devWs.close();
+}
 
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");

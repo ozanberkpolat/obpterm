@@ -430,6 +430,13 @@ export class Nodes {
 
   close() {
     this.root.hidden = true;
+    // The rail's tabs read this: closing the map without clearing it left "Agents" lit while
+    // the sessions were on screen.
+    if (this.app.config.agents_view !== "sessions") {
+      this.app.config.agents_view = "sessions";
+      this.app.persistConfig();
+    }
+    this.app.paint();
     this.app.tab?.active.focus();
   }
 }
