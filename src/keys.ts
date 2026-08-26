@@ -47,10 +47,6 @@ export function installKeys(app: App) {
           app.nodes.close();
           return stop(e);
         }
-        if (app.deck.isOpen) {
-          app.deck.close();
-          return stop(e);
-        }
         if (app.palette.isOpen) {
           app.palette.close();
           return stop(e);

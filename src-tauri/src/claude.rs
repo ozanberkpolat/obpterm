@@ -280,6 +280,27 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn the_weekly_window_is_read_under_both_spellings() {
+        // Claude Code's own payload (the shape our statusLine saves verbatim).
+        let real = serde_json::json!({"rate_limits": {
+            "five_hour": {"used_percentage": 6, "resets_at": 1787678400},
+            "seven_day": {"used_percentage": 62, "resets_at": 1788094800}}});
+        let dir = std::env::temp_dir().join(format!("obpterm-limits-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("limits.json");
+        std::fs::write(&p, real.to_string()).unwrap();
+        let got = super::from_statusline_file(p.to_str().unwrap()).unwrap();
+        assert_eq!((got.five_hour, got.weekly), (6, 62), "seven_day is the weekly window");
+        assert_eq!(got.weekly_resets_at, 1788094800);
+
+        // A file shaped like the homelab endpoint keeps working.
+        let ours = serde_json::json!({"five_hour": {"used_percentage": 6}, "weekly": {"used_percentage": 41}});
+        std::fs::write(&p, ours.to_string()).unwrap();
+        assert_eq!(super::from_statusline_file(p.to_str().unwrap()).unwrap().weekly, 41);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn context_window_follows_the_model() {
         assert_eq!(super::window_for("claude-fable-5"), 1_000_000);
         assert_eq!(super::window_for("claude-mythos-5"), 1_000_000);
@@ -381,8 +402,14 @@ fn from_statusline_file(path: &str) -> Option<Limits> {
     let text = std::fs::read_to_string(&full).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
     let rl = v.get("rate_limits").unwrap_or(&v);
-    let pct = |k: &str| rl.pointer(&format!("/{k}/used_percentage")).map(as_pct).unwrap_or(0);
-    let at = |k: &str| rl.pointer(&format!("/{k}/resets_at")).and_then(|x| x.as_i64()).unwrap_or(0);
+    // Claude Code's own payload calls the weekly window `seven_day`; a file shaped like the
+    // homelab's claude-state.json calls it `weekly`. Read the first that exists rather than
+    // choosing — reading only "weekly" is what pinned the meter at 0% while 5h was right.
+    let first = |keys: &[&str], leaf: &str| {
+        keys.iter().find_map(|k| rl.pointer(&format!("/{k}/{leaf}")))
+    };
+    let pct = |keys: &[&str]| first(keys, "used_percentage").map(as_pct).unwrap_or(0);
+    let at = |keys: &[&str]| first(keys, "resets_at").and_then(|x| x.as_i64()).unwrap_or(0);
     // `ts` if the writer added one, else the file's own mtime — the sh statusLine has no jq.
     let written = v
         .get("ts")
@@ -399,10 +426,10 @@ fn from_statusline_file(path: &str) -> Option<Limits> {
         })
         .unwrap_or(0);
     Some(Limits {
-        five_hour: pct("five_hour"),
-        five_hour_resets_at: at("five_hour"),
-        weekly: pct("weekly"),
-        weekly_resets_at: at("weekly"),
+        five_hour: pct(&["five_hour"]),
+        five_hour_resets_at: at(&["five_hour"]),
+        weekly: pct(&["seven_day", "weekly"]),
+        weekly_resets_at: at(&["seven_day", "weekly"]),
         // The file only moves while a session renders its status line.
         stale: written > 0 && now_ms() / 1000 - written > 900,
         source: "file".into(),

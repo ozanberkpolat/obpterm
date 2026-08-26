@@ -231,6 +231,8 @@ OBPTERM_HOOK_TOKEN={}
                             agent_kind: e.agent_kind,
                             agent_task: e.agent_task,
                             agent_event: e.agent_event,
+                            agent_ref: e.agent_ref,
+                            mode: e.mode,
                         });
                     }
                 }

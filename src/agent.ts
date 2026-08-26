@@ -35,6 +35,8 @@ export interface AgentState {
   workingSince: number;
   /** Agents this session spawned, newest last. Ended ones linger until the turn finishes. */
   fanned: FannedAgent[];
+  /** default | acceptEdits | bypassPermissions | plan — what the session is running as. */
+  mode: string | null;
 }
 
 export const blank = (): AgentState => ({
@@ -49,6 +51,7 @@ export const blank = (): AgentState => ({
   lastToolAt: 0,
   workingSince: 0,
   fanned: [],
+  mode: null,
 });
 
 const DONE_HOLDOFF_MS = 3000;
@@ -68,11 +71,14 @@ export interface AgentUpdate {
   agent_kind?: string | null;
   agent_task?: string | null;
   agent_event?: string | null;
+  agent_ref?: string | null;
+  mode?: string | null;
 }
 
 /** Applies one hook event. Returns what the app should do beyond repainting. */
 export function reduce(a: AgentState, u: AgentUpdate, focused: boolean): "notify" | "auto-pass" | null {
   if (u.session_id) a.sessionId = u.session_id;
+  if (u.mode) a.mode = u.mode;
   // Fan-out bookkeeping runs first and, for agent-owned events, INSTEAD of the session's own
   // state machine: one agent's tool call is not the session doing something new.
   if (u.agent_id && u.agent_event) {
@@ -148,6 +154,18 @@ export function reduce(a: AgentState, u: AgentUpdate, focused: boolean): "notify
 /** Opens, feeds and closes the agents a session fanned out. */
 function applyFan(a: AgentState, u: AgentUpdate) {
   const id = u.agent_id!;
+  // The delegation and the agent have different ids; `linked` is where they meet. Rekey the
+  // entry the spawn opened instead of starting a second one — counting both is what showed
+  // four agents for two.
+  if (u.agent_event === "linked" && u.agent_ref) {
+    const opened = a.fanned.find((f) => f.id === u.agent_ref);
+    if (opened) {
+      opened.id = id;
+      if (u.agent_kind) opened.kind = u.agent_kind;
+      if (u.agent_task) opened.task = u.agent_task;
+      return;
+    }
+  }
   let agent = a.fanned.find((f) => f.id === id);
   if (!agent) {
     if (u.agent_event === "finished") return; // a close for an agent we never saw open
@@ -161,6 +179,15 @@ function applyFan(a: AgentState, u: AgentUpdate) {
     if (u.detail) agent.feed = u.detail;
   }
   if (u.agent_event === "finished") agent.endedAt = Date.now();
+}
+
+/** Agents drop off the views a few seconds after they finish — a finished agent is history,
+ *  and the map is for what is happening. */
+export function pruneFan(a: AgentState): boolean {
+  const cutoff = Date.now() - 6000;
+  const before = a.fanned.length;
+  a.fanned = a.fanned.filter((f) => f.endedAt === null || f.endedAt > cutoff);
+  return a.fanned.length !== before;
 }
 
 /** Agents still running for this session. */
@@ -235,6 +262,21 @@ const DANGER: RegExp[] = [
 export function isDangerous(a: AgentState): boolean {
   const hay = a.toolInput ?? a.detail ?? "";
   return !!hay && DANGER.some((re) => re.test(hay));
+}
+
+/** A session that bypasses permissions never asks, so answer buttons are noise on it. */
+export function asksPermission(a: AgentState): boolean {
+  return a.mode !== "bypassPermissions";
+}
+
+/** Short label for the session's mode, or "" for the ordinary one. */
+export function modeLabel(a: AgentState): string {
+  switch (a.mode) {
+    case "bypassPermissions": return "auto";
+    case "acceptEdits": return "accept edits";
+    case "plan": return "plan";
+    default: return "";
+  }
 }
 
 /** True when this pane runs Claude Code — the exe or an arg says so. */
