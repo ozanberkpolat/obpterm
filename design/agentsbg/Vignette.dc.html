@@ -1,0 +1,143 @@
+<script src="./support.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  .frame-c {
+    --bg: #0a0e14; --border-2: rgba(140,160,190,.22);
+    --ink: #eaf0f7; --faint: #76879c; --accent: #ff8a1e;
+    --sans: "Plus Jakarta Sans", system-ui, sans-serif;
+    --mono: "JetBrains Mono", Consolas, monospace;
+    position: relative; width: 1360px; height: 800px; overflow: hidden;
+    background: #0a0e14; font-family: var(--sans);
+  }
+  /* The live session, underneath. Blurred here with `filter` on the text itself so the mock
+     renders the same everywhere; the app does it with `backdrop-filter` on the map. */
+  .frame-c .session {
+    position: absolute; inset: 0; padding: 24px 30px;
+    font: 12.5px/1.7 var(--mono); color: #d3ddea; white-space: pre-wrap;
+    filter: blur(15px) saturate(.4) brightness(.5);
+  }
+  .frame-c .session .orange { color: #ff9a3e; }
+  .frame-c .session .green { color: #46e3b0; }
+
+  .frame-c .map { position: absolute; inset: 0; background:\n      radial-gradient(rgba(140,160,190,.09) 1px, transparent 1px) 0 0 / 26px 26px,\n      radial-gradient(120% 90% at 42% 50%, rgba(10,14,20,.5), rgba(4,6,10,.97) 72%); }
+
+  .frame-c .chrome {
+    position: absolute; z-index: 3; display: flex; align-items: center; gap: 12px;
+    padding: 8px 16px; border-radius: 999px;
+    background: rgba(16,21,29,.92); border: 1px solid var(--border-2);
+  }
+  .frame-c .top { left: 22px; top: 18px; right: 22px; }
+  .frame-c .bottom { left: 50%; bottom: 20px; transform: translateX(-50%); font: 600 11px var(--mono); color: var(--faint); }
+  .frame-c .title { font-size: 15px; font-weight: 800; color: var(--ink); }
+  .frame-c .summary { font: 600 11px var(--mono); color: var(--faint); }
+  .frame-c .grow { flex: 1; }
+
+  .frame-c .node {
+    position: absolute; z-index: 2; border-radius: 12px; overflow: hidden;
+    background: linear-gradient(180deg, #141a24, #171e29); border: 1px solid var(--border-2);
+    box-shadow: 0 14px 40px rgba(0,0,0,.5);
+  }
+  .frame-c .node header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(22,28,38,.9); }
+  .frame-c .dot { width: 7px; height: 7px; border-radius: 999px; flex: none; background: #2fd6a3; }
+  .frame-c .name { font-weight: 700; font-size: 12.5px; color: var(--ink); flex: 1; }
+  .frame-c .pill { font: 700 8.5px var(--sans); text-transform: uppercase; letter-spacing: .08em;
+    padding: 2px 8px; border-radius: 999px; background: rgba(47,214,163,.16); color: #2fd6a3; }
+  .frame-c .proj { font: 700 9px var(--mono); padding: 2px 7px; border-radius: 999px;
+    background: rgba(47,214,163,.16); color: #2fd6a3; }
+  .frame-c .body { padding: 9px 12px; font: 10.5px/1.65 var(--mono); color: var(--faint);
+    white-space: pre; background: var(--bg); min-height: 52px; }
+  .frame-c .foot { display: flex; gap: 10px; padding: 6px 12px 8px; font: 500 9.5px var(--mono); color: var(--faint); }
+  .frame-c .agent { background: linear-gradient(180deg, #0e1219, #101620); }
+  .frame-c .agent .name { font: 700 9px var(--sans); letter-spacing: .12em; color: var(--accent); }
+  .frame-c .agent .body { font: 600 11.5px var(--sans); color: var(--ink); white-space: normal; min-height: 34px; }
+  .frame-c .agent .sub { padding: 0 12px 9px; font: 10px/1.5 var(--mono); color: var(--faint); }
+
+  .frame-c .label {
+    position: absolute; z-index: 4; left: 22px; bottom: 20px; width: 430px;
+    padding: 13px 16px; border-radius: 12px;
+    background: rgba(10,14,20,.94); border: 1px solid rgba(140,160,190,.22);
+  }
+  .frame-c .label b { display: block; font-size: 13.5px; font-weight: 800; color: #c6a6ff; margin-bottom: 5px; }
+  .frame-c .label p { margin: 0 0 9px; font: 500 11.5px/1.6 var(--sans); color: #aab7c7; }
+  .frame-c .label code { display: block; font: 500 10px/1.6 var(--mono); color: #c6a6ff; white-space: pre-wrap; }
+</style>
+
+<div class="frame-c">
+  <div class="session">· Yes — Resource Policy Contributor is enough. That policy (ebee9678-39c8-4e87-9f45-83fdc818453) is Audit effect
+  only, no deployIfNotExists, so no managed identity and no User Access Administrator needed. Just
+  policyassignments/write.
+
+· Two things to check before you activate anything — running them now:
+
+· 2 background agents launched <span class="orange">(1 to manage)</span>
+    · Audit approved-VM-extensions policy state
+    · Inventory Site24x7 extensions per VM
+
+  Role split is right as you have it — Resource Policy Contributor for the assignment, Virtual Machine
+  Contributor for the extension deletes. They are separate operations; a policy write will not remove
+  anything that is already installed on a machine.
+
+  One flag on the Site24x7 removal: it is a real third-party monitoring agent. If those VMs are being
+  watched by someone else's Site24x7 tenant, deleting the extension turns their alerting off silently
+  — Azure will not tell them. Worth confirming there is an owner who knows this is coming.
+
+  Also worth knowing before you activate PIM: the policy is Audit, so assigning it changes nothing on
+  its own. It makes the finding go green once the allowlist matches reality. The Site24x7 deletion is
+  the part that actually changes the estate.
+
+· <span class="green">Waiting for 2 background agents to finish…</span>
+
+<span class="orange">▸▸</span> auto mode on (shift+tab to cycle) · ← 1 agent</div>
+
+  <div class="map">
+    <svg width="1360" height="800" style="position:absolute;inset:0;pointer-events:none">
+      <path d="M 905 405 C 985 405, 985 250, 1065 250" stroke="rgba(255,138,30,.5)" stroke-width="1.5" fill="none"/>
+      <path d="M 905 405 C 985 405, 985 355, 1065 355" stroke="rgba(255,138,30,.5)" stroke-width="1.5" fill="none"/>
+      <path d="M 905 405 C 985 405, 985 470, 1065 470" stroke="rgba(255,138,30,.5)" stroke-width="1.5" fill="none"/>
+      <circle cx="905" cy="405" r="3" fill="rgba(255,138,30,.5)"/>
+      <circle cx="1065" cy="250" r="3" fill="rgba(255,138,30,.5)"/>
+      <circle cx="1065" cy="355" r="3" fill="rgba(255,138,30,.5)"/>
+      <circle cx="1065" cy="470" r="3" fill="rgba(255,138,30,.5)"/>
+    </svg>
+
+    <div class="chrome top">
+      <span class="title">Agents</span>
+      <span class="summary">1 working · 1 done · 17 idle</span>
+      <span class="grow"></span>
+      <span class="summary">×</span>
+    </div>
+
+    <div class="node" style="left:545px; top:340px; width:360px">
+      <header><span class="dot"></span><span class="name">vm extensions</span><span class="proj">Defender</span><span class="pill">Running</span></header>
+      <div class="body">  ▸▸ auto mode on (shift+tab to cycle) · ← 1 agent
+
+  ● main
+  ○ general-purpose   Extracting assignment 6c…
+  ○ general-purpose   Launching Heartbeat cove…</div>
+      <div class="foot"><span>30s</span><span>ctx 10%</span><span>5 live</span></div>
+    </div>
+
+    <div class="node agent" style="left:1065px; top:205px; width:260px">
+      <header><span class="dot"></span><span class="name">GENERAL-PURPOSE</span><span class="pill">Running</span></header>
+      <div class="body">Activity log for Site24×7 ext</div>
+      <div class="sub">Running AZ_INSTALLER=MSI · 57s · 4 tools</div>
+    </div>
+    <div class="node agent" style="left:1065px; top:310px; width:260px">
+      <header><span class="dot"></span><span class="name">GENERAL-PURPOSE</span><span class="pill">Running</span></header>
+      <div class="body">Heartbeat + LA workspace coverage</div>
+      <div class="sub">Running AZ_INSTALLER=MSI · 31s · 3 tools</div>
+    </div>
+    <div class="node agent" style="left:1065px; top:425px; width:260px">
+      <header><span class="dot"></span><span class="name">GENERAL-PURPOSE</span><span class="pill">Running</span></header>
+      <div class="body">Tenant-wide Site24×7 references</div>
+      <div class="sub">4s</div>
+    </div>
+
+    <div class="chrome bottom">− &nbsp; 110% &nbsp; + &nbsp;&nbsp; fit</div>
+    <div class="label">
+      <b>C · Ink wash</b>
+      <p>Frosted, then weighted: a stronger blur and a vignette that darkens everything away from the spine, so the eye lands on the session node and its branches without a border being drawn anywhere. The most directed of the three, and the busiest to composite.</p>
+      <code>backdrop-filter: blur(34px) saturate(.4) brightness(.4);\nbackground: radial-gradient(120% 90% at 42% 50%,\n  rgba(10,14,20,.55), rgba(4,6,10,.97) 72%);</code>
+    </div>
+  </div>
+</div>

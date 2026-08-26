@@ -1150,6 +1150,15 @@ await evaluate("window.obpterm.config.update_repo = null");
   })()`);
   assert.ok(unclipped, "the edge lies inside the SVG's own viewport, so it is actually painted");
 
+  // v0.21.14: the session behind the map is texture, not text.
+  const wash = await evaluate(`(() => {
+    const s = getComputedStyle(document.querySelector('#nodemap'));
+    return JSON.stringify([s.backdropFilter || s.webkitBackdropFilter, s.backgroundImage.includes('radial-gradient')]);
+  })()`);
+  const [filter, gradient] = JSON.parse(wash);
+  assert.match(filter, /blur/, "the map blurs what is behind it");
+  assert.ok(gradient, "and carries the vignette");
+
   // Closing the map puts the rail's tabs back on Sessions.
   await evaluate("window.obpterm.nodes.close()");
   await until("document.querySelector('#rail-views .rv.on')?.dataset.view === 'sessions'", "the switcher follows the view out");

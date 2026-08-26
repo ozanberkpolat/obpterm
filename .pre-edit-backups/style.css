@@ -563,16 +563,9 @@ button.chip:hover { background: var(--border); color: var(--ink); }
 /* ---- v0.19.0: Node View — the workspace as connected nodes ------------------------------ */
 #nodemap {
   position: fixed; inset: 0; z-index: 26; overflow: hidden; outline: none;
-  /* Ink wash. The session underneath used to read straight through a 4%-transparent field —
-     sentences, orange highlights, the auto-mode line — and the eye kept trying to read them.
-     Blurred and desaturated it survives as texture instead of words, and the vignette darkens
-     everything away from the middle, so the spine and its branches are what the eye lands on
-     without a border being drawn anywhere. Only composited while the map is open: `[hidden]`
-     is `display: none`, so a closed map costs nothing. */
-  backdrop-filter: blur(34px) saturate(.4) brightness(.4);
   background:
-    radial-gradient(rgba(140, 160, 190, .09) 1px, transparent 1px) 0 0 / 26px 26px,
-    radial-gradient(120% 90% at 42% 50%, rgba(10, 14, 20, .55), rgba(4, 6, 10, .97) 72%);
+    radial-gradient(rgba(140, 160, 190, .10) 1px, transparent 1px) 0 0 / 26px 26px,
+    rgba(6, 9, 14, .96);
   cursor: grab;
 }
 #nodemap[hidden] { display: none; }

@@ -1,0 +1,48 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1360,
+      "h": 800,
+      "title": "Today"
+    },
+    {
+      "file": "Solid.dc.html",
+      "x": 1480,
+      "y": 0,
+      "w": 1360,
+      "h": 800,
+      "title": "A \u00b7 Solid ink"
+    },
+    {
+      "file": "Frosted.dc.html",
+      "x": 0,
+      "y": 920,
+      "w": 1360,
+      "h": 800,
+      "title": "B \u00b7 Frosted glass"
+    },
+    {
+      "file": "Vignette.dc.html",
+      "x": 1480,
+      "y": 920,
+      "w": 1360,
+      "h": 800,
+      "title": "C \u00b7 Ink wash"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -210,
+      "w": 700,
+      "text": "Agents view backdrop. Today it is rgba(6,9,14,.96) \u2014 4% transparent, and the session reads through it. Same session text behind all four boards; only the field over it changes. The mocks blur the text layer directly so they render identically everywhere; the app would do it with backdrop-filter on the map."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}
