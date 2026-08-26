@@ -1,6 +1,6 @@
 [package]
 name = "obpterm-host"
-version = "0.21.4"
+version = "0.21.8"
 description = "OBPTerm's session host: owns the shells so the window can close, update and come back"
 edition = "2021"
 

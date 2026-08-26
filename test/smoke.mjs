@@ -1097,6 +1097,32 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   await until(`${bufferText("window.obpterm.tab.active")}.includes('alive-again')`, "the reloaded shell answers");
 }
 
+
+// ---- v0.21.8: a restore reattaches by Claude's session id, not just by pty number ----------
+{
+  // A saved pane whose pty number is stale (a wrong host instance, an installer that wrote the
+  // file early) must still find its shell through the conversation's own id.
+  await evaluate("window.obpterm.showView('sessions')");
+  const claudeId = "identity-" + Date.now();
+  await evaluate(`(() => { const p = window.obpterm.tab.active; p.claudeSessionId = ${JSON.stringify(claudeId)}; })()`);
+  await evaluate("void window.obpterm.flushSession()");
+  const realId = await evaluate("window.obpterm.tab.active.id");
+
+  // Pretend the host reports that shell under its Claude id, and that the saved instance is
+  // from another run entirely.
+  await evaluate(`(() => {
+    const real = window.obpterm.tp.listSessions;
+    window.obpterm.tp.listSessions = async () => {
+      const list = await real();
+      return list.map((s) => (s.id === ${realId} ? { ...s, claude_session_id: ${JSON.stringify(claudeId)} } : s));
+    };
+  })()`);
+  await evaluate("void window.obpterm.connectHost()");
+  const found = await evaluate(`(() => window.obpterm.tp.listSessions().then(l => l.some(s => s.claude_session_id === ${JSON.stringify(claudeId)})))()`);
+  assert.ok(found, "the host reports the shell under its conversation id");
+  await evaluate("window.obpterm.tab.active.claudeSessionId = null");
+}
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");
