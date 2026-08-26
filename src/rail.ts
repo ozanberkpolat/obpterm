@@ -301,6 +301,7 @@ function tabMenu(app: App, tab: Tab, x: number, y: number) {
           { label: "Deny it", danger: true, onPick: () => void app.answerAgent(blocked, false) },
         ]
       : []),
+    { label: "Reload session", hint: "restarts it on the same conversation", onPick: () => void app.reloadPane(tab.active) },
     { label: "Rename tab", hint: "F2", onPick: () => renameTab(app, tab) },
     { label: "Split right", hint: "Alt+Shift+=", onPick: () => void app.splitPane("row") },
     { label: "Split down", hint: "Alt+Shift+-", onPick: () => void app.splitPane("col") },

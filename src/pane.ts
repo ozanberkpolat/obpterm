@@ -67,6 +67,9 @@ export class Pane {
   diffstat: string | null = null;
   /** Rough context-window fill %, from the transcript tail. */
   ctxPct: number | null = null;
+  /** Set when this pane's shell is not in the host's list any more, or a write to it failed:
+   *  the screen is replayed history and everything typed at it disappears. */
+  linkLost = false;
   /** The shell was `/exit`ed on purpose to free the agent's memory; wake resumes it. */
   eco = false;
   /** Cold restore of claude typed into a plain shell: type `claude --resume <this>` once up. */
@@ -134,7 +137,11 @@ export class Pane {
         if (d === "r" || d === "R") return host.onPaneRespawn(this);
         return host.onPaneExit(this, 0); // any other key closes an exited pane
       }
-      void host.tp.write(this.id, d).catch(() => {});
+      void host.tp.write(this.id, d).catch(() => {
+        // Typing that goes nowhere is the worst failure this app can have: say so.
+        this.linkLost = true;
+        host.onPaneActivity();
+      });
     });
     t.onResize(({ cols, rows }) => {
       if (this.id > 0 && !this.exited) void host.tp.resize(this.id, cols, rows).catch(() => {});

@@ -546,8 +546,52 @@ export class App implements PaneHost {
     if (!tab) return;
     tab.active = pane;
     pane.bell = false;
+    // Focus the TERMINAL, not just the record of which pane is active: a pane you clicked
+    // that never took keyboard focus swallows everything you type at it — which is what a
+    // session sitting on a prompt looks like when it "will not respond".
+    if (!pane.asleep && !pane.exited) pane.focus();
     this.paintFocus(tab);
     this.paint();
+  }
+
+  /** Right-click ▸ Reload: end this Claude session and start it again on the same
+   *  conversation. The way out of a session stuck on a prompt, or one whose terminal has
+   *  drifted from the shell. Non-Claude panes simply respawn. */
+  async reloadPane(pane: Pane) {
+    const tab = this.tabOf(pane);
+    if (!tab) return;
+    const sessionId = pane.claudeSessionId;
+    pane.kill();
+    // A fresh terminal, so nothing of the wedged screen survives.
+    pane.term.term.reset();
+    // `--resume` belongs in a CLAUDE profile's arguments; a shell you typed `claude` into
+    // must be resumed by typing it again, or the shell is handed a flag it cannot parse and
+    // dies on the spot.
+    const runsClaude = `${pane.profile.exe} ${pane.profile.args.join(" ")}`.toLowerCase().includes("claude");
+    let typeResume: string | null = null;
+    if (sessionId) {
+      const args = stripSessionArgs(pane.profile.args);
+      if (runsClaude) pane.profile = { ...pane.profile, args: [...args, "--resume", sessionId] };
+      else typeResume = sessionId;
+    }
+    pane.eco = false;
+    pane.linkLost = false;
+    await this.respawnPane(pane);
+    // The recorded directory can be gone (a swept worktree, a renamed repo). Do not let that
+    // turn a reload into a dead pane: try once more from the default directory.
+    if (pane.exited && pane.cwd) {
+      pane.cwd = this.config.default_cwd ?? null;
+      pane.exited = false;
+      pane.exitAcknowledged = false;
+      pane.exitCode = null;
+      pane.term.term.reset();
+      await this.respawnPane(pane);
+    }
+    if (typeResume && !pane.exited && pane.id > 0) {
+      const id = typeResume;
+      window.setTimeout(() => !pane.exited && void this.tp.write(pane.id, `claude --resume ${id}\r`).catch(() => {}), 900);
+    }
+    toast(sessionId ? "Reloaded — resuming the same conversation" : "Reloaded");
   }
 
   moveFocus(dir: "left" | "right" | "up" | "down") {
@@ -685,6 +729,21 @@ export class App implements PaneHost {
 
   /** The pane the sheen last acknowledged, so it plays once per focus change. */
   private lastFocusPane: Pane | null = null;
+
+  /** A pane whose shell is gone wears a strip that says so and offers the one fix. */
+  private paintLinkLost(pane: Pane) {
+    let strip = pane.el.querySelector<HTMLElement>(".lost");
+    if (!pane.linkLost) {
+      strip?.remove();
+      return;
+    }
+    if (strip) return;
+    strip = document.createElement("div");
+    strip.className = "lost";
+    strip.innerHTML = `<span>This pane's shell is gone — what you see is history, and typing goes nowhere.</span><button>Reload session</button>`;
+    strip.querySelector("button")!.onclick = () => void this.reloadPane(pane);
+    pane.el.appendChild(strip);
+  }
 
   private paintFocus(tab: Tab) {
     const many = L.panes(tab.root).length > 1;
@@ -850,9 +909,22 @@ export class App implements PaneHost {
   /** Sleeping panes cannot see their own output; the host says what happened meanwhile. */
   async refreshHeld() {
     if (!this.hostInstance) return;
-    const sleeping = this.tabs.flatMap((t) => L.panes(t.root)).filter((p) => p.asleep);
-    if (!sleeping.length) return;
+    const all = this.tabs.flatMap((t) => L.panes(t.root));
+    const sleeping = all.filter((p) => p.asleep);
     const sessions = await this.tp.listSessions().catch(() => []);
+    // A pane whose shell the host no longer holds shows replayed history and swallows every
+    // keystroke. Mark it, so the pane can say so instead of looking alive.
+    const live = new Set(sessions.filter((s) => s.exited === null).map((s) => s.id));
+    let lostChanged = false;
+    for (const p of all) {
+      const lost = p.id > 0 && !p.exited && !live.has(p.id);
+      if (lost !== p.linkLost) {
+        p.linkLost = lost;
+        lostChanged = true;
+      }
+    }
+    if (lostChanged) this.paint();
+    if (!sleeping.length) return;
     const byId = new Map(sessions.map((s) => [s.id, s]));
     let changed = false;
     for (const p of sleeping) {
@@ -1113,6 +1185,7 @@ export class App implements PaneHost {
   paint() {
     renderRail(this);
     this.nodes?.paint();
+    for (const tab of this.tabs) for (const p of L.panes(tab.root)) this.paintLinkLost(p);
     const counts = this.agentCounts();
     this.syncBadge(counts.needsYou);
     this.syncAwake(counts.working > 0);
