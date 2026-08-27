@@ -44,7 +44,7 @@
   "notify_silence": false,
   "silence_seconds": 20,
   "default_cwd": "~",
-  "update_repo": null,
+  "update_repo": "ozanberkpolat/obpterm",
   "github_token": null,
   "accounts": [
     {
@@ -84,7 +84,7 @@
   ],
   "hosts": [
     {
-      "id": "hmtb6g7th",
+      "id": "hmtbfu2j7",
       "name": "New host",
       "host": "",
       "user": null,
@@ -112,80 +112,7 @@
   "agents_view": "sessions",
   "quota_5h_tokens": null,
   "quota_7d_tokens": null,
-  "projects": [
-    {
-      "id": "pmtb6gaa1",
-      "name": "Smoke",
-      "color": "#ff8a1e",
-      "cwd": "~",
-      "default_profile": "bash",
-      "layout": null,
-      "collapsed": false
-    },
-    {
-      "id": "pmtb6ggf7",
-      "name": "Smoke",
-      "color": "#4c8dff",
-      "cwd": "~",
-      "default_profile": "bash",
-      "layout": null,
-      "collapsed": false
-    },
-    {
-      "id": "pmtb6h507",
-      "name": "Smoke",
-      "color": "#2fd6a3",
-      "cwd": "~",
-      "default_profile": "bash",
-      "layout": null,
-      "collapsed": false
-    },
-    {
-      "id": "pmtb6hr8a",
-      "name": "Smoke",
-      "color": "#b48cff",
-      "cwd": "~",
-      "default_profile": "bash",
-      "layout": null,
-      "collapsed": false
-    },
-    {
-      "id": "pmtb6jd0u",
-      "name": "Smoke",
-      "color": "#22d3ee",
-      "cwd": "~",
-      "default_profile": "bash",
-      "layout": null,
-      "collapsed": false
-    },
-    {
-      "id": "pmtb6kwvd",
-      "name": "Smoke",
-      "color": "#ffb454",
-      "cwd": "~",
-      "default_profile": "bash",
-      "layout": null,
-      "collapsed": false
-    },
-    {
-      "id": "pmtb6lsts",
-      "name": "Smoke",
-      "color": "#ff6b73",
-      "cwd": "~",
-      "default_profile": "bash",
-      "layout": null,
-      "collapsed": false
-    },
-    {
-      "id": "pmtb6mhch",
-      "name": "Smoke",
-      "color": "#8b97a8",
-      "cwd": "~",
-      "default_profile": "bash",
-      "layout": null,
-      "collapsed": false
-    }
-  ],
+  "projects": [],
   "restore_session": true,
   "session": null,
   "theme": {

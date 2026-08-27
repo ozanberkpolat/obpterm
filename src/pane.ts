@@ -72,6 +72,8 @@ export class Pane {
   claudeSessionId: string | null = null;
   /** Claude's own name for the conversation, read from the transcript for the Deck. */
   claudeTitle: string | null = null;
+  /** When that name was last read, so a quiet session is not re-read every five seconds. */
+  titleAt = 0;
   /** The last non-empty title this pane had. A shell blanks its title as it exits; the name
    *  the session earned should outlive it. */
   lastRealTitle: string | null = null;

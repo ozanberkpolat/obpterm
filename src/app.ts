@@ -289,7 +289,22 @@ export class App implements PaneHost {
     for (const tab of this.tabs) {
       const dir = this.account(tab.accountId)?.claude_dir ?? "~/.claude";
       for (const pane of L.panes(tab.root)) {
-        if (!pane.claudeSessionId || pane.exited || pane.eco) continue;
+        if (!pane.claudeSessionId || pane.exited) continue;
+        // The name of the conversation, for EVERY session — not just the one on screen. A tab
+        // that gets slept or eco'd in the background used to have no name of its own, so it fell
+        // back to the profile's ("Claude Code") and you had to open it to find out what it was.
+        // The Rust side caches on the transcript's stamp, so a quiet session costs a `stat`.
+        if (!pane.claudeTitle || Date.now() - (pane.titleAt ?? 0) > 60_000) {
+          const name = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
+          pane.titleAt = Date.now();
+          if (name) {
+            pane.claudeTitle = name;
+            this.paintSoon();
+          }
+        }
+        // A sleeping session keeps its name — the transcript is on disk either way — but its
+        // gauges are about what it is doing, and it is not doing anything.
+        if (pane.eco) continue;
         const before = pane.ctxPct;
         pane.ctxPct = await this.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
         // Same pass, same file: what this conversation has spent. Both read the transcript and

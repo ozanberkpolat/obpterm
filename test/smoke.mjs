@@ -1733,6 +1733,12 @@ await evaluate("window.obpterm.config.update_repo = null");
   // Claude's own name for the conversation outranks whatever the shell last called itself.
   await evaluate(`(() => { const p = window.obpterm.tab.active; p.claudeTitle = "Enpara statement bug"; })()`);
   assert.equal(await evaluate("window.obpterm.title(window.obpterm.tab)"), "Enpara statement bug", "Claude's name wins over the shell's");
+
+  // And it survives being slept or eco'd — that is the case the user actually hits: a tab in
+  // the rail reading "Claude Code · agent sleeping" tells you nothing about what it was.
+  await evaluate(`(() => { const p = window.obpterm.tab.active; p.eco = true; p.title = "Claude Code"; })()`);
+  assert.equal(await evaluate("window.obpterm.title(window.obpterm.tab)"), "Enpara statement bug", "a sleeping session still says what it was about");
+  await evaluate(`(() => { const p = window.obpterm.tab.active; p.eco = false; })()`);
   await evaluate(`(() => { const p = window.obpterm.tab.active; p.claudeTitle = null; p.lastRealTitle = null; })()`);
 }
 

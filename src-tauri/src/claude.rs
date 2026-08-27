@@ -508,6 +508,17 @@ pub async fn session_title(dir: String, session_id: String) -> Option<String> {
         .flatten()
         .map(|d| d.path().join(format!("{session_id}.jsonl")))
         .find(|p| p.exists())?;
+    // Same discipline as the context gauge: this is now asked for EVERY session, not just the
+    // one on screen, so a transcript that has not grown must cost a `stat` and nothing more.
+    let stamp = std::fs::metadata(&file)
+        .ok()
+        .map(|m| (m.len(), m.modified().ok()))
+        .unwrap_or((0, None));
+    if let Some((seen, title)) = TITLE_CACHE.lock().ok().and_then(|c| c.get(&session_id).cloned()) {
+        if seen == stamp {
+            return title;
+        }
+    }
     let text = tail(&file, 128 * 1024)?;
     let mut ai = None;
     let mut custom = None;
@@ -522,8 +533,16 @@ pub async fn session_title(dir: String, session_id: String) -> Option<String> {
             }
         }
     }
-    custom.or(ai)
+    let title = custom.or(ai);
+    if let Ok(mut c) = TITLE_CACHE.lock() {
+        c.insert(session_id.clone(), (stamp, title.clone()));
+    }
+    title
 }
+
+/// session id -> (what the transcript looked like when we read it, the name it carried).
+static TITLE_CACHE: std::sync::LazyLock<Mutex<HashMap<String, (FileStamp, Option<String>)>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// How full this session's context window is, as a rough percentage: the last usage block's
 /// input + cache tokens over a 200k window. Enough to warn before an auto-compact — not
