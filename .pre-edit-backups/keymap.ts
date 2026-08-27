@@ -40,10 +40,6 @@ export const ACTIONS: KeyAction[] = [
   { id: "copy", label: "Copy the selection", def: "Ctrl+Shift+KeyC", run: (a) => void a.copy() },
   { id: "paste", label: "Paste", def: "Ctrl+Shift+KeyV", run: (a) => void a.paste() },
   { id: "settings", label: "Settings", def: "Ctrl+Shift+Comma", run: (a) => a.settings.open() },
-  // The two actions used fifteen times a day were three keystrokes deep (right-click, or
-  // palette-and-type). Ctrl+Shift+S and +K are free against everything above and FIXED.
-  { id: "sleep-tab", label: "Sleep this session (frees its memory)", def: "Ctrl+Shift+KeyS", run: (a) => { if (a.tab) void a.sleepTab(a.tab); } },
-  { id: "compact", label: "Compact this conversation", def: "Ctrl+Shift+KeyK", run: (a) => { if (a.tab) a.compact(a.tab.active); } },
 ];
 
 /** What the Keyboard section lists but nothing can rebind. */

@@ -44,12 +44,6 @@ export class Status {
     this.quota.addEventListener("click", (e) => this.usageMenu(e as MouseEvent));
     this.updateEl.addEventListener("click", () => void this.checkUpdates());
     this.hostEl.addEventListener("click", (e) => this.hostMenu2(e as MouseEvent));
-    // The one chip that names a problem should also fix it: it only shows when the focused
-    // conversation is filling up, and the fix is always the same word.
-    document.querySelector("#ctx-chip")!.addEventListener("click", () => {
-      const pane = this.app.tab?.active;
-      if (pane) this.app.compact(pane);
-    });
     this.capture.addEventListener("click", () => {
       const path = this.app.tab?.active.logPath;
       if (!path) return;
@@ -362,19 +356,15 @@ export class Status {
   private hostMenu2(e: MouseEvent) {
     openMenu(e.clientX, e.clientY, [
       { label: "Wake every sleeping tab", onPick: () => void this.app.wakeAll() },
-      // One row per background shell — everything about it is already in `held`, and a stray
-      // debug shell should not force adopting or killing the two sessions you actually want
-      // back. The bulk actions stay underneath for when all of them are the same decision.
-      ...this.app.orphanRows(),
-      ...(this.app.orphanedSessions() > 1
+      ...(this.app.orphanedSessions()
         ? [
             {
-              label: `Open all ${this.app.orphanedSessions()} as tabs`,
+              label: `Open the ${this.app.orphanedSessions()} background shells as tabs`,
               hint: "keeps them running",
               onPick: () => void this.app.adoptOrphans(),
             },
             {
-              label: `End all ${this.app.orphanedSessions()}`,
+              label: `End the ${this.app.orphanedSessions()} background shells`,
               hint: "~400 MB each",
               danger: true,
               onPick: () => void this.app.killOrphans(),

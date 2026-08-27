@@ -362,6 +362,27 @@ export class App implements PaneHost {
     toast("Compacting the conversation…");
   }
 
+  /**
+   * Allow, and never ask for this command word in this project again. Lives on App because the
+   * rail and the map both offer it — it was private to the map, so triage from the rail (the
+   * default surface) could Allow but never pin the rule without switching views.
+   */
+  async alwaysAllow(pane: Pane) {
+    const a = pane.agent;
+    if (isDangerous(a)) return toast("Not making a standing rule out of a dangerous command");
+    if (a.tool !== "Bash" || !a.toolInput) return toast("Always-allow only knows shell commands so far — Allow it normally");
+    const word = a.toolInput.trim().split(/\s+/)[0];
+    if (!word || !pane.cwd) return toast("No command word or working directory to pin the rule to");
+    const rule = `Bash(${word}:*)`;
+    try {
+      await this.tp.allowRule(pane.cwd, rule);
+      await this.answerAgent(pane, true);
+      toast(`Allowed, and ${rule} is now always allowed in this project`);
+    } catch (e) {
+      toast(`Rule not saved: ${e}`);
+    }
+  }
+
   /** The rail's verdict on a pane's held permission request. */
   async answerAgent(pane: Pane, allow: boolean) {
     const pending = pane.agent.pendingId;
@@ -1280,7 +1301,10 @@ export class App implements PaneHost {
       for (const p of all) {
         const pid = pidOf.get(p.id);
         const bytes = pid ? byPid.get(pid) ?? 0 : 0;
-        if (bytes) p.rss = bytes;
+        if (bytes) {
+          p.prevRss = p.rss || bytes;
+          p.rss = bytes;
+        }
       }
       // The host has known how old every shell is since it started it; nothing ever read it.
       for (const s of sessions) {
@@ -1497,15 +1521,25 @@ export class App implements PaneHost {
   }
 
   /** Ctrl+Shift+G: the next Claude session that waits on the user, cycling. */
+  /** Sessions that stopped reporting mid-task — the state most worth catching at twenty. */
+  stalledCount(): number {
+    return this.tabs.flatMap((t) => this.panesOf(t)).filter((p) => p.agent.stalledSince && !p.eco && !p.exited).length;
+  }
+
   jumpNeedsYou() {
     const list: { pane: Pane; tab: Tab }[] = [];
+    const stalled: { pane: Pane; tab: Tab }[] = [];
     for (const tab of this.tabs) {
       for (const pane of this.panesOf(tab)) {
         if (pane.agent.state === "blocked" || pane.agent.state === "waiting") list.push({ pane, tab });
+        // Stalled rides the same cycle, after everything that is actually asking: a session
+        // that went quiet mid-task used to be reachable only by scrolling for a grey subtitle.
+        else if (pane.agent.stalledSince && !pane.eco && !pane.exited) stalled.push({ pane, tab });
       }
     }
     // A dangerous held request is always the next stop.
     list.sort((a, b) => Number(isDangerous(b.pane.agent)) - Number(isDangerous(a.pane.agent)));
+    list.push(...stalled);
     if (!list.length) return;
     const current = list.findIndex(({ pane }) => pane === this.tab?.active);
     const next = list[(current + 1) % list.length]!;
@@ -1761,6 +1795,32 @@ export class App implements PaneHost {
     ]);
   }
 
+  /**
+   * The whole month of sessions, open and closed alike — "which tab was that work in, last
+   * week?" The ledger has held this since 0.21.23; only the missing subset was ever listed.
+   */
+  historyMenu() {
+    const entries = [...this.ledger].sort((a, b) => b.seen - a.seen);
+    if (!entries.length) return void toast("The ledger is empty — it fills as sessions run");
+    const open = new Set(this.tabs.flatMap((t) => L.panes(t.root)).map((p) => p.ledgerKey));
+    const ago = (ms: number) => {
+      const min = Math.round((Date.now() - ms) / 60_000);
+      return min < 60 ? `${min}m ago` : min < 1440 ? `${Math.floor(min / 60)}h ago` : `${Math.floor(min / 1440)}d ago`;
+    };
+    openMenu(window.innerWidth / 2 - 160, 90, entries.slice(0, 20).map((e) => ({
+      label: e.title || e.cwd || e.key,
+      hint: `${e.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? ""} · ${ago(e.seen)}${open.has(e.key) ? " · open" : ""}`,
+      onPick: () => {
+        if (open.has(e.key)) {
+          const tab = this.tabs.find((t) => L.panes(t.root).some((p) => p.ledgerKey === e.key));
+          if (tab) this.activate(tab);
+        } else {
+          void this.recoverSession(e);
+        }
+      },
+    })));
+  }
+
   /** Reopen one, where it was, resuming the conversation if there is one to resume. */
   async recoverSession(entry: LedgerEntry) {
     const profile = this.config.profiles.find((p) => p.id === entry.profile) ?? this.config.profiles[0];
@@ -1829,6 +1889,29 @@ export class App implements PaneHost {
     return [...this.held.values()].filter((s) => s.exited === null && !shown.has(s.id)).map((s) => s.id);
   }
 
+  /** One menu row per background shell: what it is, then Adopt or End for THAT one. */
+  orphanRows(): { label: string; hint?: string; danger?: boolean; onPick: () => void }[] {
+    const rows: { label: string; hint?: string; danger?: boolean; onPick: () => void }[] = [];
+    for (const id of this.orphanIds().slice(0, 8)) {
+      const held = this.held.get(id);
+      if (!held) continue;
+      const name = held.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? held.exe;
+      const age = Math.round((Date.now() - held.started_at) / 60_000);
+      const detail = held.agent_detail ? ` · ${held.agent_detail.slice(0, 40)}` : "";
+      rows.push({
+        label: `Open ${name}${detail}`,
+        hint: age < 60 ? `${age}m` : `${Math.floor(age / 60)}h`,
+        onPick: () => void this.adoptSession(id).then(() => this.paint()),
+      });
+      rows.push({
+        label: `    End ${name}`,
+        danger: true,
+        onPick: () => void this.tp.kill(id).then(() => this.connectHost()).then(() => this.paint()).catch(() => {}),
+      });
+    }
+    return rows;
+  }
+
   /**
    * End every shell nothing is showing. They are leftovers: windows that closed without
    * quitting, updates, crashes. The host holds them ON PURPOSE — that is what makes an update
@@ -1851,7 +1934,7 @@ export class App implements PaneHost {
     toast(`Opened ${ids.length} background shell${ids.length > 1 ? "s" : ""} as tabs`);
   }
 
-  private async adoptSession(id: number) {
+  async adoptSession(id: number) {
     const held = this.held.get(id);
     const profile = this.config.profiles.find((p) => p.id === "claude") ?? this.config.profiles[0];
     if (!held || !profile) return;

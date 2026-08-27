@@ -28,6 +28,15 @@ export interface PaneHost {
   onPaneSelection(text: string): void;
 }
 
+/** DEC private modes that make a terminal report the pointer. */
+const MOUSE_MODES = new Set([1000, 1001, 1002, 1003, 1005, 1006, 1015, 1016]);
+const MOUSE_DECODER = new TextDecoder("latin1");
+/** SGR (`\x1b[<b;x;yM`), urxvt (`\x1b[b;x;yM`) and X10 (`\x1b[M` + 3 bytes) reports. */
+const MOUSE_REPORT = /^\x1b\[(<?\d+;\d+;\d+[Mm]|M[\s\S]{3})$/;
+function isMouseReport(data: string): boolean {
+  return data.length >= 4 && data.charCodeAt(0) === 27 && MOUSE_REPORT.test(data);
+}
+
 export class Pane {
   readonly el = document.createElement("div");
   term: Term;
@@ -63,10 +72,30 @@ export class Pane {
   claudeSessionId: string | null = null;
   /** Claude's own name for the conversation, read from the transcript for the Deck. */
   claudeTitle: string | null = null;
+  /** When that name was last read, so a quiet session is not re-read every five seconds. */
+  titleAt = 0;
+  /** The last non-empty title this pane had. A shell blanks its title as it exits; the name
+   *  the session earned should outlive it. */
+  lastRealTitle: string | null = null;
+  /** Whether this pane has already taken the host's record of what its agent was doing. It is
+   *  the right answer once, at reconnect, and stale every time after. */
+  adoptedHostState = false;
   /** "+412 −87" for this pane's directory, from the Deck's slow lane. */
   diffstat: string | null = null;
   /** Rough context-window fill %, from the transcript tail. */
   ctxPct: number | null = null;
+  /** Bytes this pane's whole process tree is holding, from the host's pid. The number that
+   *  decides which session is worth exiting when the machine is out of RAM. */
+  rss = 0;
+  /** When the host started this shell — wall-clock age, unlike `agent.workingSince` which
+   *  resets every turn. The tab that has been open since yesterday. */
+  startedAt = 0;
+  /** This pane's identity in the ledger. Minted once and carried across restarts: Claude's own
+   *  session id cannot do this job, because `/clear` mints a new one and the old entry would
+   *  look like a session that went missing. */
+  ledgerKey: string = crypto.randomUUID();
+  /** Tokens and estimated dollars this conversation has spent, from its own transcript. */
+  usage: import("./transport").SessionUsage | null = null;
   /** Set when this pane's shell is not in the host's list any more, or a write to it failed:
    *  the screen is replayed history and everything typed at it disappears. */
   linkLost = false;
@@ -75,6 +104,12 @@ export class Pane {
   /** Cold restore of claude typed into a plain shell: type `claude --resume <this>` once up. */
   typeResume: string | null = null;
   logPath: string | null = null;
+  /** Restore hint: come back asleep instead of attaching. Set for tabs that are not on screen. */
+  startAsleep = false;
+  /** Whether the PROGRAM has asked for the mouse since this pane last attached. Nothing else
+   *  may arm it: a report sent to a program that is not in mouse mode is typed into it as
+   *  text, and a pointer moving over the pane does that thirty times a second. */
+  private mouseArmed = false;
 
   constructor(
     public host: PaneHost,
@@ -104,7 +139,12 @@ export class Pane {
       }
     });
     t.onTitleChange((title) => {
-      this.title = title || this.profile.name;
+      // A shell resets its title on the way out, and Claude Code's own name for the session
+      // goes with it — leaving a tab called "PowerShell" where a conversation used to be, at
+      // exactly the moment you are trying to work out what it was about. An empty title is a
+      // reset, not a rename: keep the last real one.
+      if (title) this.lastRealTitle = title;
+      this.title = title || this.lastRealTitle || this.profile.name;
       host.onPaneTitle(this);
     });
     // OSC 9 carries three different things and we were throwing two of them away:
@@ -137,6 +177,8 @@ export class Pane {
         if (d === "r" || d === "R") return host.onPaneRespawn(this);
         return host.onPaneExit(this, 0); // any other key closes an exited pane
       }
+      if (!this.mouseArmed && isMouseReport(d)) return; // nobody asked for these
+
       void host.tp.write(this.id, d).catch(() => {
         // Typing that goes nowhere is the worst failure this app can have: say so.
         this.linkLost = true;
@@ -173,6 +215,25 @@ export class Pane {
     if (this.asleep || this.exited || this.id < 0) return;
     this.asleep = true;
     await this.host.tp.detach(this.id).catch(() => {});
+    this.teardown();
+  }
+
+  /** Reads the program's own `CSI ? … h/l` out of its output and arms the mouse accordingly.
+   *  Only what arrives on the live stream counts — a replayed record does not. */
+  private trackMouseMode(bytes: Uint8Array) {
+    // Cheap gate: almost no chunk contains this, and the terminal parses the rest anyway.
+    if (bytes.length < 6 || bytes.indexOf(0x1b) < 0) return;
+    const text = MOUSE_DECODER.decode(bytes, { stream: false });
+    for (const m of text.matchAll(/\x1b\[\?([\d;]+)([hl])/g)) {
+      const on = m[2] === "h";
+      for (const n of m[1]!.split(";")) {
+        if (MOUSE_MODES.has(Number(n))) this.mouseArmed = on;
+      }
+    }
+  }
+
+  /** Drops the terminal and puts the placeholder in its place. The shell is not touched. */
+  private teardown() {
     this.term.dispose();
     this.el.replaceChildren();
     const note = document.createElement("div");
@@ -185,12 +246,14 @@ export class Pane {
     if (!this.asleep) return;
     this.asleep = false;
     this.heldState = null;
+    this.mouseArmed = false; // a new terminal knows nothing until the program says so
     this.el.replaceChildren();
     this.term = this.buildTerm();
     const t = this.term.term;
     this.term.fit();
     const onData = (bytes: Uint8Array) => {
       this.lastOutput = Date.now();
+      this.trackMouseMode(bytes);
       t.write(bytes);
     };
     const onExit = (code: number | null) => {
@@ -218,6 +281,7 @@ export class Pane {
     const onData = (bytes: Uint8Array) => {
       const wasIdle = Date.now() - this.lastOutput > ACTIVE_MS;
       this.lastOutput = Date.now();
+      this.trackMouseMode(bytes);
       if (wasIdle) {
         this.busySince = Date.now();
         this.host.onPaneActivity();
@@ -232,8 +296,19 @@ export class Pane {
       // The shell never stopped; the window did. Replay its history, then go live.
       const id = this.attachTo;
       this.attachTo = null;
-      await this.host.tp.attach(id, t.cols, t.rows, onData, onExit);
       this.id = id;
+      if (this.startAsleep) {
+        // Twenty tabs coming back used to mean twenty attaches and twenty scrollback replays
+        // into twenty terminals, in one go, before the window would answer anything. A tab you
+        // are not looking at does not need any of that: the shell is already running and its id
+        // is all a click needs to attach it.
+        this.startAsleep = false;
+        this.host.onPaneReattached(this);
+        this.asleep = true;
+        this.teardown();
+        return;
+      }
+      await this.host.tp.attach(id, t.cols, t.rows, onData, onExit);
       this.host.onPaneReattached(this);
     } else {
       this.id = await this.host.tp.spawn({ ...this.profile, cwd: this.cwd }, t.cols, t.rows, onData, onExit);
@@ -265,6 +340,9 @@ export class Pane {
   }
 
   focus() {
+    // A pane that lost its GPU context while it was in the background gets one back here: it is
+    // about to be the terminal you are looking at, and the ceiling has freed the contexts.
+    if (this.term.degraded()) this.term.regain();
     this.term.fit();
     this.term.term.focus();
   }

@@ -87,6 +87,9 @@ export class Pane {
   /** Bytes this pane's whole process tree is holding, from the host's pid. The number that
    *  decides which session is worth exiting when the machine is out of RAM. */
   rss = 0;
+  /** The previous reading, so the rail can tell "big" from "growing" — growing is the one that
+   *  predicted every freeze. */
+  prevRss = 0;
   /** When the host started this shell — wall-clock age, unlike `agent.workingSince` which
    *  resets every turn. The tab that has been open since yesterday. */
   startedAt = 0;

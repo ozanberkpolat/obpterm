@@ -49,6 +49,7 @@ export function installPalette(app: App) {
     { group: "App", label: "New tab in a worktree — isolated copy of this repo", hint: "Ctrl+Shift+U", run: () => void import("./rail").then((r) => r.newWorktree(app)) },
     { group: "Panes", label: "Sleep this session (frees its memory)", run: () => { if (app.tab) void app.sleepTab(app.tab); } },
     { group: "App", label: "Reopen a session from the ledger…", run: () => app.recoveryMenu() },
+    { group: "App", label: "Session history — everything from the last month", run: () => app.historyMenu() },
     { group: "App", label: "Close every exited tab", run: () => app.closeExited() },
     { group: "App", label: "Reload every disconnected pane", run: () => void app.reloadLost() },
     { group: "App", label: "Restart the session host (ends shells, restores tabs)", run: () => void app.restartHost() },

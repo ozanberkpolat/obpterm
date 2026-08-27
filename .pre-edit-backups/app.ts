@@ -8,7 +8,7 @@ import { applyTermConfig } from "./term";
 import { renderRail } from "./rail";
 import { bindKeys } from "./keymap";
 import { toast } from "./ui";
-import { COLORS } from "./menu";
+import { COLORS, openMenu } from "./menu";
 import type { Find } from "./find";
 import type { Status } from "./status";
 import type { Preset } from "./toolbar";
@@ -72,6 +72,23 @@ function olderThan(a: string, b: string): boolean {
  * be resumed by TYPING it again, because `pwsh.exe --resume <id>` is not a shell invocation,
  * it is `pwsh` exiting with code 64 and taking the session with it.
  */
+/** One line of the ledger: a session this window has known. */
+export interface LedgerEntry {
+  key: string;
+  title: string;
+  cwd: string | null;
+  profile: string;
+  project: string | null;
+  account: string | null;
+  claude: string | null;
+  /** Epoch ms it was last open. */
+  seen: number;
+  /** Closed by the user on purpose — never offer it back. */
+  closed: boolean;
+  /** The title was typed by the user, not inferred from the shell or the transcript. */
+  named?: boolean;
+}
+
 export function resumePlan(profile: Profile, sessionId: string | null): { profile: Profile; type: string | null } {
   const next = { ...profile };
   if (!sessionId) return { profile: next, type: null };
@@ -90,6 +107,13 @@ function stripSessionArgs(args: string[]): string[] {
   }
   return out;
 }
+
+/** A session you visited, or that printed, inside this window is not idle — however full the
+ *  machine is. The memory sweep is allowed to be decisive, not hasty. */
+const PRESSURE_GRACE_MS = 5 * 60_000;
+/** And after it acts, the memory takes a moment to come back. Acting again before it does just
+ *  empties the window three sessions at a time. */
+const PRESSURE_COOLDOWN_MS = 3 * 60_000;
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const DEFAULT_ACCENT = "#ff8a1e";
@@ -241,9 +265,12 @@ export class App implements PaneHost {
       if (!pane.claudeSessionId) continue;
       // The name only when the user has not chosen one; the gauge only for the pane whose gauge
       // is on screen — it is a 256 KB read and a JSON parse per pane, every five seconds.
-      if (!tab.name) {
-        const title = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
-        if (title && title !== pane.title) {
+      const title = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
+      if (title) {
+        // Kept whether or not the user has named the tab: it is what the session is ABOUT, and
+        // it is what the tab falls back to when the shell blanks its own title on the way out.
+        pane.claudeTitle = title;
+        if (!tab.name && title !== pane.title) {
           pane.title = title;
           this.paint();
         }
@@ -264,7 +291,22 @@ export class App implements PaneHost {
     for (const tab of this.tabs) {
       const dir = this.account(tab.accountId)?.claude_dir ?? "~/.claude";
       for (const pane of L.panes(tab.root)) {
-        if (!pane.claudeSessionId || pane.exited || pane.eco) continue;
+        if (!pane.claudeSessionId || pane.exited) continue;
+        // The name of the conversation, for EVERY session — not just the one on screen. A tab
+        // that gets slept or eco'd in the background used to have no name of its own, so it fell
+        // back to the profile's ("Claude Code") and you had to open it to find out what it was.
+        // The Rust side caches on the transcript's stamp, so a quiet session costs a `stat`.
+        if (!pane.claudeTitle || Date.now() - (pane.titleAt ?? 0) > 60_000) {
+          const name = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
+          pane.titleAt = Date.now();
+          if (name) {
+            pane.claudeTitle = name;
+            this.paintSoon();
+          }
+        }
+        // A sleeping session keeps its name — the transcript is on disk either way — but its
+        // gauges are about what it is doing, and it is not doing anything.
+        if (pane.eco) continue;
         const before = pane.ctxPct;
         pane.ctxPct = await this.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
         // Same pass, same file: what this conversation has spent. Both read the transcript and
@@ -324,9 +366,16 @@ export class App implements PaneHost {
   async answerAgent(pane: Pane, allow: boolean) {
     const pending = pane.agent.pendingId;
     if (!pending) return;
-    pane.agent.pendingId = null;
-    pane.agent.state = allow ? "working" : "waiting";
-    await this.tp.agentAnswer(pending, allow).catch(() => {});
+    // The verdict must reach the host before the prompt disappears from the UI: clearing state
+    // first meant a failed send made the question vanish while Claude never heard the answer —
+    // a session stuck waiting on a prompt the window no longer shows.
+    try {
+      await this.tp.agentAnswer(pending, allow);
+      pane.agent.pendingId = null;
+      pane.agent.state = allow ? "working" : "waiting";
+    } catch (e) {
+      toast(`The answer did not reach the session: ${e}`);
+    }
     this.paint();
   }
 
@@ -357,6 +406,8 @@ export class App implements PaneHost {
    * After a while unfocused and done, /exit it; the tab stays, marked, and focusing it
    * resumes the same conversation. Nothing is exited mid-turn, mid-question, or on screen.
    */
+  lastPressureEco = 0;
+
   ecoSweep() {
     const minutes = this.config.eco_after_minutes;
     const cutoff = Date.now() - (minutes || 0) * 60_000;
@@ -398,25 +449,44 @@ export class App implements PaneHost {
     // a 2 GB session that has been fanning out all afternoon are both "idle", and only one of
     // them gives the machine anything back. Biggest first, with age as the tie-break for the
     // ones we have no measurement for.
-    const queue = eligible().sort((a, b) => b.rss - a.rss || a.lastVisited - b.lastVisited);
-    let freed = 0;
+    // Nothing you have touched recently is "idle", whatever the meter says. Without this the
+    // sweep took a session the user had left fifteen seconds earlier, because on a machine that
+    // sits at 96% it fires every minute and only ever asked which session was biggest.
+    const settled = Date.now() - PRESSURE_GRACE_MS;
+    // And once it has acted, give the machine time to actually give the memory back before
+    // acting again — three sessions a minute, every minute, empties a window.
+    if (Date.now() - this.lastPressureEco < PRESSURE_COOLDOWN_MS) return;
+
+    const queue = eligible()
+      .filter((p) => p.lastVisited < settled && p.lastOutput < settled)
+      .sort((a, b) => b.rss - a.rss || a.lastVisited - b.lastVisited);
+    let freed: Pane[] = [];
     let bytes = 0;
     for (const pane of queue) {
-      if (freed >= 3) break; // a few per sweep, then look again — never a stampede
+      if (freed.length >= 3) break; // a few per sweep, then look again — never a stampede
       bytes += pane.rss;
       this.eco(pane);
-      freed++;
+      freed.push(pane);
     }
-    if (freed) {
+    if (freed.length) {
+      this.lastPressureEco = Date.now();
       const gave = bytes ? ` (~${(bytes / 1e9).toFixed(1)} GB)` : "";
-      toast(`Memory at ${Math.round(m)}% — ${freed} idle session${freed > 1 ? "s" : ""}${gave} exited to free it; click a tab to resume`);
+      // Name them: an unnamed "3 sessions exited" is something you have to go and check.
+      const names = freed.map((p) => this.tabOf(p)?.name ?? p.title).filter(Boolean).slice(0, 3).join(", ");
+      toast(`Memory at ${Math.round(m)}% — exited ${names || `${freed.length} idle sessions`}${gave}; click a tab to resume`);
     }
   }
 
   /** `/exit` a session and mark the tab: clicking it runs `claude --resume` on the same id. */
-  private eco(pane: Pane) {
+  eco(pane: Pane) {
+    // Marked handled only once the /exit is known to have reached the shell. Flipping the flag
+    // first meant a failed write left the ~400 MB process running while `eligible()` skipped it
+    // forever — the exact leak this feature exists to stop, made silent and permanent.
     pane.eco = true;
-    void this.tp.write(pane.id, "/exit\r").catch(() => {});
+    void this.tp.write(pane.id, "/exit\r").catch(() => {
+      pane.eco = false;
+      toast(`Could not sleep ${pane.title || pane.profile.name} — the shell did not take /exit`);
+    });
   }
 
   /**
@@ -524,11 +594,14 @@ export class App implements PaneHost {
     projectId: string | null = this.tab?.projectId ?? null,
     cwd: string | null = null,
     accountId: string | null = this.tab?.accountId ?? this.config.default_account,
+    /** Attach to a shell the host already holds instead of spawning a new one. */
+    attachTo: number | null = null,
   ) {
     const project = this.project(projectId);
     const p = profile ?? this.profileById(project?.default_profile ?? this.config.default_profile);
     const slot = this.nextSlot();
     const pane = new Pane(this, this.withAccount(p, accountId, slot), cwd ?? project?.cwd ?? this.config.default_cwd);
+    pane.attachTo = attachTo;
     const el = document.createElement("div");
     el.className = "tab-panes";
     this.panesEl.appendChild(el);
@@ -560,6 +633,7 @@ export class App implements PaneHost {
   }
 
   closeTab(tab: Tab) {
+    this.forgetInLedger(tab);
     const lastCwd = tab.active.cwd;
     for (const p of L.panes(tab.root)) {
       p.kill();
@@ -629,6 +703,31 @@ export class App implements PaneHost {
     void this.flushSession();
   }
 
+  /**
+   * Move a whole project up or down the rail — the project row AND the tabs inside it, since
+   * the rail draws groups in `config.projects` order and tabs in `this.tabs` order. Moving one
+   * without the other would leave the header somewhere its tabs are not.
+   */
+  moveProject(project: Project, delta: number) {
+    const ordered = this.config.projects;
+    const from = ordered.indexOf(project);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= ordered.length) return;
+    ordered.splice(from, 1);
+    ordered.splice(to, 0, project);
+    // Rebuild the tab order to match: each project's tabs in a block, in the new project order,
+    // with anything ungrouped left where the rail already draws it — at the end.
+    const groups = new Map<string | null, Tab[]>();
+    for (const tab of this.tabs) {
+      const key = tab.projectId && ordered.some((p) => p.id === tab.projectId) ? tab.projectId : null;
+      (groups.get(key) ?? groups.set(key, []).get(key)!).push(tab);
+    }
+    this.tabs = [...ordered.flatMap((p) => groups.get(p.id) ?? []), ...(groups.get(null) ?? [])];
+    this.persistConfig();
+    void this.flushSession();
+    this.paint();
+  }
+
   jump(index: number) {
     const t = this.tabs[index];
     if (t) this.activate(t);
@@ -647,14 +746,19 @@ export class App implements PaneHost {
   }
 
   title(tab: Tab): string {
-    return tab.name || tab.active.title || tab.active.profile.name;
+    const pane = tab.active;
+    // Claude's own name for the conversation outranks whatever the shell last called itself —
+    // an exited session should still say what it was about, not "PowerShell".
+    return tab.name || pane.claudeTitle || pane.title || pane.lastRealTitle || pane.profile.name;
   }
 
   /** An empty name hands the tab back to whatever the shell calls itself. */
   renameTab(tab: Tab, name: string) {
     tab.name = name.trim() || null;
     this.paint();
-    this.persistSession();
+    // Written now, not in 250ms: a name you typed is the one thing that must never be lost to
+    // a crash in the gap, and it is one small write.
+    void this.flushSession();
   }
 
   // ---- panes ----------------------------------------------------------------------------
@@ -674,6 +778,7 @@ export class App implements PaneHost {
 
   closePane(pane: Pane, tab = this.tabOf(pane)) {
     if (!tab) return;
+    this.forgetPane(pane); // closing one on purpose is not losing it
     const next = L.remove(tab.root, pane);
     pane.kill();
     pane.dispose();
@@ -765,6 +870,10 @@ export class App implements PaneHost {
   async respawnPane(pane: Pane) {
     const tab = this.tabOf(pane);
     if (!tab || pane.deadReason) return;
+    // End the shell we are replacing. Forgetting its id — which is all this used to do — leaves
+    // it running in the host with no tab pointing at it, and every eco resume and every `r`
+    // added one. That is the count in the status bar climbing on its own.
+    if (pane.id > 0) await this.tp.kill(pane.id).catch(() => {});
     pane.exited = false;
     pane.exitAcknowledged = false;
     pane.exitCode = null;
@@ -968,13 +1077,17 @@ export class App implements PaneHost {
    *  Allow/Deny: the held POST completes and the session moves on. */
   answerFromPhone(pending: string, allow: boolean) {
     const pane = this.tabs.flatMap((t) => L.panes(t.root)).find((p) => p.agent.pendingId === pending);
-    void this.tp.agentAnswer(pending, allow).catch(() => {});
-    if (pane) {
-      pane.agent.pendingId = null;
-      pane.agent.state = "working";
-    }
-    toast(`${allow ? "Allowed" : "Denied"} from your phone`);
-    this.paintSoon();
+    void this.tp
+      .agentAnswer(pending, allow)
+      .then(() => {
+        if (pane) {
+          pane.agent.pendingId = null;
+          pane.agent.state = "working";
+        }
+        toast(`${allow ? "Allowed" : "Denied"} from your phone`);
+        this.paintSoon();
+      })
+      .catch((e) => toast(`The phone's answer did not reach the session: ${e}`));
   }
 
   /** One place for "tell the user something happened while they were elsewhere". */
@@ -1080,6 +1193,35 @@ export class App implements PaneHost {
     this.paint();
   }
 
+  /**
+   * Put one tab to sleep because you said so, not because a timer did. Two levels, and it takes
+   * the deeper one it can: a Claude session with a conversation to come back to is `/exit`ed
+   * (that is the ~400 MB), anything else just loses its terminal.
+   */
+  async sleepTab(tab: Tab) {
+    let exited = 0;
+    for (const pane of L.panes(tab.root)) {
+      if (pane.exited || pane.id <= 0) continue;
+      // A pane holding a question keeps its shell AND its terminal — the same invariant every
+      // automatic sweep honours. This is the manual path, one right-click from the Allow/Deny
+      // buttons for that very pane, and it used to fall through to sleep() anyway.
+      if (pane.agent.state === "blocked" || pane.agent.state === "waiting") continue;
+      if (pane.claudeSessionId && !pane.eco) {
+        this.eco(pane);
+        exited++;
+      } else if (!pane.asleep) {
+        await pane.sleep();
+      }
+    }
+    if (tab === this.tab) {
+      const next = this.mru.find((t) => t !== tab && this.tabs.includes(t)) ?? this.tabs.find((t) => t !== tab);
+      if (next) this.activate(next);
+    }
+    this.paint();
+    void this.flushSession();
+    toast(exited ? "Session exited — click the tab to resume the conversation" : "Terminal closed — the shell keeps running");
+  }
+
   async sleepIdleTabs() {
     const seconds = this.config.sleep_after_seconds;
     if (!seconds || !this.hostInstance) return;
@@ -1119,6 +1261,14 @@ export class App implements PaneHost {
     }
     if (lostChanged) this.paint();
 
+    // A shell that has ENDED and that no tab is showing is pure bookkeeping — the host keeps it
+    // so a window can report the exit, and once nobody is listening it is just a row. Reap it,
+    // so "N in the background" only ever counts things that are actually running.
+    const shown = new Set(all.map((p) => p.id));
+    for (const s of sessions) {
+      if (s.exited !== null && !shown.has(s.id)) void this.tp.kill(s.id).catch(() => {});
+    }
+
     // What each session's process tree is holding. `rss_for` was written for this and never
     // called: at 98% RAM the difference between a 40 MB shell and a 2 GB stuck session is the
     // whole decision, and nothing was asking. One batched call for every pid the host knows.
@@ -1144,7 +1294,11 @@ export class App implements PaneHost {
     // reboot is exactly when the rail has to be honest. Adopt what the host already knows,
     // but never over a live pane's own state: ours is fresher.
     for (const p of all) {
-      if (p.agent.state !== null) continue;
+      // ONCE per pane, and only while it has nothing of its own to say. The host's record is
+      // the right answer at reconnect and a stale one for ever after: re-applying it every
+      // five seconds resurrects a state the session has long since moved past.
+      if (p.adoptedHostState || p.agent.state !== null) continue;
+      p.adoptedHostState = true;
       const held = sessions.find((x) => x.id === p.id);
       if (!held?.agent_state) continue;
       const known = ["working", "done", "waiting", "blocked"] as const;
@@ -1497,9 +1651,134 @@ export class App implements PaneHost {
   async flushSession() {
     clearTimeout(this.sessionTimer);
     const active = Math.max(0, this.tab ? this.tabs.indexOf(this.tab) : 0);
+    this.noteLedger();
     await this.tp
-      .sessionSave(this.tabs.map((t) => this.snapshot(t)), active, this.hostInstance)
+      .sessionSave(this.tabs.map((t) => this.snapshot(t)), active, this.hostInstance, this.ledger)
       .catch((e) => console.warn("session not saved", e));
+  }
+
+  /**
+   * Every session this window has known, by name and directory, whether or not it is open now.
+   * `tabs` is the current state and is overwritten by whatever the window last managed to save
+   * — after a crash that is often less than was really running, and the sessions it forgot are
+   * gone with no trace of their names. The ledger is that trace.
+   */
+  ledger: LedgerEntry[] = [];
+
+  private noteLedger() {
+    const now = Date.now();
+    for (const tab of this.tabs) {
+      for (const pane of L.panes(tab.root)) {
+        if (pane.id <= 0 || !isClaudePane(pane)) continue;
+        const key = pane.ledgerKey;
+        const entry = this.ledger.find((e) => e.key === key) ?? ({ key } as LedgerEntry);
+        entry.title = this.title(tab);
+        if (entry.title === pane.profile.name && pane.claudeTitle) entry.title = pane.claudeTitle;
+        // Whether that name is one you typed. A recovered session must come back with the name
+        // you gave it, not with a fallback that happens to read the same today.
+        entry.named = !!tab.name;
+        entry.cwd = pane.cwd;
+        entry.profile = pane.profile.id;
+        entry.project = tab.projectId;
+        entry.account = tab.accountId;
+        entry.claude = pane.claudeSessionId;
+        entry.seen = now;
+        entry.closed = false;
+        if (!this.ledger.includes(entry)) this.ledger.push(entry);
+      }
+    }
+    // A month is long enough to recover something you actually wanted and short enough that the
+    // file does not become an archive.
+    const cutoff = now - 30 * 24 * 3600_000;
+    this.ledger = this.ledger.filter((e) => e.seen > cutoff);
+  }
+
+  /** The user closed it on purpose: it is not missing, and must never be offered back. */
+  private forgetInLedger(tab: Tab) {
+    for (const pane of L.panes(tab.root)) this.forgetPane(pane);
+  }
+
+  forgetPane(pane: Pane) {
+    const entry = this.ledger.find((e) => e.key === pane.ledgerKey);
+    if (entry) entry.closed = true;
+  }
+
+  /** In the ledger, not closed by hand, and not open now. */
+  missingSessions(): LedgerEntry[] {
+    const open = new Set(this.tabs.flatMap((t) => L.panes(t.root)).map((p) => p.ledgerKey));
+    return this.ledger.filter((e) => !e.closed && !open.has(e.key));
+  }
+
+  /**
+   * Offer back what is missing. Called after a restore — the moment the count can be wrong,
+   * because `tabs` is whatever the window last managed to write and a crash writes less than
+   * was running — and from the palette whenever you want to look.
+   */
+  offerRecovery(quiet = false) {
+    const missing = this.missingSessions();
+    if (!missing.length) {
+      if (!quiet) toast("Nothing is missing — every session from the ledger is open");
+      return;
+    }
+    const names = missing.slice(0, 3).map((e) => e.title).join(", ");
+    const more = missing.length > 3 ? ` and ${missing.length - 3} more` : "";
+    toast(`${missing.length} session${missing.length > 1 ? "s" : ""} from your last run ${missing.length > 1 ? "are" : "is"} not open: ${names}${more}`, {
+      label: "Reopen…",
+      run: () => this.recoveryMenu(),
+    });
+  }
+
+  /** The list itself: one entry per missing session, plus everything at once. */
+  recoveryMenu() {
+    const missing = this.missingSessions();
+    if (!missing.length) return void toast("Nothing is missing");
+    const ago = (ms: number) => {
+      const min = Math.round((Date.now() - ms) / 60_000);
+      return min < 60 ? `${min}m ago` : min < 1440 ? `${Math.floor(min / 60)}h ago` : `${Math.floor(min / 1440)}d ago`;
+    };
+    openMenu(window.innerWidth / 2 - 160, 90, [
+      ...missing.map((e) => ({
+        label: e.title || e.cwd || e.key,
+        hint: `${e.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? ""} · ${ago(e.seen)}`,
+        onPick: () => void this.recoverSession(e),
+      })),
+      {
+        label: `Reopen all ${missing.length}`,
+        onPick: async () => {
+          // One at a time: twenty cold `claude` starts at once is what the burst limiter is for.
+          for (const e of missing) await this.recoverSession(e);
+        },
+      },
+      {
+        label: "Forget these",
+        danger: true,
+        onPick: () => {
+          for (const e of missing) e.closed = true;
+          void this.flushSession();
+          toast("Cleared — they will not be offered again");
+        },
+      },
+    ]);
+  }
+
+  /** Reopen one, where it was, resuming the conversation if there is one to resume. */
+  async recoverSession(entry: LedgerEntry) {
+    const profile = this.config.profiles.find((p) => p.id === entry.profile) ?? this.config.profiles[0];
+    if (!profile) return;
+    const tab = await this.newTab({ ...profile, cwd: entry.cwd ?? profile.cwd }, entry.project ?? undefined);
+    // A recovered session comes back under the name it had — otherwise recovery hands you a row
+    // called "Claude Code" and the whole point of the ledger was knowing which one it was.
+    if (tab && entry.named && entry.title) tab.name = entry.title;
+    const pane = tab?.active;
+    if (pane && entry.claude) {
+      // The same one rule the restore and eco paths use: argument or typed, never both.
+      const plan = resumePlan(pane.profile, entry.claude);
+      if (plan.type) {
+        window.setTimeout(() => !pane.exited && void this.tp.write(pane.id, `claude --resume ${plan.type}\r`).catch(() => {}), 900);
+      }
+    }
+    const e = this.ledger.find((x) => x.key === entry.key);
+    if (e) e.closed = false;
   }
 
   /** config.json — projects, accounts, fonts. Changes rarely; the user edits this file too. */
@@ -1541,8 +1820,43 @@ export class App implements PaneHost {
 
   /** How many of the host's shells no tab in this window is showing. */
   orphanedSessions(): number {
+    return this.orphanIds().length;
+  }
+
+  /** The shells the host is holding that no tab in this window shows. */
+  orphanIds(): number[] {
     const shown = new Set(this.tabs.flatMap((t) => L.panes(t.root).map((p) => p.id)));
-    return [...this.held.keys()].filter((id) => !shown.has(id)).length;
+    return [...this.held.values()].filter((s) => s.exited === null && !shown.has(s.id)).map((s) => s.id);
+  }
+
+  /**
+   * End every shell nothing is showing. They are leftovers: windows that closed without
+   * quitting, updates, crashes. The host holds them ON PURPOSE — that is what makes an update
+   * free — but a session nobody has a tab for is just a `claude` process holding ~400 MB.
+   */
+  async killOrphans() {
+    const ids = this.orphanIds();
+    if (!ids.length) return void toast("Nothing is running in the background");
+    for (const id of ids) await this.tp.kill(id).catch(() => {});
+    toast(`Ended ${ids.length} background shell${ids.length > 1 ? "s" : ""}`);
+    await this.connectHost();
+    this.paint();
+  }
+
+  /** Or keep them: one tab each, attached to what is already running. */
+  async adoptOrphans() {
+    const ids = this.orphanIds();
+    if (!ids.length) return void toast("Nothing is running in the background");
+    for (const id of ids) await this.adoptSession(id);
+    toast(`Opened ${ids.length} background shell${ids.length > 1 ? "s" : ""} as tabs`);
+  }
+
+  private async adoptSession(id: number) {
+    const held = this.held.get(id);
+    const profile = this.config.profiles.find((p) => p.id === "claude") ?? this.config.profiles[0];
+    if (!held || !profile) return;
+    const tab = await this.newTab({ ...profile, cwd: held.cwd ?? profile.cwd }, undefined, null, undefined, id);
+    if (tab && held.claude_session_id) tab.active.claudeSessionId = held.claude_session_id;
   }
 
   async restoreSession(): Promise<{ restored: number; crashed: boolean; updatedTo: string | null }> {
@@ -1550,6 +1864,7 @@ export class App implements PaneHost {
     const session = await this.tp.sessionLoad().catch(() => null);
     // Ids from another host instance are just numbers; those panes respawn instead.
     this.reattachable = !!this.hostInstance && session?.host === this.hostInstance;
+    this.ledger = Array.isArray(session?.ledger) ? (session.ledger as LedgerEntry[]) : [];
     const saved = (session?.tabs as SavedTab[] | null) ?? [];
     this.claimed.clear();
     let restored = 0;
@@ -1615,6 +1930,9 @@ export class App implements PaneHost {
       const pane = new Pane(this, effective, node.cwd ?? null);
       pane.typeResume = typeResume;
       pane.claudeSessionId = node.claude ?? null;
+      // Carry the ledger identity across the restart, or every relaunch would mint a new one
+      // and the old entry would look like a session that disappeared.
+      if (node.ledger) pane.ledgerKey = node.ledger;
       if (held && held.exited === null) {
         pane.attachTo = held.id;
         pane.claudeSessionId = held.claude_session_id ?? pane.claudeSessionId;

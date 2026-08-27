@@ -286,6 +286,18 @@ export function installAgentEvents(app: App) {
       // The pending id makes the push answerable: two buttons that publish the verdict back.
       app.agentAlert(tab ? app.title(tab) : "Claude", pane.agent.detail ?? "needs you", pane.agent.pendingId);
     }
+    // The moment a session finishes is the moment "what changed" matters. `git_shortstat` was a
+    // finished Rust command with zero callers; once per done-transition is the honest cadence —
+    // cheap, and exactly when the answer is fresh.
+    if (u.state === "done" && pane.cwd) {
+      void app.tp
+        .gitShortstat(pane.cwd)
+        .then((stat) => {
+          pane.diffstat = stat;
+          if (stat) app.paintSoon();
+        })
+        .catch(() => {});
+    }
     app.paintSoon();
   });
 

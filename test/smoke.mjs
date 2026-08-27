@@ -1472,7 +1472,7 @@ await evaluate("window.obpterm.config.update_repo = null");
   await evaluate("(() => { window.obpterm.tab.active.usage = { input: 400000, output: 12000, cache_read: 0, cache_write: 0, cost_usd: 1.5, turns: 9 }; window.obpterm.paint(); })()");
   await until(`${row()}.querySelector('.cost').hidden === false`, "the cost chip appears");
   assert.equal(await evaluate(`${row()}.querySelector('.cost').textContent`), "$1.50", "in dollars");
-  assert.match(await evaluate(`${row()}.querySelector('.cost').title`), /412k tokens/, "with the tokens in the tooltip");
+  assert.match(await evaluate(`${row()}.querySelector('.cost').title`), /400k in · 12k out/, "with the split in the tooltip");
 
   await evaluate("(() => { window.obpterm.tab.active.usage = { input: 10, output: 10, cache_read: 0, cache_write: 0, cost_usd: 0.004, turns: 1 }; window.obpterm.paint(); })()");
   assert.equal(await evaluate(`${row()}.querySelector('.cost').hidden`), true, "and below a dime it stays out of the way");
@@ -1818,6 +1818,63 @@ await evaluate("window.obpterm.config.update_repo = null");
   assert.equal(stillThere, false, "the shell it replaced is not still running with no tab");
 
   await evaluate(`(() => { while (window.obpterm.tabs.length > ${tabsBefore}) window.obpterm.closeTab(window.obpterm.tabs.at(-1)); })()`);
+}
+
+
+// ---- v0.21.31: enhance tier 0 + 1 ---------------------------------------------------------
+{
+  const row = () => "document.querySelector('.tab.active')";
+
+  // Stalled sessions join the header count and the needs-you cycle.
+  await evaluate(`(() => { const p = window.obpterm.tab.active; p.agent.stalledSince = Date.now() - 60000; window.obpterm.paint(); })()`);
+  await until("document.querySelector('#rail-waiting').textContent.includes('1 stalled')", "the header counts the stalled session");
+  assert.equal(await evaluate("window.obpterm.stalledCount()"), 1, "and the count agrees");
+  await evaluate(`(() => { window.obpterm.tab.active.agent.stalledSince = null; window.obpterm.paint(); })()`);
+
+  // The RSS chip says which way it is going.
+  await evaluate("(() => { const p = window.obpterm.tab.active; p.prevRss = 700e6; p.rss = 900e6; window.obpterm.paint(); })()");
+  assert.match(await evaluate(`${row()}.querySelector('.rss').textContent`), /900M↑/, "growing says so");
+  assert.ok(await evaluate(`${row()}.querySelector('.rss').classList.contains('heavy')`), "and growing past 800M is flagged");
+  await evaluate("(() => { const p = window.obpterm.tab.active; p.prevRss = 0; p.rss = 0; window.obpterm.paint(); })()");
+
+  // The cost tooltip separates cache reads from real input.
+  await evaluate("(() => { window.obpterm.tab.active.usage = { input: 12000, output: 3000, cache_read: 1_100_000, cache_write: 0, cost_usd: 2.14, turns: 9 }; window.obpterm.paint(); })()");
+  const title = await evaluate(`${row()}.querySelector('.cost').title`);
+  assert.match(title, /12k in · 3k out · 1.1M cached/, `the tooltip tells them apart: ${title}`);
+  await evaluate("(() => { window.obpterm.tab.active.usage = null; window.obpterm.paint(); })()");
+
+  // Diffstat lands on the done transition and shows on the finished row.
+  await evaluate(`(() => {
+    window.obpterm.tp.gitShortstat = async () => "+412 −87";
+    const p = window.obpterm.tab.active; p.cwd = p.cwd || "C:/OBP";
+  })()`);
+  const devWs = new WebSocket("ws://127.0.0.1:1421");
+  await new Promise((r) => devWs.on("open", r));
+  const paneId = await evaluate("window.obpterm.tab.active.id");
+  devWs.send(JSON.stringify({ t: "agent_inject", reqId: 500, update: { pane: paneId, state: "done", session_id: "s-diff", detail: "All done", pending_id: null, options: [] } }));
+  await until("window.obpterm.tab.active.diffstat === '+412 −87'", "the shortstat is fetched when the session finishes");
+  devWs.close();
+
+  // History lists closed sessions too; the ledger is the source.
+  await evaluate(`(() => {
+    window.obpterm.ledger.push({ key: "hist-1", title: "last week's fix", cwd: "C:/OBP/x", profile: "claude", project: null, account: null, claude: null, seen: Date.now() - 3 * 86400e3, closed: true });
+    window.obpterm.historyMenu();
+  })()`);
+  await until("!document.querySelector('#menu').hidden", "the history menu opens");
+  const labels = await evaluate("[...document.querySelectorAll('#menu .menu-item')].map(b => b.textContent)");
+  assert.ok(labels.some((l) => l.includes("last week's fix")), "a deliberately closed session is findable");
+  await evaluate("(() => { document.querySelector('#menu').hidden = true; window.obpterm.ledger = window.obpterm.ledger.filter(e => e.key !== 'hist-1'); })()");
+
+  // The rail's blocked menu carries Always allow now (same entry the map has).
+  await evaluate(`(() => { const a = window.obpterm.tab.active.agent; a.state = "blocked"; a.pendingId = "p-rule"; a.detail = "Bash: cargo check"; })()`);
+  await evaluate(`(() => {
+    const t = document.querySelector('.tab.active'); const r = t.getBoundingClientRect();
+    t.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: r.left + 8, clientY: r.top + 8 }));
+  })()`);
+  await until("!document.querySelector('#menu').hidden", "the tab menu");
+  const entries = await evaluate("[...document.querySelectorAll('#menu .menu-item')].map(b => b.textContent)");
+  assert.ok(entries.some((l) => l.includes("Always allow this command here")), "the standing-rule action reached the rail");
+  await evaluate("(() => { document.querySelector('#menu').hidden = true; const a = window.obpterm.tab.active.agent; a.state = null; a.pendingId = null; })()");
 }
 
 

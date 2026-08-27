@@ -101,7 +101,8 @@ function patchHeader(app: App) {
   const dead = app.exitedTabs().length;
   // Three facts, in the order they demand action. Each one is a button: the count that tells
   // you something is wrong and cannot be clicked is a count you have to act on by hand.
-  const parts = [n ? `${n} waiting` : "", agents ? `${agents} agents` : "", dead ? `${dead} exited` : ""].filter(Boolean);
+  const stalled = app.stalledCount();
+  const parts = [n ? `${n} waiting` : "", stalled ? `${stalled} stalled` : "", agents ? `${agents} agents` : "", dead ? `${dead} exited` : ""].filter(Boolean);
   el.textContent = parts.join(" · ");
   el.hidden = parts.length === 0;
   el.title = "Click: jump to the next session that needs you. Right-click: close every exited tab.";
@@ -272,6 +273,8 @@ function patchRow(app: App, tab: Tab) {
   // for twenty minutes it drew identically. Say which it is.
   const stalled = panes.find((p) => p.agent.stalledSince && !p.eco && !p.exited);
   const stalledMin = stalled?.agent.stalledSince ? Math.floor((Date.now() - stalled.agent.stalledSince) / 60_000) : 0;
+  // "+412 −87" on a finished session: the review question, answered where review happens.
+  const diff = agentPane?.agent.state === "done" && agentPane.diffstat ? ` · ${agentPane.diffstat}` : "";
   const sub = exited
     ? `exited · code ${exited.exitCode}`
     : stalled
@@ -279,7 +282,7 @@ function patchRow(app: App, tab: Tab) {
       : eco
         ? "agent sleeping — click to resume"
         : agentDetail
-          ? agentDetail + working + (mode ? ` · ${mode}` : "")
+          ? agentDetail + working + (mode ? ` · ${mode}` : "") + diff
           : (tab.active.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? tab.active.profile.name);
 
   row.li.classList.toggle("active", tab === app.tab);
@@ -317,18 +320,30 @@ function patchRow(app: App, tab: Tab) {
   const rss = panes.reduce((n, p) => n + p.rss, 0);
   row.rss.hidden = rss < 400e6;
   if (rss) {
-    set(row.rss, rss >= 1e9 ? `${(rss / 1e9).toFixed(1)}G` : `${Math.round(rss / 1e6)}M`);
-    row.rss.title = `${Math.round(rss / 1e6)} MB resident — this session's whole process tree`;
-    row.rss.classList.toggle("heavy", rss >= 1.5e9);
+    // Direction matters more than size: 1.9G holding steady is a fact, 900M climbing between
+    // two five-second samples is tomorrow's freeze. >2% movement counts, less is noise.
+    const prev = panes.reduce((n, p) => n + p.prevRss, 0);
+    const trend = prev && rss > prev * 1.02 ? "↑" : prev && rss < prev * 0.98 ? "↓" : "";
+    set(row.rss, (rss >= 1e9 ? `${(rss / 1e9).toFixed(1)}G` : `${Math.round(rss / 1e6)}M`) + trend);
+    row.rss.title = `${Math.round(rss / 1e6)} MB resident — this session's whole process tree${trend === "↑" ? ", and growing" : ""}`;
+    row.rss.classList.toggle("heavy", rss >= 1.5e9 || (trend === "↑" && rss >= 800e6));
   }
   // What it has cost. Below a dime it is noise; the tooltip carries the tokens either way.
   const cost = app.tabCost(tab);
-  const tokens = panes.reduce((n, p) => n + (p.usage ? p.usage.input + p.usage.output + p.usage.cache_read + p.usage.cache_write : 0), 0);
   row.cost.hidden = cost === null || cost < 0.1;
   if (cost !== null) {
     set(row.cost, `$${cost < 10 ? cost.toFixed(2) : Math.round(cost)}`);
     const turns = panes.reduce((n, p) => n + (p.usage?.turns ?? 0), 0);
-    row.cost.title = `${fmtTokens(tokens)} tokens${turns ? ` · ${turns} turns · $${(cost / turns).toFixed(3)} a turn` : ""} · estimated from this machine's transcripts, at the prices in Settings`;
+    // Cache reads are ~10x cheaper than fresh input; lumping them into one number made a chatty
+    // cheap session look as alarming as an expensive one.
+    const u = { i: 0, o: 0, cr: 0 };
+    for (const p of panes) {
+      if (!p.usage) continue;
+      u.i += p.usage.input;
+      u.o += p.usage.output;
+      u.cr += p.usage.cache_read;
+    }
+    row.cost.title = `${fmtTokens(u.i)} in · ${fmtTokens(u.o)} out · ${fmtTokens(u.cr)} cached${turns ? ` · ${turns} turns · $${(cost / turns).toFixed(3)} a turn` : ""} · estimated from this machine's transcripts, at the prices in Settings`;
   }
   row.badge.hidden = panes.length < 2;
   set(row.badge, panes.length > 1 ? String(panes.length) : "");
@@ -389,6 +404,11 @@ function tabMenu(app: App, tab: Tab, x: number, y: number) {
             onPick: () => void app.answerAgent(blocked, true),
           },
           { label: "Deny it", danger: true, onPick: () => void app.answerAgent(blocked, false) },
+          {
+            label: "Always allow this command here",
+            hint: "writes a project rule",
+            onPick: () => void app.alwaysAllow(blocked),
+          },
         ]
       : []),
     { label: "Reload session", hint: "restarts it on the same conversation", onPick: () => void app.reloadPane(tab.active) },

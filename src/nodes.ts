@@ -221,7 +221,7 @@ export class Nodes {
     };
     el.querySelector<HTMLButtonElement>(".always")!.onclick = (e) => {
       e.stopPropagation();
-      if (n.pane) void this.alwaysAllow(n.pane);
+      if (n.pane) void this.app.alwaysAllow(n.pane);
     };
     const reply = el.querySelector<HTMLInputElement>(".nreply input")!;
     reply.addEventListener("click", (e) => e.stopPropagation());
@@ -442,7 +442,7 @@ export class Nodes {
       else void this.app.answerAgent(pane, true);
     } else if (e.code === "KeyY" && pane?.agent.pendingId && danger) void this.app.answerAgent(pane, true);
     else if (e.code === "KeyD" && pane?.agent.pendingId && asks) void this.app.answerAgent(pane, false);
-    else if (e.code === "KeyW" && pane?.agent.pendingId && asks) void this.alwaysAllow(pane);
+    else if (e.code === "KeyW" && pane?.agent.pendingId && asks) void this.app.alwaysAllow(pane);
     else if (e.code === "KeyT" && pane && (pane.agent.state === "blocked" || pane.agent.state === "waiting")) {
       this.els.get(n!.id)?.querySelector<HTMLInputElement>(".nreply input")?.focus();
     } else if (e.code === "KeyF") this.fit();
@@ -453,21 +453,7 @@ export class Nodes {
   }
 
   /** `w`: persist "always allow this" into the project's own Claude settings, then allow. */
-  private async alwaysAllow(pane: Pane) {
-    const a = pane.agent;
-    if (isDangerous(a)) return toast("Not making a standing rule out of a dangerous command");
-    if (a.tool !== "Bash" || !a.toolInput) return toast("Always-allow only knows shell commands so far — Allow it normally");
-    const word = a.toolInput.trim().split(/\s+/)[0];
-    if (!word || !pane.cwd) return toast("No command word or working directory to pin the rule to");
-    const rule = `Bash(${word}:*)`;
-    try {
-      await this.app.tp.allowRule(pane.cwd, rule);
-      await this.app.answerAgent(pane, true);
-      toast(`Allowed, and ${rule} is now always allowed in this project`);
-    } catch (e) {
-      toast(`Rule not saved: ${e}`);
-    }
-  }
+
 
   /** Clicking a node goes to the real thing: its tab and pane, terminal and all. */
   private activate(n: Node) {
