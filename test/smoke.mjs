@@ -1795,6 +1795,32 @@ await evaluate("window.obpterm.config.update_repo = null");
 }
 
 
+// ---- v0.21.29: replacing a shell ends the one it replaces ---------------------------------
+{
+  // `respawnPane` used to set pane.id = -1 and start a new shell, leaving the old one running
+  // in the host with no tab pointing at it. Every eco resume and every `r` added one, which is
+  // the "N in the background" count climbing on its own.
+  const tabsBefore = await evaluate("window.obpterm.tabs.length");
+  await evaluate("void window.obpterm.newTab()");
+  await until(`window.obpterm.tabs.length === ${tabsBefore + 1}`, "a tab to respawn");
+  await until("window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].id > 0", "with a shell");
+  const before = await evaluate("window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].id");
+  const heldBefore = JSON.parse(await evaluate("(async () => JSON.stringify((await window.obpterm.tp.listSessions()).filter(s => s.exited === null).length))()"));
+
+  await evaluate("void window.obpterm.respawnPane(window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0])");
+  await until(`window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].id > 0 && window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].id !== ${before}`, "it came back on a new shell");
+
+  await evaluate("(() => { window.__live = null; window.obpterm.tp.listSessions().then(l => (window.__live = l.filter(s => s.exited === null).length)); })()");
+  await until(`window.__live !== null`, "the host answered");
+  const heldAfter = await evaluate("window.__live");
+  assert.equal(heldAfter, heldBefore, `the old shell was ended, not abandoned (${heldBefore} -> ${heldAfter})`);
+  const stillThere = await evaluate(`(async () => (await window.obpterm.tp.listSessions()).some(s => s.id === ${before} && s.exited === null))()`);
+  assert.equal(stillThere, false, "the shell it replaced is not still running with no tab");
+
+  await evaluate(`(() => { while (window.obpterm.tabs.length > ${tabsBefore}) window.obpterm.closeTab(window.obpterm.tabs.at(-1)); })()`);
+}
+
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

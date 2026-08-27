@@ -30,20 +30,35 @@ export function openMenu(x: number, y: number, items: MenuItem[]) {
       }
       b.onclick = (e) => {
         e.stopPropagation();
-        closeMenu();
+        closeMenuNow();
         item.onPick();
       };
       return b;
     }),
   );
   menu.hidden = false;
+  // The click that opened this menu is still travelling: `keys.ts` closes menus on any document
+  // click, so without this the menu is built and hidden again in the same gesture — which looks
+  // exactly like the chip doing nothing. Ignore document clicks until this one is over.
+  openedAt = performance.now();
   // Place inside the viewport now that it has a size.
   const r = menu.getBoundingClientRect();
   menu.style.left = `${Math.min(x, window.innerWidth - r.width - 8)}px`;
   menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - r.height - 8))}px`;
 }
 
+/** When the current menu opened, so the opening click cannot also close it. */
+let openedAt = 0;
+
 export function closeMenu() {
+  // A menu younger than one gesture is being closed by its own opening click.
+  if (performance.now() - openedAt < 150) return;
+  el().hidden = true;
+}
+
+/** Close regardless of age — what Escape and picking an item want. */
+export function closeMenuNow() {
+  openedAt = 0;
   el().hidden = true;
 }
 

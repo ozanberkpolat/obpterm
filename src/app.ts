@@ -857,6 +857,10 @@ export class App implements PaneHost {
   async respawnPane(pane: Pane) {
     const tab = this.tabOf(pane);
     if (!tab || pane.deadReason) return;
+    // End the shell we are replacing. Forgetting its id — which is all this used to do — leaves
+    // it running in the host with no tab pointing at it, and every eco resume and every `r`
+    // added one. That is the count in the status bar climbing on its own.
+    if (pane.id > 0) await this.tp.kill(pane.id).catch(() => {});
     pane.exited = false;
     pane.exitAcknowledged = false;
     pane.exitCode = null;
@@ -1235,6 +1239,14 @@ export class App implements PaneHost {
       }
     }
     if (lostChanged) this.paint();
+
+    // A shell that has ENDED and that no tab is showing is pure bookkeeping — the host keeps it
+    // so a window can report the exit, and once nobody is listening it is just a row. Reap it,
+    // so "N in the background" only ever counts things that are actually running.
+    const shown = new Set(all.map((p) => p.id));
+    for (const s of sessions) {
+      if (s.exited !== null && !shown.has(s.id)) void this.tp.kill(s.id).catch(() => {});
+    }
 
     // What each session's process tree is holding. `rss_for` was written for this and never
     // called: at 98% RAM the difference between a 40 MB shell and a 2 GB stuck session is the
@@ -1787,8 +1799,7 @@ export class App implements PaneHost {
 
   /** How many of the host's shells no tab in this window is showing. */
   orphanedSessions(): number {
-    const shown = new Set(this.tabs.flatMap((t) => L.panes(t.root).map((p) => p.id)));
-    return [...this.held.keys()].filter((id) => !shown.has(id)).length;
+    return this.orphanIds().length;
   }
 
   /** The shells the host is holding that no tab in this window shows. */

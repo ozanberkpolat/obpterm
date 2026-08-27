@@ -2,7 +2,7 @@
 // fire inside a terminal. The Rust side also turns WebView2's accelerator keys off; this is
 // the belt to that braces, and the only guard in the browser dev loop.
 import type { App } from "./app";
-import { closeMenu, openMenu } from "./menu";
+import { closeMenu, closeMenuNow, openMenu } from "./menu";
 import { actionFor } from "./keymap";
 
 const ctrlShift = (e: KeyboardEvent) => e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey;
@@ -42,7 +42,7 @@ export function installKeys(app: App) {
       if (e.code === "F12" || (ctrlShift(e) && ["KeyI", "KeyJ", "KeyR"].includes(e.code))) return stop(e);
       if (e.code === "F5" && e.ctrlKey) return stop(e);
       if (e.code === "Escape") {
-        closeMenu();
+        closeMenuNow();
         if (app.nodes.isOpen) {
           app.nodes.close();
           return stop(e);

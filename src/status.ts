@@ -394,9 +394,22 @@ export class Status {
 
   private usageMenu(e: MouseEvent) {
     const u = this.usage;
-    if (!u) return toast("No Claude Code transcripts found for this account");
-    const line = (label: string, b: typeof u.window_5h) =>
-      `${label}: ${fmt(b.billed)} billed · ${fmt(b.cache_read)} cached · ${b.messages} messages`;
+    // Never silence. Usage is read off disk a moment after launch, and a chip that does nothing
+    // while you wait for that is indistinguishable from a broken one.
+    if (!u) {
+      return openMenu(e.clientX, e.clientY, [
+        {
+          label: this.version ? "Reading this account's usage…" : "Starting up…",
+          hint: "transcripts on this machine",
+          onPick: () => void this.refresh(),
+        },
+      ]);
+    }
+    // Defensive on purpose: this menu is built from a file on disk, and a reading that is
+    // partial, from an older Claude Code, or half-written must not throw — a handler that
+    // throws opens nothing at all, which is a chip that looks broken.
+    const line = (label: string, b: typeof u.window_5h | undefined) =>
+      b ? `${label}: ${fmt(b.billed)} billed · ${fmt(b.cache_read)} cached · ${b.messages} messages` : `${label}: nothing recorded`;
     const real = this.limits
       ? [
           {
@@ -410,12 +423,12 @@ export class Status {
       ...real,
       { label: line("Last 5h", u.window_5h), onPick: () => {} },
       { label: line("Last 7d", u.window_7d), onPick: () => {} },
-      ...u.by_project.map(([name, billed]) => ({
+      ...(u.by_project ?? []).map(([name, billed]) => ({
         label: `    ${name}: ${fmt(billed)} billed (7d)`,
         onPick: () => {},
       })),
       {
-        label: `From ${u.files_scanned} transcripts in ${u.dir}`,
+        label: `From ${u.files_scanned ?? 0} transcripts in ${u.dir ?? "this account"}`,
         hint: u.last_activity ? new Date(u.last_activity).toLocaleTimeString() : "",
         onPick: () => {},
       },
