@@ -471,7 +471,7 @@ export class App implements PaneHost {
   }
 
   /** `/exit` a session and mark the tab: clicking it runs `claude --resume` on the same id. */
-  private eco(pane: Pane) {
+  eco(pane: Pane) {
     pane.eco = true;
     void this.tp.write(pane.id, "/exit\r").catch(() => {});
   }
@@ -1170,6 +1170,31 @@ export class App implements PaneHost {
       if (slept) toast(`${slept} background session${slept > 1 ? "s" : ""} put to sleep — click one to wake it`);
     }
     this.paint();
+  }
+
+  /**
+   * Put one tab to sleep because you said so, not because a timer did. Two levels, and it takes
+   * the deeper one it can: a Claude session with a conversation to come back to is `/exit`ed
+   * (that is the ~400 MB), anything else just loses its terminal.
+   */
+  async sleepTab(tab: Tab) {
+    let exited = 0;
+    for (const pane of L.panes(tab.root)) {
+      if (pane.exited || pane.id <= 0) continue;
+      if (pane.claudeSessionId && !pane.eco && pane.agent.state !== "blocked" && pane.agent.state !== "waiting") {
+        this.eco(pane);
+        exited++;
+      } else if (!pane.asleep) {
+        await pane.sleep();
+      }
+    }
+    if (tab === this.tab) {
+      const next = this.mru.find((t) => t !== tab && this.tabs.includes(t)) ?? this.tabs.find((t) => t !== tab);
+      if (next) this.activate(next);
+    }
+    this.paint();
+    void this.flushSession();
+    toast(exited ? "Session exited — click the tab to resume the conversation" : "Terminal closed — the shell keeps running");
   }
 
   async sleepIdleTabs() {

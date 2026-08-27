@@ -65,7 +65,7 @@ async function main() {
   const hookDirs = [...new Set(["~/.claude", ...config.accounts.map((a) => a.claude_dir).filter((d): d is string => !!d)])];
   app.hookDirs = hookDirs;
   void tp
-    .hooksEnsure(hookDirs)
+    .hooksEnsure(hookDirs, config.no_remote_control)
     .then((changed) => {
       if (changed.length) toast(`Claude Code hooks + status line installed (${changed.length} settings file${changed.length > 1 ? "s" : ""}) — agent states and token meters are live`);
       // The statusLine now writes ~/.claude/limits.json; point the meters there unless the

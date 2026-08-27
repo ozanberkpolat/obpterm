@@ -170,6 +170,37 @@ pub fn statusline_install(settings: &mut Value, exe: &str) -> bool {
     true
 }
 
+/// Claude Code's Remote Control activates itself for every new session, and `/remote-control`
+/// only turns it off for the session you are in — so an app update, which restarts sessions,
+/// brings it back every time. `remoteControlAtStartup: false` is the documented switch: it
+/// stops the auto-connect and leaves the command available when you do want it.
+///
+/// Returns whether it wrote. Only ever writes the value the user asked for; turning the switch
+/// off REMOVES the key rather than writing `true`, so this never becomes an opinion the app
+/// keeps having after being told to stop.
+pub fn remote_control_set(settings: &mut Value, disable_at_startup: bool) -> bool {
+    if !settings.is_object() {
+        *settings = json!({});
+    }
+    let object = settings.as_object_mut().unwrap();
+    let current = object.get(REMOTE_KEY);
+    if disable_at_startup {
+        if current == Some(&json!(false)) {
+            return false;
+        }
+        object.insert(REMOTE_KEY.into(), json!(false));
+        return true;
+    }
+    // Ours to remove only while it still says what we set it to.
+    if current == Some(&json!(false)) {
+        object.remove(REMOTE_KEY);
+        return true;
+    }
+    false
+}
+
+const REMOTE_KEY: &str = "remoteControlAtStartup";
+
 /// Removes the statusLine only when it is ours.
 pub fn statusline_remove(settings: &mut Value) -> bool {
     if !statusline_installed(settings) {
@@ -215,6 +246,22 @@ mod tests {
         assert!(statusline_installed(&settings), "our own older statusLine is recognised");
         assert!(statusline_install(&mut settings, EXE), "so it is upgraded");
         assert_eq!(settings.pointer("/statusLine/command").unwrap(), &json!(statusline_command(EXE)));
+    }
+
+    #[test]
+    fn the_remote_control_switch_is_written_and_taken_back_cleanly() {
+        let mut settings = json!({ "model": "opus" });
+        assert!(remote_control_set(&mut settings, true), "it writes the documented key");
+        assert_eq!(settings.pointer("/remoteControlAtStartup").unwrap(), &json!(false));
+        assert!(!remote_control_set(&mut settings, true), "and does not write it twice");
+        assert!(remote_control_set(&mut settings, false), "turning the switch off takes it back");
+        assert!(settings.get("remoteControlAtStartup").is_none(), "the key is gone, not set to true");
+        assert_eq!(settings.get("model").unwrap(), &json!("opus"), "everything else is untouched");
+
+        // A user who set it themselves keeps it: we only ever remove our own value.
+        let mut theirs = json!({ "remoteControlAtStartup": true });
+        assert!(!remote_control_set(&mut theirs, false));
+        assert_eq!(theirs.pointer("/remoteControlAtStartup").unwrap(), &json!(true));
     }
 
     #[test]

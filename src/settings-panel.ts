@@ -371,6 +371,11 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
         row("Exit idle sessions when memory passes", "The machine running out of RAM is what actually freezes this window — it thrashes on swap and everything stalls for minutes. Above this, idle sessions are /exited oldest first, sleeping ones included, until it comes down. Each tab stays and resumes on click. Zero never does.",
           slider(c.eco_memory_pct, 0, 100, 5, "%", (v) => { c.eco_memory_pct = v; ctx.save(); })),
       ),
+      cap("Claude Code"),
+      card(
+        row("Keep Remote Control off for new sessions", "Claude Code activates Remote Control for every new session, and /remote-control only turns it off for the session you are in — so an app update, which restarts them all, brought it back every time. This writes the documented `remoteControlAtStartup: false` into every account's settings.json and re-asserts it on each launch. Turning this off removes the key again rather than setting it true.",
+          toggle(c.no_remote_control, (v) => { c.no_remote_control = v; ctx.save(); toast(v ? "Written on the next launch — restart the app to apply now" : "Removed on the next launch"); })),
+      ),
       cap("Being told"),
       card(
         row("Notify when a pane asks for you", "A desktop notification carrying what the program said, and the taskbar flashes until you come back.",

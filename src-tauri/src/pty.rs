@@ -75,7 +75,7 @@ async fn try_connect(advert: &PathBuf) -> Option<Arc<Client>> {
 /// Forwards hook-derived agent updates from the host to the webview, and installs the hook
 /// block into every Claude settings.json the config names. Returns which files were changed.
 #[tauri::command]
-pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>) -> Result<Vec<String>, String> {
+pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>, no_remote_control: bool) -> Result<Vec<String>, String> {
     let client = ensure(&app).await?;
     // One watcher for the window's lifetime: agent updates become Tauri events.
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -114,6 +114,9 @@ pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>) -> Result<Vec<Strin
         }
         // Same pass, same file: the token meters' statusLine (never over a user's own).
         wrote |= obpterm_host::install::statusline_install(&mut settings, &exe);
+        // Re-asserted on every launch, like the hooks: `/remote-control` off is per-session, so
+        // an app update — which restarts every session — used to bring it back each time.
+        wrote |= obpterm_host::install::remote_control_set(&mut settings, no_remote_control);
         if !wrote {
             continue;
         }

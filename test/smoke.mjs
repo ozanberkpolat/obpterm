@@ -1772,6 +1772,29 @@ await evaluate("window.obpterm.config.update_repo = null");
 }
 
 
+// ---- v0.21.27: sleep a session on purpose --------------------------------------------------
+{
+  // The timers decide when a session is idle; this is the user deciding. A Claude session takes
+  // the deep option (/exit, ~400 MB back); anything else just loses its terminal.
+  const tabsBefore = await evaluate("window.obpterm.tabs.length");
+  await evaluate("void window.obpterm.newTab()");
+  await until(`window.obpterm.tabs.length === ${tabsBefore + 1}`, "a session to put down");
+  await until("window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].id > 0", "with a shell");
+  await evaluate(`(() => { const p = window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0]; p.claudeSessionId = "sleep-me"; p.agent.state = "done"; })()`);
+  await evaluate("void window.obpterm.sleepTab(window.obpterm.tabs.at(-1))");
+  await until("window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].eco === true", "the conversation is exited, not just the terminal");
+  assert.notEqual(await evaluate("window.obpterm.tabs.indexOf(window.obpterm.tabs.at(-1))"), -1, "and the tab stays where it was");
+
+  // A plain shell has no conversation to exit, so it only loses its terminal.
+  await evaluate(`(() => { const p = window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0]; p.eco = false; p.claudeSessionId = null; })()`);
+  await evaluate("void window.obpterm.sleepTab(window.obpterm.tabs.at(-1))");
+  await until("window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].asleep === true", "the shell keeps running behind a sleeping pane");
+  assert.equal(await evaluate("window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].eco"), false, "and nothing was exited");
+
+  await evaluate(`(() => { while (window.obpterm.tabs.length > ${tabsBefore}) window.obpterm.closeTab(window.obpterm.tabs.at(-1)); })()`);
+}
+
+
 // ---- settings backup: the new rows exist and import round-trips through the UI handler ----
 await evaluate("window.obpterm.settings.open('files')");
 await until("[...document.querySelectorAll('#settings .sw-row b')].some(b => b.textContent === 'Mirror settings to a folder')", "the mirror row");

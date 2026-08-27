@@ -134,6 +134,11 @@ pub struct Config {
     /// first, however recently they were used. 0 = never. This is the one that keeps the
     /// machine responsive: ~400 MB per idle session, and a box at 98% RAM thrashes on swap.
     pub eco_memory_pct: u32,
+    /// Write `remoteControlAtStartup: false` into every Claude settings.json this app manages,
+    /// and keep writing it: Claude Code's Remote Control activates itself for every new session,
+    /// and turning it off with `/remote-control` only lasts as long as that session — so an app
+    /// update, which restarts them all, brought it back every time.
+    pub no_remote_control: bool,
     /// Percent of its context window a session may fill before the rail says so and, when the
     /// window is unfocused, a notification does. 0 = never. Running out of context mid-task is
     /// silent otherwise: the gauge is only read when someone looks at it.
@@ -215,6 +220,7 @@ impl Default for Config {
             max_live_panes: 8,
             eco_after_minutes: 15,
             eco_memory_pct: 85,
+            no_remote_control: true,
             context_warn_pct: 80,
             model_prices: default_prices(),
             notify_bell: true,

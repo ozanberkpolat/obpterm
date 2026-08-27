@@ -38,6 +38,7 @@
   "max_live_panes": 0,
   "eco_after_minutes": 0,
   "eco_memory_pct": 0,
+  "no_remote_control": true,
   "model_prices": {},
   "context_warn_pct": 80,
   "notify_bell": true,
@@ -84,7 +85,7 @@
   ],
   "hosts": [
     {
-      "id": "hmtbgjl6o",
+      "id": "hmtbj4adz",
       "name": "New host",
       "host": "",
       "user": null,
@@ -112,26 +113,7 @@
   "agents_view": "sessions",
   "quota_5h_tokens": null,
   "quota_7d_tokens": null,
-  "projects": [
-    {
-      "id": "pmtbgkl2c",
-      "name": "Smoke",
-      "color": "#ff8a1e",
-      "cwd": "~",
-      "default_profile": "bash",
-      "layout": null,
-      "collapsed": false
-    },
-    {
-      "id": "pmtbglavi",
-      "name": "Smoke",
-      "color": "#4c8dff",
-      "cwd": "~",
-      "default_profile": "bash",
-      "layout": null,
-      "collapsed": false
-    }
-  ],
+  "projects": [],
   "restore_session": true,
   "session": null,
   "theme": {

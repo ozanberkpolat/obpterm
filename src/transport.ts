@@ -168,6 +168,8 @@ export interface Config {
   eco_after_minutes: number;
   /** Percent of system RAM above which idle sessions are exited early. 0 = never. */
   eco_memory_pct: number;
+  /** Write `remoteControlAtStartup: false` into every account's settings.json. */
+  no_remote_control: boolean;
   /** Dollars per million tokens per model: [input, output, cache read, cache write]. */
   model_prices: Record<string, number[]>;
   /** Percent of the context window at which a session is flagged. 0 = never. */
@@ -259,7 +261,7 @@ export interface Transport {
   /** The rail's verdict on a held permission request; null passes it to the in-pane prompt. */
   agentAnswer(pendingId: string, allow: boolean | null): Promise<void>;
   /** Install (or refresh) the Claude Code hook block in these config dirs' settings.json. */
-  hooksEnsure(dirs: string[]): Promise<string[]>;
+  hooksEnsure(dirs: string[], noRemoteControl: boolean): Promise<string[]>;
   hooksRemove(dirs: string[]): Promise<number>;
   /** Claude's own name for a session, read from its transcript. */
   sessionTitle(dir: string, sessionId: string): Promise<string | null>;
@@ -374,6 +376,7 @@ export function withDefaults(config: Partial<Config>): Config {
     max_live_panes: config.max_live_panes ?? 8,
     eco_after_minutes: config.eco_after_minutes ?? 15,
     eco_memory_pct: config.eco_memory_pct ?? 85,
+    no_remote_control: config.no_remote_control ?? true,
     model_prices: config.model_prices ?? {},
     context_warn_pct: config.context_warn_pct ?? 80,
     notify_bell: config.notify_bell ?? true,
