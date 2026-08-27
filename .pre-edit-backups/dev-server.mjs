@@ -3,41 +3,13 @@
 // Protocol mirrors transport-ws.ts; config lives in ./dev-config.json.
 import { WebSocketServer } from "ws";
 import pty from "node-pty";
-import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, statfsSync, writeFileSync } from "node:fs";
+import { createWriteStream, mkdirSync, readFileSync, readdirSync, statSync, statfsSync, writeFileSync } from "node:fs";
 import os from "node:os";
-import path from "node:path";
 
 const CONFIG = new URL("./dev-config.json", import.meta.url);
 const SESSION = new URL("./dev-session.json", import.meta.url);
 // Loopback only: this server spawns whatever executable a client names, so it must not be
 // reachable from the network. Set OBPTERM_DEV_HOST to drive it from another machine.
-/** A shell and everything it started. Killing only the shell orphans its children — which is
- *  the same mistake the app itself made on Windows, and here it left `claude` processes running
- *  for days after the test that spawned them had finished. */
-function killTree(p) {
-  if (!p) return;
-  try {
-    process.kill(-p.pid, "SIGKILL"); // node-pty gives the shell its own process group
-  } catch {
-    /* already gone, or no group: fall through */
-  }
-  try {
-    p.kill();
-  } catch {
-    /* already gone */
-  }
-}
-
-/** PATH with every directory that holds a `claude` removed. */
-function sandboxPath() {
-  const sep = process.platform === "win32" ? ";" : ":";
-  const exe = process.platform === "win32" ? ["claude.exe", "claude.cmd", "claude"] : ["claude"];
-  return (process.env.PATH ?? "")
-    .split(sep)
-    .filter((dir) => !exe.some((name) => existsSync(path.join(dir, name))))
-    .join(sep);
-}
-
 const wss = new WebSocketServer({ port: 1421, host: process.env.OBPTERM_DEV_HOST ?? "127.0.0.1" });
 let nextId = 1;
 
@@ -46,15 +18,6 @@ let nextId = 1;
 const INSTANCE = Math.random().toString(36).slice(2, 10);
 const RING = 1024 * 1024;
 const held = new Map();
-
-// Whatever happens to this process, the shells it started do not outlive it.
-for (const signal of ["exit", "SIGINT", "SIGTERM"]) {
-  process.on(signal, () => {
-    for (const s of held.values()) killTree(s.p);
-    if (signal !== "exit") process.exit(0);
-  });
-}
-
 const answered = []; // id -> { p, exe, cwd, ring: Buffer[], ringBytes, exited, startedAt, watcher }
 
 const broadcast = (msg) => {
@@ -108,7 +71,7 @@ wss.on("connection", (ws) => {
           return reply(m.reqId);
         }
         case "shutdown":
-          for (const s of held.values()) killTree(s.p);
+          for (const s of held.values()) s.p?.kill();
           held.clear();
           return reply(m.reqId);
         case "spawn": {
@@ -117,19 +80,7 @@ wss.on("connection", (ws) => {
             name: "xterm-256color",
             cols, rows,
             cwd: expand(profile.cwd) ?? os.homedir(),
-            env: {
-              ...process.env,
-              TERM: "xterm-256color",
-              COLORTERM: "truecolor",
-              OBPTERM: "dev",
-              // The tests drive the restore and eco paths, which TYPE `claude --resume <id>`
-              // into a shell. On a dev machine that starts a real Claude Code — one per test,
-              // never reaped, and after a few days of runs this box was holding thirty-five of
-              // them. What the tests assert is that the right text was typed, not that Claude
-              // starts, so the sandbox PATH has no `claude` on it and the command fails
-              // instantly and harmlessly. `OBPTERM_DEV_REAL_CLAUDE=1` opts back in.
-              ...(process.env.OBPTERM_DEV_REAL_CLAUDE ? {} : { PATH: sandboxPath() }),
-            },
+            env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", OBPTERM: "dev" },
           });
           const id = nextId++;
           const s = { p, exe: profile.exe, cwd: profile.cwd ?? null, ring: [], ringBytes: 0, exited: null, startedAt: Date.now(), watcher: null, onExit: null };
@@ -158,7 +109,7 @@ wss.on("connection", (ws) => {
         case "resize": held.get(m.id)?.p?.resize(m.cols, m.rows); return reply(m.reqId);
         case "kill": {
           const s = held.get(m.id);
-          killTree(s?.p);
+          s?.p?.kill();
           held.delete(m.id);
           return reply(m.reqId);
         }

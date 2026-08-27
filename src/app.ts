@@ -106,6 +106,13 @@ function stripSessionArgs(args: string[]): string[] {
   return out;
 }
 
+/** A session you visited, or that printed, inside this window is not idle — however full the
+ *  machine is. The memory sweep is allowed to be decisive, not hasty. */
+const PRESSURE_GRACE_MS = 5 * 60_000;
+/** And after it acts, the memory takes a moment to come back. Acting again before it does just
+ *  empties the window three sessions at a time. */
+const PRESSURE_COOLDOWN_MS = 3 * 60_000;
+
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const DEFAULT_ACCENT = "#ff8a1e";
 
@@ -256,9 +263,12 @@ export class App implements PaneHost {
       if (!pane.claudeSessionId) continue;
       // The name only when the user has not chosen one; the gauge only for the pane whose gauge
       // is on screen — it is a 256 KB read and a JSON parse per pane, every five seconds.
-      if (!tab.name) {
-        const title = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
-        if (title && title !== pane.title) {
+      const title = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
+      if (title) {
+        // Kept whether or not the user has named the tab: it is what the session is ABOUT, and
+        // it is what the tab falls back to when the shell blanks its own title on the way out.
+        pane.claudeTitle = title;
+        if (!tab.name && title !== pane.title) {
           pane.title = title;
           this.paint();
         }
@@ -372,6 +382,8 @@ export class App implements PaneHost {
    * After a while unfocused and done, /exit it; the tab stays, marked, and focusing it
    * resumes the same conversation. Nothing is exited mid-turn, mid-question, or on screen.
    */
+  lastPressureEco = 0;
+
   ecoSweep() {
     const minutes = this.config.eco_after_minutes;
     const cutoff = Date.now() - (minutes || 0) * 60_000;
@@ -413,18 +425,31 @@ export class App implements PaneHost {
     // a 2 GB session that has been fanning out all afternoon are both "idle", and only one of
     // them gives the machine anything back. Biggest first, with age as the tie-break for the
     // ones we have no measurement for.
-    const queue = eligible().sort((a, b) => b.rss - a.rss || a.lastVisited - b.lastVisited);
-    let freed = 0;
+    // Nothing you have touched recently is "idle", whatever the meter says. Without this the
+    // sweep took a session the user had left fifteen seconds earlier, because on a machine that
+    // sits at 96% it fires every minute and only ever asked which session was biggest.
+    const settled = Date.now() - PRESSURE_GRACE_MS;
+    // And once it has acted, give the machine time to actually give the memory back before
+    // acting again — three sessions a minute, every minute, empties a window.
+    if (Date.now() - this.lastPressureEco < PRESSURE_COOLDOWN_MS) return;
+
+    const queue = eligible()
+      .filter((p) => p.lastVisited < settled && p.lastOutput < settled)
+      .sort((a, b) => b.rss - a.rss || a.lastVisited - b.lastVisited);
+    let freed: Pane[] = [];
     let bytes = 0;
     for (const pane of queue) {
-      if (freed >= 3) break; // a few per sweep, then look again — never a stampede
+      if (freed.length >= 3) break; // a few per sweep, then look again — never a stampede
       bytes += pane.rss;
       this.eco(pane);
-      freed++;
+      freed.push(pane);
     }
-    if (freed) {
+    if (freed.length) {
+      this.lastPressureEco = Date.now();
       const gave = bytes ? ` (~${(bytes / 1e9).toFixed(1)} GB)` : "";
-      toast(`Memory at ${Math.round(m)}% — ${freed} idle session${freed > 1 ? "s" : ""}${gave} exited to free it; click a tab to resume`);
+      // Name them: an unnamed "3 sessions exited" is something you have to go and check.
+      const names = freed.map((p) => this.tabOf(p)?.name ?? p.title).filter(Boolean).slice(0, 3).join(", ");
+      toast(`Memory at ${Math.round(m)}% — exited ${names || `${freed.length} idle sessions`}${gave}; click a tab to resume`);
     }
   }
 
@@ -688,7 +713,10 @@ export class App implements PaneHost {
   }
 
   title(tab: Tab): string {
-    return tab.name || tab.active.title || tab.active.profile.name;
+    const pane = tab.active;
+    // Claude's own name for the conversation outranks whatever the shell last called itself —
+    // an exited session should still say what it was about, not "PowerShell".
+    return tab.name || pane.claudeTitle || pane.title || pane.lastRealTitle || pane.profile.name;
   }
 
   /** An empty name hands the tab back to whatever the shell calls itself. */
@@ -1186,7 +1214,11 @@ export class App implements PaneHost {
     // reboot is exactly when the rail has to be honest. Adopt what the host already knows,
     // but never over a live pane's own state: ours is fresher.
     for (const p of all) {
-      if (p.agent.state !== null) continue;
+      // ONCE per pane, and only while it has nothing of its own to say. The host's record is
+      // the right answer at reconnect and a stale one for ever after: re-applying it every
+      // five seconds resurrects a state the session has long since moved past.
+      if (p.adoptedHostState || p.agent.state !== null) continue;
+      p.adoptedHostState = true;
       const held = sessions.find((x) => x.id === p.id);
       if (!held?.agent_state) continue;
       const known = ["working", "done", "waiting", "blocked"] as const;
@@ -1561,6 +1593,7 @@ export class App implements PaneHost {
         const key = pane.ledgerKey;
         const entry = this.ledger.find((e) => e.key === key) ?? ({ key } as LedgerEntry);
         entry.title = this.title(tab);
+        if (entry.title === pane.profile.name && pane.claudeTitle) entry.title = pane.claudeTitle;
         entry.cwd = pane.cwd;
         entry.profile = pane.profile.id;
         entry.project = tab.projectId;

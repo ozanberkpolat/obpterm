@@ -72,6 +72,12 @@ export class Pane {
   claudeSessionId: string | null = null;
   /** Claude's own name for the conversation, read from the transcript for the Deck. */
   claudeTitle: string | null = null;
+  /** The last non-empty title this pane had. A shell blanks its title as it exits; the name
+   *  the session earned should outlive it. */
+  lastRealTitle: string | null = null;
+  /** Whether this pane has already taken the host's record of what its agent was doing. It is
+   *  the right answer once, at reconnect, and stale every time after. */
+  adoptedHostState = false;
   /** "+412 −87" for this pane's directory, from the Deck's slow lane. */
   diffstat: string | null = null;
   /** Rough context-window fill %, from the transcript tail. */
@@ -131,7 +137,12 @@ export class Pane {
       }
     });
     t.onTitleChange((title) => {
-      this.title = title || this.profile.name;
+      // A shell resets its title on the way out, and Claude Code's own name for the session
+      // goes with it — leaving a tab called "PowerShell" where a conversation used to be, at
+      // exactly the moment you are trying to work out what it was about. An empty title is a
+      // reset, not a rename: keep the last real one.
+      if (title) this.lastRealTitle = title;
+      this.title = title || this.lastRealTitle || this.profile.name;
       host.onPaneTitle(this);
     });
     // OSC 9 carries three different things and we were throwing two of them away:

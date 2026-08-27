@@ -48,7 +48,6 @@ await send("Page.enable");
 // "focused pane" behaviour (read-on-watch, auto-pass) looks broken when it is not.
 await send("Emulation.setFocusEmulationEnabled", { enabled: true });
 await send("Page.navigate", { url });
-await send("Emulation.setFocusEmulationEnabled", { enabled: true }); // survives no navigation
 
 const evaluate = async (expression) =>
   (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result.value;
@@ -73,17 +72,7 @@ await until("!!window.obpterm?.tab?.active?.id > 0", "a live pty");
 // The sleep sweep and the live ceiling are driven explicitly further down. Left on their
 // timers they would tear terminals down under the other 1100 lines, and a wake replays
 // scrollback, which reads as fresh output — an activity assertion two blocks away would flap.
-// Every automatic sweep is pinned OFF for the suite and driven by hand where it is the subject.
-// Left on their timers they act on panes other blocks are in the middle of using — a pane the
-// eco sweep `/exit`s under a test that is writing to it fails somewhere else entirely, which is
-// exactly the shape of flakiness this file had.
-await evaluate(`(() => {
-  const c = window.obpterm.config;
-  c.sleep_after_seconds = 0;
-  c.max_live_panes = 0;
-  c.eco_after_minutes = 0;
-  c.eco_memory_pct = 0;
-})()`);
+await evaluate("(() => { window.obpterm.config.sleep_after_seconds = 0; window.obpterm.config.max_live_panes = 0; })()");
 
 // Split twice, then close one pane: the tree, the DOM and the ptys must agree.
 const panes0 = await evaluate("document.querySelectorAll('.pane').length");
@@ -164,7 +153,6 @@ assert.match(readFileSync(sessionFile, "utf8"), new RegExp(`"pty":${heldId}`), "
 // Crash and reopen: reload without a clean exit, exactly what the app sees after a kill.
 const before = await evaluate("JSON.stringify(window.obpterm.tabs.map(t => window.obpterm.title(t)))");
 await send("Page.navigate", { url });
-await send("Emulation.setFocusEmulationEnabled", { enabled: true }); // survives no navigation
 await until("!!window.obpterm?.tabs?.length", "the app after a reload");
 await until(
   `JSON.stringify(window.obpterm.tabs.map(t => t.active.profile.name)).length > 0 && window.obpterm.tabs.length === ${session.tabs.length}`,
@@ -195,7 +183,6 @@ await evaluate("window.obpterm.hostInstance = 'rebooted-instance'");
 await evaluate("(() => { window.__rb = false; window.obpterm.flushSession().then(() => (window.__rb = true)); })()");
 await until("window.__rb === true", "the session flushed with the stale instance");
 await send("Page.navigate", { url });
-await send("Emulation.setFocusEmulationEnabled", { enabled: true }); // survives no navigation
 await until("!!window.obpterm?.tabs?.length", "the app after the reboot");
 await until(
   `${bufferText("window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.claudeSessionId === 'sess-reboot-1')")}.includes('claude --resume sess-reboot-1')`,
@@ -380,9 +367,7 @@ await evaluate(
   "(() => { window.__copied = null; window.obpterm.tp.writeClipboard = (t) => { window.__copied = t; return Promise.resolve(); }; })()",
 );
 await evaluate("window.obpterm.tab.active.term.term.write('copy-on-select-marker\\r\\n')");
-// Wait for xterm to have PARSED it: selecting all of a buffer that has not caught up yet
-// copies nothing, and under load that is most runs.
-await until(`${bufferText("window.obpterm.tab.active")}.includes('copy-on-select-marker')`, "the marker is on screen");
+await new Promise((r) => setTimeout(r, 200));
 await evaluate(
   "(() => { window.obpterm.tab.active.term.term.selectAll(); window.obpterm.tab.active.el.dispatchEvent(new MouseEvent('mouseup', {button: 0, bubbles: true})); })()",
 );
@@ -521,8 +506,6 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
     : otherPane;
   const focusTab = await evaluate(`window.obpterm.tabs.findIndex(t => window.obpterm.panesOf(t).some(p => p.id !== ${blockedPane}))`);
   await evaluate(`window.obpterm.activate(window.obpterm.tabs[${focusTab}])`);
-  // The focus switch has to land first: a request on the pane in front is auto-passed.
-  await until(`window.obpterm.tab === window.obpterm.tabs[${focusTab}]`, "the other tab is in front");
   await injectDev({ pane: blockedPane, state: "blocked", session_id: "sess-2", detail: "Running cargo publish", pending_id: "p-88", options: [] });
   await until(
     `window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${blockedPane})?.agent.state === 'blocked'`,
@@ -559,11 +542,7 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   await until("window.obpterm.tabs.length >= 2", "a second tab");
   const askPane = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
   await evaluate("window.obpterm.activate(window.obpterm.tabs[0])");
-  // A request on the pane you are LOOKING at is passed straight through, so the focus switch
-  // has to have landed before the inject — otherwise this races it and the state never sticks.
-  await until("window.obpterm.tab === window.obpterm.tabs[0]", "the other tab is in front");
   await injectDev({ pane: askPane, state: "blocked", session_id: "sess-a", detail: "Running git push --tags", pending_id: "p-ask", options: [], tool: "Bash", tool_input: "git push --tags" });
-  await until(`window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${askPane})?.agent.state === 'blocked'`, "the pane is blocked before the map is asked about it");
   await evaluate("window.obpterm.showView('agents')");
   await until("!!document.querySelector('#nodemap .nnode[data-state=blocked]')", "the waiting node");
   assert.equal(
@@ -812,12 +791,10 @@ await evaluate("(() => { window.obpterm.status.pendingUpdate = null; document.qu
   await until("window.obpterm.tabs.length >= 2", "a tab for motion");
   const mPane = await evaluate("window.obpterm.panesOf(window.obpterm.tabs[1])[0].id");
   await evaluate("window.obpterm.activate(window.obpterm.tabs[0])"); // unfocused, or blocked injects auto-pass and clear the pending id
-  await until("window.obpterm.tab === window.obpterm.tabs[0]", "the first tab is in front");
   const row = `document.querySelectorAll('#rail-body .tab')[1]`;
 
   // working, not printing: sonar state on the row
   await injectDev({ pane: mPane, state: "working", session_id: "sess-m", detail: "Thinking", pending_id: null, options: [] });
-  await until(`window.obpterm.panesOf(window.obpterm.tabs[1])[0].agent.state === 'working'`, "the pane is working before the row is asked");
   await evaluate(`(() => { const p = window.obpterm.panesOf(window.obpterm.tabs[1])[0]; p.lastOutput = Date.now() - 10000; window.obpterm.paint(); })()`);
   await until(`${row}?.dataset.motion === 'working'`, "the working motion word");
   // a benign ask: the knock
@@ -1547,7 +1524,7 @@ await evaluate("window.obpterm.config.update_repo = null");
   await evaluate("(() => { const p = window.obpterm.tab.active; p.agent.state = 'working'; p.agent.workingSince = Date.now(); window.obpterm.onPaneActivity(); window.obpterm.paint(); })()");
   assert.equal(await evaluate(`${row()}.classList.contains('stalled')`), false, "and clears the moment it talks again");
 
-  await evaluate("(() => { window.obpterm.config.eco_memory_pct = 0; window.obpterm.config.eco_after_minutes = 0; window.obpterm.lastPressureEco = 0; window.obpterm.tab.active.agent.state = null; window.obpterm.tab.active.rss = 0; })()");
+  await evaluate("(() => { window.obpterm.config.eco_memory_pct = 0; window.obpterm.config.eco_after_minutes = 15; window.obpterm.lastPressureEco = 0; window.obpterm.tab.active.agent.state = null; window.obpterm.tab.active.rss = 0; })()");
   await evaluate(`(() => { while (window.obpterm.tabs.length > ${tabsBefore}) window.obpterm.closeTab(window.obpterm.tabs.at(-1)); })()`);
   await until(`window.obpterm.tabs.length === ${tabsBefore}`, "its tabs are gone again");
 }
@@ -1706,34 +1683,6 @@ await evaluate("window.obpterm.config.update_repo = null");
     while (window.obpterm.tabs.length > ${tabsBefore}) window.obpterm.closeTab(window.obpterm.tabs.at(-1));
     window.obpterm.paint();
   })()`);
-}
-
-
-// ---- v0.21.24: a tab keeps the name it earned ---------------------------------------------
-{
-  // A shell blanks its title as it exits, which used to hand the tab back to "PowerShell" —
-  // at exactly the moment you are trying to work out what that session was about.
-  await evaluate(`(() => {
-    const p = window.obpterm.tab.active;
-    p.title = "fixing the parser";
-    p.lastRealTitle = "fixing the parser";
-    p.claudeTitle = null;
-    window.obpterm.tab.name = null;
-  })()`);
-  assert.equal(await evaluate("window.obpterm.title(window.obpterm.tab)"), "fixing the parser", "the tab is named after its work");
-
-  // The exit: an empty title arrives from the terminal.
-  await evaluate(`(() => {
-    const p = window.obpterm.tab.active;
-    p.term.term.write("\u001b]0;\u0007");   // OSC 0 with no text — a title reset
-  })()`);
-  await new Promise((r) => setTimeout(r, 200));
-  assert.equal(await evaluate("window.obpterm.title(window.obpterm.tab)"), "fixing the parser", "and keeps it when the shell resets its title");
-
-  // Claude's own name for the conversation outranks whatever the shell last called itself.
-  await evaluate(`(() => { const p = window.obpterm.tab.active; p.claudeTitle = "Enpara statement bug"; })()`);
-  assert.equal(await evaluate("window.obpterm.title(window.obpterm.tab)"), "Enpara statement bug", "Claude's name wins over the shell's");
-  await evaluate(`(() => { const p = window.obpterm.tab.active; p.claudeTitle = null; p.lastRealTitle = null; })()`);
 }
 
 
