@@ -16,16 +16,53 @@ const SESSION = new URL("./dev-session.json", import.meta.url);
  *  for days after the test that spawned them had finished. */
 function killTree(p) {
   if (!p) return;
-  try {
-    process.kill(-p.pid, "SIGKILL"); // node-pty gives the shell its own process group
-  } catch {
-    /* already gone, or no group: fall through */
+  // Descendants FIRST and by pid, never by process group: `process.kill(-pid)` assumes the
+  // shell leads its own group, and when it does not the signal lands on this server's group
+  // instead — which is exactly what happened, and the dev server killed itself mid-suite.
+  for (const pid of descendants(p.pid)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      /* already gone */
+    }
   }
   try {
     p.kill();
   } catch {
     /* already gone */
   }
+}
+
+/** Every pid below this one, from /proc. Linux-only, which is where the dev loop runs. */
+function descendants(root) {
+  const kids = new Map();
+  let entries = [];
+  try {
+    entries = readdirSync("/proc").filter((n) => /^\d+$/.test(n));
+  } catch {
+    return [];
+  }
+  for (const pid of entries) {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      // The comm field can contain spaces and parentheses; the ppid is the field after it.
+      const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
+      if (!Number.isNaN(ppid)) kids.set(Number(pid), ppid);
+    } catch {
+      /* the process ended while we were reading it */
+    }
+  }
+  const out = [];
+  const walk = (parent) => {
+    for (const [pid, ppid] of kids) {
+      if (ppid === parent && !out.includes(pid)) {
+        out.push(pid);
+        walk(pid);
+      }
+    }
+  };
+  walk(root);
+  return out.reverse(); // deepest first
 }
 
 /** PATH with every directory that holds a `claude` removed. */

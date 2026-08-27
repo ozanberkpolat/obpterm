@@ -47,11 +47,31 @@ await send("Page.enable");
 // Headless has no real focus; without this, document.hasFocus() is false and every
 // "focused pane" behaviour (read-on-watch, auto-pass) looks broken when it is not.
 await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+// Start from an empty dev server. Every run spawns shells, the dev server holds them on purpose
+// (that is what it emulates), and nothing ever told it to let go — 125 stray bash processes had
+// piled up across runs, and that load is what made every timing assertion in this file a
+// coin toss.
+await resetDevServer();
 await send("Page.navigate", { url });
 await send("Emulation.setFocusEmulationEnabled", { enabled: true }); // survives no navigation
 
 const evaluate = async (expression) =>
   (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result.value;
+
+/** Tell the dev server to end every shell it is holding. */
+async function resetDevServer() {
+  await new Promise((resolve) => {
+    const ws = new WebSocket("ws://127.0.0.1:1421");
+    const done = () => {
+      try { ws.close(); } catch { /* already closed */ }
+      resolve();
+    };
+    ws.on("open", () => ws.send(JSON.stringify({ t: "shutdown", reqId: 1 })));
+    ws.on("message", done);
+    ws.on("error", done);
+    setTimeout(done, 2000);
+  });
+}
 
 const until = async (expr, what, ms = 15000) => {
   const deadline = Date.now() + ms;
@@ -1734,9 +1754,18 @@ await evaluate("window.obpterm.config.update_repo = null");
   await evaluate(`(() => { const p = window.obpterm.tab.active; p.claudeTitle = "Enpara statement bug"; })()`);
   assert.equal(await evaluate("window.obpterm.title(window.obpterm.tab)"), "Enpara statement bug", "Claude's name wins over the shell's");
 
+  // A name you TYPED outranks everything and is written immediately — no debounce to lose it.
+  await evaluate(`(() => { window.obpterm.renameTab(window.obpterm.tab, "  the one about the parser  "); })()`);
+  assert.equal(await evaluate("window.obpterm.tab.name"), "the one about the parser", "trimmed and kept");
+  await evaluate(`(() => { const p = window.obpterm.tab.active; p.claudeTitle = "something Claude decided"; p.title = "PowerShell"; })()`);
+  assert.equal(await evaluate("window.obpterm.title(window.obpterm.tab)"), "the one about the parser", "and nothing overrides it");
+  await evaluate("(() => { window.__names = null; window.obpterm.tp.sessionLoad().then(s => (window.__names = (s.tabs ?? []).map(t => t.name))); })()");
+  await until("Array.isArray(window.__names) && window.__names.includes('the one about the parser')", "the name is on disk, not waiting on a debounce");
+  await evaluate(`(() => { window.obpterm.renameTab(window.obpterm.tab, ""); })()`);
+
   // And it survives being slept or eco'd — that is the case the user actually hits: a tab in
   // the rail reading "Claude Code · agent sleeping" tells you nothing about what it was.
-  await evaluate(`(() => { const p = window.obpterm.tab.active; p.eco = true; p.title = "Claude Code"; })()`);
+  await evaluate(`(() => { const p = window.obpterm.tab.active; p.eco = true; p.title = "Claude Code"; p.claudeTitle = "Enpara statement bug"; })()`);
   assert.equal(await evaluate("window.obpterm.title(window.obpterm.tab)"), "Enpara statement bug", "a sleeping session still says what it was about");
   await evaluate(`(() => { const p = window.obpterm.tab.active; p.eco = false; })()`);
   await evaluate(`(() => { const p = window.obpterm.tab.active; p.claudeTitle = null; p.lastRealTitle = null; })()`);
@@ -1850,6 +1879,8 @@ await until("document.querySelector('#settings').hidden", "the sheet closing");
 
 const bad = logs.filter((l) => /^(error|exception)/.test(l));
 assert.deepEqual(bad, [], `console was not clean:\n${bad.join("\n")}`);
+// And leave it empty, so the next run starts from the same place this one did.
+await resetDevServer();
 console.log(`smoke OK — ${logs.length} console messages, none of them errors`);
 process.exit(0);
 

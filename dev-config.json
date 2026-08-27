@@ -84,7 +84,7 @@
   ],
   "hosts": [
     {
-      "id": "hmtbfu2j7",
+      "id": "hmtbgjl6o",
       "name": "New host",
       "host": "",
       "user": null,
@@ -112,7 +112,26 @@
   "agents_view": "sessions",
   "quota_5h_tokens": null,
   "quota_7d_tokens": null,
-  "projects": [],
+  "projects": [
+    {
+      "id": "pmtbgkl2c",
+      "name": "Smoke",
+      "color": "#ff8a1e",
+      "cwd": "~",
+      "default_profile": "bash",
+      "layout": null,
+      "collapsed": false
+    },
+    {
+      "id": "pmtbglavi",
+      "name": "Smoke",
+      "color": "#4c8dff",
+      "cwd": "~",
+      "default_profile": "bash",
+      "layout": null,
+      "collapsed": false
+    }
+  ],
   "restore_session": true,
   "session": null,
   "theme": {

@@ -85,6 +85,8 @@ export interface LedgerEntry {
   seen: number;
   /** Closed by the user on purpose — never offer it back. */
   closed: boolean;
+  /** The title was typed by the user, not inferred from the shell or the transcript. */
+  named?: boolean;
 }
 
 export function resumePlan(profile: Profile, sessionId: string | null): { profile: Profile; type: string | null } {
@@ -579,11 +581,14 @@ export class App implements PaneHost {
     projectId: string | null = this.tab?.projectId ?? null,
     cwd: string | null = null,
     accountId: string | null = this.tab?.accountId ?? this.config.default_account,
+    /** Attach to a shell the host already holds instead of spawning a new one. */
+    attachTo: number | null = null,
   ) {
     const project = this.project(projectId);
     const p = profile ?? this.profileById(project?.default_profile ?? this.config.default_profile);
     const slot = this.nextSlot();
     const pane = new Pane(this, this.withAccount(p, accountId, slot), cwd ?? project?.cwd ?? this.config.default_cwd);
+    pane.attachTo = attachTo;
     const el = document.createElement("div");
     el.className = "tab-panes";
     this.panesEl.appendChild(el);
@@ -738,7 +743,9 @@ export class App implements PaneHost {
   renameTab(tab: Tab, name: string) {
     tab.name = name.trim() || null;
     this.paint();
-    this.persistSession();
+    // Written now, not in 250ms: a name you typed is the one thing that must never be lost to
+    // a crash in the gap, and it is one small write.
+    void this.flushSession();
   }
 
   // ---- panes ----------------------------------------------------------------------------
@@ -1609,6 +1616,9 @@ export class App implements PaneHost {
         const entry = this.ledger.find((e) => e.key === key) ?? ({ key } as LedgerEntry);
         entry.title = this.title(tab);
         if (entry.title === pane.profile.name && pane.claudeTitle) entry.title = pane.claudeTitle;
+        // Whether that name is one you typed. A recovered session must come back with the name
+        // you gave it, not with a fallback that happens to read the same today.
+        entry.named = !!tab.name;
         entry.cwd = pane.cwd;
         entry.profile = pane.profile.id;
         entry.project = tab.projectId;
@@ -1698,6 +1708,9 @@ export class App implements PaneHost {
     const profile = this.config.profiles.find((p) => p.id === entry.profile) ?? this.config.profiles[0];
     if (!profile) return;
     const tab = await this.newTab({ ...profile, cwd: entry.cwd ?? profile.cwd }, entry.project ?? undefined);
+    // A recovered session comes back under the name it had — otherwise recovery hands you a row
+    // called "Claude Code" and the whole point of the ledger was knowing which one it was.
+    if (tab && entry.named && entry.title) tab.name = entry.title;
     const pane = tab?.active;
     if (pane && entry.claude) {
       // The same one rule the restore and eco paths use: argument or typed, never both.
@@ -1751,6 +1764,42 @@ export class App implements PaneHost {
   orphanedSessions(): number {
     const shown = new Set(this.tabs.flatMap((t) => L.panes(t.root).map((p) => p.id)));
     return [...this.held.keys()].filter((id) => !shown.has(id)).length;
+  }
+
+  /** The shells the host is holding that no tab in this window shows. */
+  orphanIds(): number[] {
+    const shown = new Set(this.tabs.flatMap((t) => L.panes(t.root).map((p) => p.id)));
+    return [...this.held.values()].filter((s) => s.exited === null && !shown.has(s.id)).map((s) => s.id);
+  }
+
+  /**
+   * End every shell nothing is showing. They are leftovers: windows that closed without
+   * quitting, updates, crashes. The host holds them ON PURPOSE — that is what makes an update
+   * free — but a session nobody has a tab for is just a `claude` process holding ~400 MB.
+   */
+  async killOrphans() {
+    const ids = this.orphanIds();
+    if (!ids.length) return void toast("Nothing is running in the background");
+    for (const id of ids) await this.tp.kill(id).catch(() => {});
+    toast(`Ended ${ids.length} background shell${ids.length > 1 ? "s" : ""}`);
+    await this.connectHost();
+    this.paint();
+  }
+
+  /** Or keep them: one tab each, attached to what is already running. */
+  async adoptOrphans() {
+    const ids = this.orphanIds();
+    if (!ids.length) return void toast("Nothing is running in the background");
+    for (const id of ids) await this.adoptSession(id);
+    toast(`Opened ${ids.length} background shell${ids.length > 1 ? "s" : ""} as tabs`);
+  }
+
+  private async adoptSession(id: number) {
+    const held = this.held.get(id);
+    const profile = this.config.profiles.find((p) => p.id === "claude") ?? this.config.profiles[0];
+    if (!held || !profile) return;
+    const tab = await this.newTab({ ...profile, cwd: held.cwd ?? profile.cwd }, undefined, null, undefined, id);
+    if (tab && held.claude_session_id) tab.active.claudeSessionId = held.claude_session_id;
   }
 
   async restoreSession(): Promise<{ restored: number; crashed: boolean; updatedTo: string | null }> {

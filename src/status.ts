@@ -356,6 +356,21 @@ export class Status {
   private hostMenu2(e: MouseEvent) {
     openMenu(e.clientX, e.clientY, [
       { label: "Wake every sleeping tab", onPick: () => void this.app.wakeAll() },
+      ...(this.app.orphanedSessions()
+        ? [
+            {
+              label: `Open the ${this.app.orphanedSessions()} background shells as tabs`,
+              hint: "keeps them running",
+              onPick: () => void this.app.adoptOrphans(),
+            },
+            {
+              label: `End the ${this.app.orphanedSessions()} background shells`,
+              hint: "~400 MB each",
+              danger: true,
+              onPick: () => void this.app.killOrphans(),
+            },
+          ]
+        : []),
       {
         label: "Restart the session host",
         hint: this.app.hostVersion ? `now ${this.app.hostVersion}` : "",
