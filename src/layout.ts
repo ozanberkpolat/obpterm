@@ -24,6 +24,9 @@ export interface SavedNode {
   pty?: number | null;
   /** Claude's session id, so a reboot resumes the conversation instead of losing it. */
   claude?: string | null;
+  /** This pane's own id in the ledger — stable for the pane's whole life, unlike Claude's
+   *  session id, which is minted afresh by `/clear`. */
+  ledger?: string;
   dir?: "row" | "col";
   ratio?: number;
   a?: SavedNode;
@@ -159,6 +162,7 @@ export function serialize(node: Node): SavedNode {
       cwd: node.pane.cwd,
       pty: node.pane.id > 0 ? node.pane.id : null,
       claude: node.pane.claudeSessionId,
+      ledger: node.pane.ledgerKey,
     };
   }
   return { kind: "split", dir: node.dir, ratio: node.ratio, a: serialize(node.a), b: serialize(node.b) };

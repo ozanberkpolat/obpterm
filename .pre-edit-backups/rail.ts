@@ -13,6 +13,8 @@ interface Row {
   num: HTMLElement;
   title: HTMLElement;
   sub: HTMLElement;
+  /** "1.4G" — what this session's process tree is holding, once that is a lot. */
+  rss: HTMLElement;
   /** "$1.24" — what this session has spent, once it is worth mentioning. */
   cost: HTMLElement;
   /** "ctx 88%", only once the conversation is close to full. */
@@ -23,6 +25,13 @@ interface Row {
 }
 
 const rows = new WeakMap<Tab, Row>();
+
+/** 95000 -> "1m", 24000000 -> "6h40m". */
+function fmtAge(ms: number): string {
+  const min = Math.round(ms / 60_000);
+  if (min < 60) return `${min}m`;
+  return `${Math.floor(min / 60)}h${min % 60 ? `${min % 60}m` : ""}`;
+}
 
 /** 412000 -> "412k", 2400000 -> "2.4M". */
 function fmtTokens(n: number): string {
@@ -88,8 +97,23 @@ function patchAgents(app: App) {
 function patchHeader(app: App) {
   const el = document.querySelector<HTMLElement>("#rail-waiting")!;
   const n = app.waiting();
-  el.textContent = n ? `${n} waiting` : "";
-  el.hidden = n === 0;
+  const agents = app.liveAgentCount();
+  const dead = app.exitedTabs().length;
+  // Three facts, in the order they demand action. Each one is a button: the count that tells
+  // you something is wrong and cannot be clicked is a count you have to act on by hand.
+  const parts = [n ? `${n} waiting` : "", agents ? `${agents} agents` : "", dead ? `${dead} exited` : ""].filter(Boolean);
+  el.textContent = parts.join(" · ");
+  el.hidden = parts.length === 0;
+  el.title = "Click: jump to the next session that needs you. Right-click: close every exited tab.";
+  if (!el.dataset.wired) {
+    el.dataset.wired = "1";
+    el.style.cursor = "pointer";
+    el.onclick = () => app.jumpNeedsYou();
+    el.oncontextmenu = (e) => {
+      e.preventDefault();
+      app.closeExited();
+    };
+  }
 }
 
 function group(app: App, project: Project | null, tabs: Tab[]): HTMLElement {
@@ -152,6 +176,7 @@ function rowFor(app: App, tab: Tab): Row {
   li.innerHTML =
     `<span class="num"></span>` +
     `<span class="label"><span class="title"></span><span class="sub"></span></span>` +
+    `<span class="rss" hidden></span>` +
     `<span class="cost" hidden></span>` +
     `<span class="ctx" hidden></span>` +
     `<span class="badge" hidden></span><span class="rec" hidden title="capturing to a log file">●</span>` +
@@ -162,6 +187,7 @@ function rowFor(app: App, tab: Tab): Row {
     num: li.querySelector(".num")!,
     title: li.querySelector(".title")!,
     sub: li.querySelector(".sub")!,
+    rss: li.querySelector(".rss")!,
     cost: li.querySelector(".cost")!,
     ctx: li.querySelector(".ctx")!,
     badge: li.querySelector(".badge")!,
@@ -242,18 +268,35 @@ function patchRow(app: App, tab: Tab) {
     : 0;
   const working = workedMin >= 1 ? ` · ${workedMin}m` : "";
   const mode = agentPane ? modeLabel(agentPane.agent) : "";
+  // A session that stopped reporting mid-task is not the same as one sitting at a prompt, and
+  // for twenty minutes it drew identically. Say which it is.
+  const stalled = panes.find((p) => p.agent.stalledSince && !p.eco && !p.exited);
+  const stalledMin = stalled?.agent.stalledSince ? Math.floor((Date.now() - stalled.agent.stalledSince) / 60_000) : 0;
   const sub = exited
     ? `exited · code ${exited.exitCode}`
-    : eco
-      ? "agent sleeping — click to resume"
-      : agentDetail
-        ? agentDetail + working + (mode ? ` · ${mode}` : "")
-        : (tab.active.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? tab.active.profile.name);
+    : stalled
+      ? `stalled — nothing reported for ${stalledMin}m`
+      : eco
+        ? "agent sleeping — click to resume"
+        : agentDetail
+          ? agentDetail + working + (mode ? ` · ${mode}` : "")
+          : (tab.active.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? tab.active.profile.name);
 
   row.li.classList.toggle("active", tab === app.tab);
   row.li.classList.toggle("dead", state === "exited");
+  row.li.classList.toggle("stalled", !!stalled);
   row.li.style.setProperty("--tab-accent", app.accent(tab));
-  row.li.title = `${title}\n${tab.active.profile.name}${tab.active.cwd ? `\n${tab.active.cwd}` : ""}`;
+  // Everything the row knows and has no room to draw. Cheap: it is one string per patch.
+  const a = tab.active.agent;
+  const tools = Object.entries(a.toolCounts ?? {}).sort((x, y) => y[1] - x[1]).slice(0, 3);
+  const fan = a.fanStats;
+  const extra = [
+    tab.active.startedAt ? `open ${fmtAge(Date.now() - tab.active.startedAt)}` : "",
+    tools.length ? tools.map(([t, n]) => `${n} ${t}`).join(", ") : "",
+    fan?.count ? `${fan.count} agents finished · longest ${fmtAge(fan.longestMs)}` : "",
+    tab.active.usage?.turns ? `${tab.active.usage.turns} turns · $${(tab.active.usage.cost_usd / tab.active.usage.turns).toFixed(3)}/turn` : "",
+  ].filter(Boolean);
+  row.li.title = [title, tab.active.profile.name, tab.active.cwd ?? "", ...extra].filter(Boolean).join("\n");
 
   set(row.num, String(app.tabs.indexOf(tab) + 1));
   set(row.title, title);
@@ -268,13 +311,24 @@ function patchRow(app: App, tab: Tab) {
     row.ctx.classList.toggle("hot", full >= 95);
     row.ctx.title = "This conversation is nearly full — right-click the tab to /compact it";
   }
+  // What it is holding. Only the ones big enough to be worth exiting say so out loud; the
+  // tooltip carries the number regardless, and the eco sweep sorts on it whether or not it
+  // is drawn.
+  const rss = panes.reduce((n, p) => n + p.rss, 0);
+  row.rss.hidden = rss < 400e6;
+  if (rss) {
+    set(row.rss, rss >= 1e9 ? `${(rss / 1e9).toFixed(1)}G` : `${Math.round(rss / 1e6)}M`);
+    row.rss.title = `${Math.round(rss / 1e6)} MB resident — this session's whole process tree`;
+    row.rss.classList.toggle("heavy", rss >= 1.5e9);
+  }
   // What it has cost. Below a dime it is noise; the tooltip carries the tokens either way.
   const cost = app.tabCost(tab);
   const tokens = panes.reduce((n, p) => n + (p.usage ? p.usage.input + p.usage.output + p.usage.cache_read + p.usage.cache_write : 0), 0);
   row.cost.hidden = cost === null || cost < 0.1;
   if (cost !== null) {
     set(row.cost, `$${cost < 10 ? cost.toFixed(2) : Math.round(cost)}`);
-    row.cost.title = `${fmtTokens(tokens)} tokens · estimated from this machine's transcripts, at the prices in Settings`;
+    const turns = panes.reduce((n, p) => n + (p.usage?.turns ?? 0), 0);
+    row.cost.title = `${fmtTokens(tokens)} tokens${turns ? ` · ${turns} turns · $${(cost / turns).toFixed(3)} a turn` : ""} · estimated from this machine's transcripts, at the prices in Settings`;
   }
   row.badge.hidden = panes.length < 2;
   set(row.badge, panes.length > 1 ? String(panes.length) : "");
@@ -414,10 +468,12 @@ function colorMenu(x: number, y: number, current: string | null, set: (c: string
 export function newWorktree(app: App) {
   const host = document.querySelector<HTMLElement>("#rail-new")!;
   host.hidden = false;
-  editInline(host, "", "Worktree name (becomes the branch)", (v) => {
+  // Comma-separated makes the parallel case one keystroke sequence instead of N — parallel
+  // worktrees are why the feature exists.
+  editInline(host, "", "Worktree name, or several separated by commas", (v) => {
     host.hidden = true;
     host.replaceChildren();
-    if (v) void app.newWorktreeTab(v);
+    for (const name of v.split(",").map((n) => n.trim()).filter(Boolean)) void app.newWorktreeTab(name);
   });
 }
 

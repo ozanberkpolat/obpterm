@@ -120,7 +120,7 @@ export function tauriTransport(): Transport {
     },
     reveal: (what) => invoke<string>("reveal", { what }),
     sessionLoad: () => invoke<Session>("session_load"),
-    sessionSave: (tabs, active, host) => invoke("session_save", { tabs, active, host }),
+    sessionSave: (tabs, active, host, ledger) => invoke("session_save", { tabs, active, host, ledger }),
     captureStats: (dir) => invoke<[number, number, number]>("capture_stats", { dir }),
     pruneCaptures: (dir, keepDays, maxMb) => invoke<[number, number]>("prune_captures", { dir, keepDays, maxMb }),
     logDir: () => invoke<string>("log_dir"),

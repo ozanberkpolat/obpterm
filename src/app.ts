@@ -8,7 +8,7 @@ import { applyTermConfig } from "./term";
 import { renderRail } from "./rail";
 import { bindKeys } from "./keymap";
 import { toast } from "./ui";
-import { COLORS } from "./menu";
+import { COLORS, openMenu } from "./menu";
 import type { Find } from "./find";
 import type { Status } from "./status";
 import type { Preset } from "./toolbar";
@@ -72,6 +72,21 @@ function olderThan(a: string, b: string): boolean {
  * be resumed by TYPING it again, because `pwsh.exe --resume <id>` is not a shell invocation,
  * it is `pwsh` exiting with code 64 and taking the session with it.
  */
+/** One line of the ledger: a session this window has known. */
+export interface LedgerEntry {
+  key: string;
+  title: string;
+  cwd: string | null;
+  profile: string;
+  project: string | null;
+  account: string | null;
+  claude: string | null;
+  /** Epoch ms it was last open. */
+  seen: number;
+  /** Closed by the user on purpose — never offer it back. */
+  closed: boolean;
+}
+
 export function resumePlan(profile: Profile, sessionId: string | null): { profile: Profile; type: string | null } {
   const next = { ...profile };
   if (!sessionId) return { profile: next, type: null };
@@ -560,6 +575,7 @@ export class App implements PaneHost {
   }
 
   closeTab(tab: Tab) {
+    this.forgetInLedger(tab);
     const lastCwd = tab.active.cwd;
     for (const p of L.panes(tab.root)) {
       p.kill();
@@ -629,6 +645,31 @@ export class App implements PaneHost {
     void this.flushSession();
   }
 
+  /**
+   * Move a whole project up or down the rail — the project row AND the tabs inside it, since
+   * the rail draws groups in `config.projects` order and tabs in `this.tabs` order. Moving one
+   * without the other would leave the header somewhere its tabs are not.
+   */
+  moveProject(project: Project, delta: number) {
+    const ordered = this.config.projects;
+    const from = ordered.indexOf(project);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= ordered.length) return;
+    ordered.splice(from, 1);
+    ordered.splice(to, 0, project);
+    // Rebuild the tab order to match: each project's tabs in a block, in the new project order,
+    // with anything ungrouped left where the rail already draws it — at the end.
+    const groups = new Map<string | null, Tab[]>();
+    for (const tab of this.tabs) {
+      const key = tab.projectId && ordered.some((p) => p.id === tab.projectId) ? tab.projectId : null;
+      (groups.get(key) ?? groups.set(key, []).get(key)!).push(tab);
+    }
+    this.tabs = [...ordered.flatMap((p) => groups.get(p.id) ?? []), ...(groups.get(null) ?? [])];
+    this.persistConfig();
+    void this.flushSession();
+    this.paint();
+  }
+
   jump(index: number) {
     const t = this.tabs[index];
     if (t) this.activate(t);
@@ -674,6 +715,7 @@ export class App implements PaneHost {
 
   closePane(pane: Pane, tab = this.tabOf(pane)) {
     if (!tab) return;
+    this.forgetPane(pane); // closing one on purpose is not losing it
     const next = L.remove(tab.root, pane);
     pane.kill();
     pane.dispose();
@@ -1497,9 +1539,127 @@ export class App implements PaneHost {
   async flushSession() {
     clearTimeout(this.sessionTimer);
     const active = Math.max(0, this.tab ? this.tabs.indexOf(this.tab) : 0);
+    this.noteLedger();
     await this.tp
-      .sessionSave(this.tabs.map((t) => this.snapshot(t)), active, this.hostInstance)
+      .sessionSave(this.tabs.map((t) => this.snapshot(t)), active, this.hostInstance, this.ledger)
       .catch((e) => console.warn("session not saved", e));
+  }
+
+  /**
+   * Every session this window has known, by name and directory, whether or not it is open now.
+   * `tabs` is the current state and is overwritten by whatever the window last managed to save
+   * — after a crash that is often less than was really running, and the sessions it forgot are
+   * gone with no trace of their names. The ledger is that trace.
+   */
+  ledger: LedgerEntry[] = [];
+
+  private noteLedger() {
+    const now = Date.now();
+    for (const tab of this.tabs) {
+      for (const pane of L.panes(tab.root)) {
+        if (pane.id <= 0 || !isClaudePane(pane)) continue;
+        const key = pane.ledgerKey;
+        const entry = this.ledger.find((e) => e.key === key) ?? ({ key } as LedgerEntry);
+        entry.title = this.title(tab);
+        entry.cwd = pane.cwd;
+        entry.profile = pane.profile.id;
+        entry.project = tab.projectId;
+        entry.account = tab.accountId;
+        entry.claude = pane.claudeSessionId;
+        entry.seen = now;
+        entry.closed = false;
+        if (!this.ledger.includes(entry)) this.ledger.push(entry);
+      }
+    }
+    // A month is long enough to recover something you actually wanted and short enough that the
+    // file does not become an archive.
+    const cutoff = now - 30 * 24 * 3600_000;
+    this.ledger = this.ledger.filter((e) => e.seen > cutoff);
+  }
+
+  /** The user closed it on purpose: it is not missing, and must never be offered back. */
+  private forgetInLedger(tab: Tab) {
+    for (const pane of L.panes(tab.root)) this.forgetPane(pane);
+  }
+
+  forgetPane(pane: Pane) {
+    const entry = this.ledger.find((e) => e.key === pane.ledgerKey);
+    if (entry) entry.closed = true;
+  }
+
+  /** In the ledger, not closed by hand, and not open now. */
+  missingSessions(): LedgerEntry[] {
+    const open = new Set(this.tabs.flatMap((t) => L.panes(t.root)).map((p) => p.ledgerKey));
+    return this.ledger.filter((e) => !e.closed && !open.has(e.key));
+  }
+
+  /**
+   * Offer back what is missing. Called after a restore — the moment the count can be wrong,
+   * because `tabs` is whatever the window last managed to write and a crash writes less than
+   * was running — and from the palette whenever you want to look.
+   */
+  offerRecovery(quiet = false) {
+    const missing = this.missingSessions();
+    if (!missing.length) {
+      if (!quiet) toast("Nothing is missing — every session from the ledger is open");
+      return;
+    }
+    const names = missing.slice(0, 3).map((e) => e.title).join(", ");
+    const more = missing.length > 3 ? ` and ${missing.length - 3} more` : "";
+    toast(`${missing.length} session${missing.length > 1 ? "s" : ""} from your last run ${missing.length > 1 ? "are" : "is"} not open: ${names}${more}`, {
+      label: "Reopen…",
+      run: () => this.recoveryMenu(),
+    });
+  }
+
+  /** The list itself: one entry per missing session, plus everything at once. */
+  recoveryMenu() {
+    const missing = this.missingSessions();
+    if (!missing.length) return void toast("Nothing is missing");
+    const ago = (ms: number) => {
+      const min = Math.round((Date.now() - ms) / 60_000);
+      return min < 60 ? `${min}m ago` : min < 1440 ? `${Math.floor(min / 60)}h ago` : `${Math.floor(min / 1440)}d ago`;
+    };
+    openMenu(window.innerWidth / 2 - 160, 90, [
+      ...missing.map((e) => ({
+        label: e.title || e.cwd || e.key,
+        hint: `${e.cwd?.split(/[\\/]/).filter(Boolean).pop() ?? ""} · ${ago(e.seen)}`,
+        onPick: () => void this.recoverSession(e),
+      })),
+      {
+        label: `Reopen all ${missing.length}`,
+        onPick: async () => {
+          // One at a time: twenty cold `claude` starts at once is what the burst limiter is for.
+          for (const e of missing) await this.recoverSession(e);
+        },
+      },
+      {
+        label: "Forget these",
+        danger: true,
+        onPick: () => {
+          for (const e of missing) e.closed = true;
+          void this.flushSession();
+          toast("Cleared — they will not be offered again");
+        },
+      },
+    ]);
+  }
+
+  /** Reopen one, where it was, resuming the conversation if there is one to resume. */
+  async recoverSession(entry: LedgerEntry) {
+    const profile = this.config.profiles.find((p) => p.id === entry.profile) ?? this.config.profiles[0];
+    if (!profile) return;
+    const tab = await this.newTab({ ...profile, cwd: entry.cwd ?? profile.cwd }, entry.project ?? undefined);
+    const pane = tab?.active;
+    if (pane && entry.claude) {
+      // The same one rule the restore and eco paths use: argument or typed, never both.
+      const plan = resumePlan(pane.profile, entry.claude);
+      if (plan.type) {
+        window.setTimeout(() => !pane.exited && void this.tp.write(pane.id, `claude --resume ${plan.type}\r`).catch(() => {}), 900);
+      }
+    }
+    const e = this.ledger.find((x) => x.key === entry.key);
+    if (e) e.closed = false;
   }
 
   /** config.json — projects, accounts, fonts. Changes rarely; the user edits this file too. */
@@ -1550,6 +1710,7 @@ export class App implements PaneHost {
     const session = await this.tp.sessionLoad().catch(() => null);
     // Ids from another host instance are just numbers; those panes respawn instead.
     this.reattachable = !!this.hostInstance && session?.host === this.hostInstance;
+    this.ledger = Array.isArray(session?.ledger) ? (session.ledger as LedgerEntry[]) : [];
     const saved = (session?.tabs as SavedTab[] | null) ?? [];
     this.claimed.clear();
     let restored = 0;
@@ -1615,6 +1776,9 @@ export class App implements PaneHost {
       const pane = new Pane(this, effective, node.cwd ?? null);
       pane.typeResume = typeResume;
       pane.claudeSessionId = node.claude ?? null;
+      // Carry the ledger identity across the restart, or every relaunch would mint a new one
+      // and the old entry would look like a session that disappeared.
+      if (node.ledger) pane.ledgerKey = node.ledger;
       if (held && held.exited === null) {
         pane.attachTo = held.id;
         pane.claudeSessionId = held.claude_session_id ?? pane.claudeSessionId;

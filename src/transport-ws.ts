@@ -129,7 +129,7 @@ export function wsTransport(): Transport {
     configReset: async () => (await call("config_reset")).config as Config,
     reveal: async (what) => what,
     sessionLoad: async () => (await call("session_load")).session as Session,
-    sessionSave: async (tabs, active, host) => void (await call("session_save", { tabs, active, host })),
+    sessionSave: async (tabs, active, host, ledger) => void (await call("session_save", { tabs, active, host, ledger })),
     captureStats: async () => [0, 0, 0],
     pruneCaptures: async () => [0, 0] as [number, number],
     logDir: async () => "logs",

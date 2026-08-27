@@ -97,6 +97,8 @@ export interface Session {
   active: number;
   /** Which session host the saved pty ids belong to. */
   host: string | null;
+  /** Every session this window has known, open or not — what recovery is offered from. */
+  ledger?: unknown;
   /** Version just installed, when the last exit was an update restart. */
   updated_to: string | null;
 }
@@ -334,7 +336,7 @@ export interface Transport {
   configExport(config: Config): Promise<string>;
   reveal(what: "config" | "logs"): Promise<string>;
   sessionLoad(): Promise<Session>;
-  sessionSave(tabs: unknown, active: number, host: string | null): Promise<void>;
+  sessionSave(tabs: unknown, active: number, host: string | null, ledger: unknown): Promise<void>;
   claudeAccount(dir: string): Promise<ClaudeAccount>;
   claudeUsage(dir: string): Promise<ClaudeUsage>;
   claudeLimits(file: string | null, url: string | null): Promise<ClaudeLimits | null>;

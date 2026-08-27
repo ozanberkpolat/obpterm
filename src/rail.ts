@@ -397,6 +397,8 @@ function tabMenu(app: App, tab: Tab, x: number, y: number) {
     { label: "Split down", hint: "Alt+Shift+-", onPick: () => void app.splitPane("col") },
     { label: capturing ? "Stop capture" : "Start capture", hint: "Ctrl+Shift+L", onPick: () => void app.toggleLog() },
     { label: "Compact this conversation (/compact)", onPick: () => app.compact(tab.active) },
+    { label: "Move up", hint: "Ctrl+Shift+↑", onPick: () => app.moveTab(tab, -1) },
+    { label: "Move down", hint: "Ctrl+Shift+↓", onPick: () => app.moveTab(tab, 1) },
     { label: "New tab in a worktree…", hint: "Ctrl+Shift+U", onPick: () => newWorktree(app) },
     { label: "Move to project…", onPick: () => moveMenu(app, tab, x, y) },
     { label: "Tab colour…", onPick: () => colorMenu(x, y, tab.color, (c) => app.setTabColor(tab, c)) },
@@ -421,6 +423,8 @@ function moveMenu(app: App, tab: Tab, x: number, y: number) {
 function projectMenu(app: App, project: Project, x: number, y: number, nameEl: HTMLElement) {
   openMenu(x, y, [
     { label: "New tab here", onPick: () => void app.newTab(undefined, project.id) },
+    { label: "Move up", hint: "with its tabs", onPick: () => app.moveProject(project, -1) },
+    { label: "Move down", hint: "with its tabs", onPick: () => app.moveProject(project, 1) },
     { label: "Save layout", hint: `${app.tabs.filter((t) => t.projectId === project.id).length} tabs`, onPick: () => app.saveProjectLayout(project) },
     {
       label: "Open saved layout",

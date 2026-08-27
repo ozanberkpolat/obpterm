@@ -82,6 +82,10 @@ export class Pane {
   /** When the host started this shell — wall-clock age, unlike `agent.workingSince` which
    *  resets every turn. The tab that has been open since yesterday. */
   startedAt = 0;
+  /** This pane's identity in the ledger. Minted once and carried across restarts: Claude's own
+   *  session id cannot do this job, because `/clear` mints a new one and the old entry would
+   *  look like a session that went missing. */
+  ledgerKey: string = crypto.randomUUID();
   /** Tokens and estimated dollars this conversation has spent, from its own transcript. */
   usage: import("./transport").SessionUsage | null = null;
   /** Set when this pane's shell is not in the host's list any more, or a write to it failed:

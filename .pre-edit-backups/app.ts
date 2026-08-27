@@ -1,6 +1,6 @@
 // Tabs, panes and projects. A tab owns a pane tree; a project groups tabs, gives them a colour
 // and can save/restore its own set of tabs.
-import { isClaudePane, isDangerous, pruneFan, tick as agentTick } from "./agent";
+import { isClaudePane, isDangerous, liveAgents, pruneFan, tick as agentTick } from "./agent";
 import { withDefaults, type Account, type Config, type Host, type Profile, type Project, type Transport } from "./transport";
 import { ACTIVE_MS, Pane, type PaneHost } from "./pane";
 import * as L from "./layout";
@@ -63,6 +63,22 @@ function olderThan(a: string, b: string): boolean {
   const [x, y] = [parse(a), parse(b)];
   for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0);
   return false;
+}
+
+/**
+ * How to bring one conversation back, for BOTH the restore path and the eco path. There is
+ * exactly one rule and it has to live in one place: a profile that actually runs `claude` takes
+ * `--resume` in its arguments; anything else — a plain shell someone typed `claude` into — must
+ * be resumed by TYPING it again, because `pwsh.exe --resume <id>` is not a shell invocation,
+ * it is `pwsh` exiting with code 64 and taking the session with it.
+ */
+export function resumePlan(profile: Profile, sessionId: string | null): { profile: Profile; type: string | null } {
+  const next = { ...profile };
+  if (!sessionId) return { profile: next, type: null };
+  const runsClaude = `${next.exe} ${next.args.join(" ")}`.toLowerCase().includes("claude");
+  if (!runsClaude) return { profile: next, type: sessionId };
+  next.args = [...stripSessionArgs(next.args), "--resume", sessionId];
+  return { profile: next, type: null };
 }
 
 function stripSessionArgs(args: string[]): string[] {
@@ -264,6 +280,33 @@ export class App implements PaneHost {
     this.paintSoon();
   }
 
+  /** How many agents the whole window has out right now. The one number that says whether the
+   *  fleet is quiet or in full fan-out, without opening a single tab. */
+  liveAgentCount(): number {
+    return this.tabs.flatMap((t) => L.panes(t.root)).reduce((n, p) => n + liveAgents(p.agent).length, 0);
+  }
+
+  /** Tabs whose shell ended badly and are just taking up rail. */
+  exitedTabs(): Tab[] {
+    return this.tabs.filter((t) => this.activity(t) === "exited");
+  }
+
+  /** Close all of them at once — at twenty sessions these accumulate and each one wanted a
+   *  visit and a keypress. */
+  closeExited() {
+    const dead = this.exitedTabs();
+    for (const tab of dead) this.closeTab(tab);
+    if (dead.length) toast(`Closed ${dead.length} exited tab${dead.length > 1 ? "s" : ""}`);
+  }
+
+  /** Every pane whose shell the host lost, restarted in one go — a host hiccup takes several
+   *  at a time and the only cure was the per-pane strip, one at a time. */
+  async reloadLost() {
+    const lost = this.tabs.flatMap((t) => L.panes(t.root)).filter((p) => p.linkLost && !p.exited);
+    for (const p of lost) await this.reloadPane(p);
+    toast(lost.length ? `Reloaded ${lost.length} disconnected pane${lost.length > 1 ? "s" : ""}` : "Nothing is disconnected");
+  }
+
   /** What a tab has spent, in dollars — its panes summed. Null when nothing is known yet. */
   tabCost(tab: Tab): number | null {
     const costs = L.panes(tab.root).map((p) => p.usage?.cost_usd).filter((c): c is number => c !== undefined);
@@ -293,16 +336,20 @@ export class App implements PaneHost {
     pane.eco = false;
     const sessionId = pane.claudeSessionId;
     const profile = { ...pane.profile };
-    if (sessionId) {
-      const args = [];
-      for (let i = 0; i < profile.args.length; i++) {
-        if (profile.args[i] === "--session-id") { i++; continue; }
-        args.push(profile.args[i]!);
-      }
-      profile.args = [...args, "--resume", sessionId];
-    }
-    pane.profile = profile;
+    // ONLY a profile that actually runs claude takes `--resume` in its arguments. A plain shell
+    // with claude typed into it must be resumed by TYPING again: appending `--resume` to
+    // pwsh.exe makes pwsh exit with code 64 and the session is gone. The restore path has
+    // always known this; eco did not, and v0.21.18's memory-pressure sweep made eco fire on
+    // every idle session instead of the occasional finished one — so it took the whole window
+    // down at once.
+    const plan = resumePlan(profile, sessionId);
+    const typeResume = plan.type;
+    pane.profile = plan.profile;
     await this.respawnPane(pane);
+    if (typeResume) {
+      // Give the shell a moment to draw its prompt before typing into it (same as restore).
+      window.setTimeout(() => !pane.exited && void this.tp.write(pane.id, `claude --resume ${typeResume}\r`).catch(() => {}), 900);
+    }
   }
 
   /**
@@ -347,15 +394,22 @@ export class App implements PaneHost {
     const pct = this.config.eco_memory_pct;
     const m = this.status?.memoryPct() ?? null;
     if (!pct || m === null || m < pct) return;
-    const queue = eligible().sort((a, b) => a.lastVisited - b.lastVisited);
+    // Which idle session to exit is a question about bytes, not about clocks: a 40 MB shell and
+    // a 2 GB session that has been fanning out all afternoon are both "idle", and only one of
+    // them gives the machine anything back. Biggest first, with age as the tie-break for the
+    // ones we have no measurement for.
+    const queue = eligible().sort((a, b) => b.rss - a.rss || a.lastVisited - b.lastVisited);
     let freed = 0;
+    let bytes = 0;
     for (const pane of queue) {
       if (freed >= 3) break; // a few per sweep, then look again — never a stampede
+      bytes += pane.rss;
       this.eco(pane);
       freed++;
     }
     if (freed) {
-      toast(`Memory at ${Math.round(m)}% — ${freed} idle session${freed > 1 ? "s" : ""} exited to free it; click a tab to resume`);
+      const gave = bytes ? ` (~${(bytes / 1e9).toFixed(1)} GB)` : "";
+      toast(`Memory at ${Math.round(m)}% — ${freed} idle session${freed > 1 ? "s" : ""}${gave} exited to free it; click a tab to resume`);
     }
   }
 
@@ -395,15 +449,19 @@ export class App implements PaneHost {
     window.setTimeout(() => tab && this.sendKey("claude auth login\r"), 700);
   }
 
+  /** A project made from where you are standing. Promoting an ad-hoc tab into a project is the
+   *  common move, and leaving `cwd` null meant a second trip through Settings to type the path
+   *  the app was already looking at. */
   addProject(name: string): Project {
     const used = new Set(this.config.projects.map((p) => p.color));
     const color = COLORS.find((c) => !used.has(c.value))?.value ?? COLORS[0]!.value;
+    const here = this.tab?.active;
     const project: Project = {
       id: `p${Date.now().toString(36)}`,
       name,
       color,
-      cwd: null,
-      default_profile: null,
+      cwd: here?.cwd ?? null,
+      default_profile: here?.profile.id ?? null,
       layout: null,
       collapsed: false,
     };
@@ -902,19 +960,33 @@ export class App implements PaneHost {
   }
 
   /** An agent asked for something, in its own words. */
-  agentAlert(title: string, body: string) {
-    this.alert(title, body);
+  agentAlert(title: string, body: string, pending?: string | null) {
+    this.alert(title, body, pending);
+  }
+
+  /** A verdict that arrived from the phone, through the ntfy topic. Same path as the rail's own
+   *  Allow/Deny: the held POST completes and the session moves on. */
+  answerFromPhone(pending: string, allow: boolean) {
+    const pane = this.tabs.flatMap((t) => L.panes(t.root)).find((p) => p.agent.pendingId === pending);
+    void this.tp.agentAnswer(pending, allow).catch(() => {});
+    if (pane) {
+      pane.agent.pendingId = null;
+      pane.agent.state = "working";
+    }
+    toast(`${allow ? "Allowed" : "Denied"} from your phone`);
+    this.paintSoon();
   }
 
   /** One place for "tell the user something happened while they were elsewhere". */
-  private alert(title: string, body: string) {
+  private alert(title: string, body: string, pending?: string | null) {
     if (!this.config.notify_bell) return;
     void this.tp.notify(title, body).catch(() => {});
     void this.tp.attention(true).catch(() => {});
     // The phone, but only when the window itself is in the background — a push for every
-    // background-tab event while actively working here would be spam.
+    // background-tab event while actively working here would be spam. A push about a HELD
+    // request carries its id, which is what turns the notification into two buttons.
     if (this.config.ntfy_url && !document.hasFocus()) {
-      void this.tp.ntfy(this.config.ntfy_url, this.config.ntfy_token, title, body).catch(() => {});
+      void this.tp.ntfy(this.config.ntfy_url, this.config.ntfy_token, title, body, pending ?? null).catch(() => {});
     }
   }
 
@@ -1046,6 +1118,44 @@ export class App implements PaneHost {
       }
     }
     if (lostChanged) this.paint();
+
+    // What each session's process tree is holding. `rss_for` was written for this and never
+    // called: at 98% RAM the difference between a 40 MB shell and a 2 GB stuck session is the
+    // whole decision, and nothing was asking. One batched call for every pid the host knows.
+    const pids = sessions.map((s) => s.pid).filter((p): p is number => !!p);
+    if (pids.length) {
+      const rss = await this.tp.rssFor(pids).catch(() => []);
+      const byPid = new Map(pids.map((pid, i) => [pid, rss[i] ?? 0]));
+      const pidOf = new Map(sessions.map((s) => [s.id, s.pid]));
+      for (const p of all) {
+        const pid = pidOf.get(p.id);
+        const bytes = pid ? byPid.get(pid) ?? 0 : 0;
+        if (bytes) p.rss = bytes;
+      }
+      // The host has known how old every shell is since it started it; nothing ever read it.
+      for (const s of sessions) {
+        const pane = all.find((p) => p.id === s.id);
+        if (pane) pane.startedAt = s.started_at;
+      }
+    }
+
+    // The host tracks agent state through hooks even with no window attached — and a restored
+    // pane threw that away and showed "idle" until the session's next hook, which after a
+    // reboot is exactly when the rail has to be honest. Adopt what the host already knows,
+    // but never over a live pane's own state: ours is fresher.
+    for (const p of all) {
+      if (p.agent.state !== null) continue;
+      const held = sessions.find((x) => x.id === p.id);
+      if (!held?.agent_state) continue;
+      const known = ["working", "done", "waiting", "blocked"] as const;
+      const state = known.find((k) => k === held.agent_state);
+      if (!state) continue;
+      p.agent.state = state;
+      p.agent.detail = held.agent_detail;
+      if (held.claude_session_id) p.claudeSessionId = held.claude_session_id;
+      this.paintSoon();
+    }
+
     if (!sleeping.length) return;
     const byId = new Map(sessions.map((s) => [s.id, s]));
     let changed = false;

@@ -540,6 +540,12 @@ pub struct Session {
     /// host that minted them; after a reboot they are numbers from a dead process.
     #[serde(default)]
     pub host: Option<String>,
+    /// Every session this window has known, by name and directory, kept whether or not it is
+    /// open right now. `tabs` is the CURRENT state and is overwritten by whatever the window
+    /// last managed to save — after a crash that can be less than was really running. The
+    /// ledger is what lets the next launch say "three of these are missing, want them back?".
+    #[serde(default)]
+    pub ledger: serde_json::Value,
     /// Set when the exit was an installer restart, so the next launch says "updated", not "crashed".
     pub updated_to: Option<String>,
 }
@@ -553,12 +559,18 @@ pub fn session_load(app: AppHandle) -> Result<Session, String> {
     }
     // Before 0.3.0 the tabs lived in config.json.
     let legacy = config_load(app)?.session.unwrap_or(serde_json::Value::Null);
-    Ok(Session { clean_exit: true, saved_at: 0, tabs: legacy, active: 0, host: None, updated_to: None })
+    Ok(Session { clean_exit: true, saved_at: 0, tabs: legacy, active: 0, host: None, updated_to: None, ledger: serde_json::Value::Null })
 }
 
 #[tauri::command]
-pub fn session_save(app: AppHandle, tabs: serde_json::Value, active: usize, host: Option<String>) -> Result<(), String> {
-    let session = Session { clean_exit: false, saved_at: now_ms(), tabs, active, host, updated_to: None };
+pub fn session_save(
+    app: AppHandle,
+    tabs: serde_json::Value,
+    active: usize,
+    host: Option<String>,
+    ledger: serde_json::Value,
+) -> Result<(), String> {
+    let session = Session { clean_exit: false, saved_at: now_ms(), tabs, active, host, updated_to: None, ledger };
     write_atomic(&session_path(&app)?, &serde_json::to_string(&session).map_err(|e| e.to_string())?)
 }
 
@@ -656,9 +668,14 @@ mod tests {
             active: 2,
             host: Some("abc123".into()),
             updated_to: Some("0.4.1".into()),
+            ledger: serde_json::json!([{ "key": "k1", "title": "brain", "closed": false, "seen": 1 }]),
         };
         let text = serde_json::to_string(&session).unwrap();
         assert_eq!(serde_json::from_str::<Session>(&text).unwrap(), session);
+        // A session file written before the ledger existed still loads — it is what every
+        // machine has on disk the moment this ships.
+        let old_shape = r#"{"clean_exit":true,"saved_at":1,"tabs":[],"active":0,"host":null}"#;
+        assert_eq!(serde_json::from_str::<Session>(old_shape).unwrap().ledger, serde_json::Value::Null);
         assert_eq!(serde_json::from_str::<Session>("{\"clean_exit\":true}").unwrap().tabs, serde_json::Value::Null);
         assert!(serde_json::from_str::<Session>("{\"clean_exi").is_err(), "the caller falls back to default");
     }

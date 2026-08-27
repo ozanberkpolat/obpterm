@@ -1181,9 +1181,9 @@ await evaluate("window.obpterm.config.update_repo = null");
   // Pretend the host reports that shell under its Claude id, and that the saved instance is
   // from another run entirely.
   await evaluate(`(() => {
-    const real = window.obpterm.tp.listSessions;
+    window.__realList = window.obpterm.tp.listSessions;
     window.obpterm.tp.listSessions = async () => {
-      const list = await real();
+      const list = await window.__realList();
       return list.map((s) => (s.id === ${realId} ? { ...s, claude_session_id: ${JSON.stringify(claudeId)} } : s));
     };
   })()`);
@@ -1191,6 +1191,7 @@ await evaluate("window.obpterm.config.update_repo = null");
   const found = await evaluate(`(() => window.obpterm.tp.listSessions().then(l => l.some(s => s.claude_session_id === ${JSON.stringify(claudeId)})))()`);
   assert.ok(found, "the host reports the shell under its conversation id");
   await evaluate("window.obpterm.tab.active.claudeSessionId = null");
+  await evaluate("(() => { window.obpterm.tp.listSessions = window.__realList; })()"); // never leave a stub behind
 }
 
 // ---- v0.21.10: the title bar falls back to moving the window itself -----------------------
@@ -1466,13 +1467,16 @@ await evaluate("window.obpterm.config.update_repo = null");
   await evaluate(`(() => {
     const p = window.obpterm.panesOf(window.obpterm.tabs.at(-2))[0];
     p.agent.state = null; p.agent.detail = null;
-    const real = window.obpterm.tp.listSessions;
-    window.obpterm.tp.listSessions = async () => (await real()).map((s) => (s.id === p.id
+    window.__realList2 = window.obpterm.tp.listSessions;
+    window.obpterm.tp.listSessions = async () => (await window.__realList2()).map((s) => (s.id === p.id
       ? { ...s, agent_state: "blocked", agent_detail: "Bash: rm -rf build/" } : s));
   })()`);
   await evaluate("void window.obpterm.refreshHeld()");
   await until(`window.obpterm.panesOf(window.obpterm.tabs.at(-2))[0].agent.state === "blocked"`, "the rail adopts what the host knew");
   assert.equal(await evaluate(`window.obpterm.panesOf(window.obpterm.tabs.at(-2))[0].agent.detail`), "Bash: rm -rf build/", "detail and all");
+  // Put the transport back: a stub left in place keeps re-applying that state to every pane the
+  // rest of the suite touches, which is exactly how this file became flaky.
+  await evaluate("(() => { window.obpterm.tp.listSessions = window.__realList2; })()");
 
   // 3. A session that stopped reporting mid-task says so instead of looking idle.
   await evaluate(`(() => {
@@ -1587,6 +1591,64 @@ await evaluate("window.obpterm.config.update_repo = null");
   assert.equal(plan.claude.type, null, "and types nothing");
   assert.deepEqual(plan.claudeAgain.profile.args.slice(-2), ["--resume", "sess-2"], "resuming twice does not stack --resume");
   assert.equal(plan.claudeAgain.profile.args.filter((a) => a === "--resume").length, 1, "exactly one");
+}
+
+
+// ---- v0.21.23: the ledger, and moving a project ------------------------------------------
+{
+  // The ledger remembers every session by name whether or not it is open, so a crash that
+  // writes fewer tabs than were running can be offered back instead of silently losing them.
+  const tabsBefore = await evaluate("window.obpterm.tabs.length");
+  await evaluate("void window.obpterm.newTab()");
+  await until(`window.obpterm.tabs.length === ${tabsBefore + 1}`, "a session to lose");
+  await until("window.obpterm.panesOf(window.obpterm.tabs.at(-1))[0].id > 0", "with a shell");
+  await evaluate(`(() => {
+    const t = window.obpterm.tabs.at(-1);
+    t.name = "the-lost-one";
+    const p = window.obpterm.panesOf(t)[0];
+    p.claudeSessionId = "ledger-1";
+    p.profile = { ...p.profile, args: [...p.profile.args, "claude"] };  // a claude pane, so it is ledgered
+  })()`);
+  await evaluate("void window.obpterm.flushSession()");
+  await until("window.obpterm.ledger.some(e => e.claude === 'ledger-1')", "it is in the ledger");
+  assert.equal(await evaluate("window.obpterm.ledger.find(e => e.claude === 'ledger-1').title"), "the-lost-one", "by name");
+  assert.equal(await evaluate("window.obpterm.missingSessions().length"), 0, "and nothing is missing while everything is open");
+
+  // Simulate the crash: the tab is gone from the window but was never closed by hand.
+  await evaluate(`(() => {
+    const t = window.obpterm.tabs.at(-1);
+    window.obpterm.tabs = window.obpterm.tabs.filter((x) => x !== t);
+    window.obpterm.tab = window.obpterm.tabs[0];
+    window.obpterm.paint();
+  })()`);
+  const missing = JSON.parse(await evaluate("JSON.stringify(window.obpterm.missingSessions().map(e => e.title))"));
+  assert.deepEqual(missing, ["the-lost-one"], "it is offered back after a crash");
+
+  // Closing one by hand is not a loss and must never be offered.
+  await evaluate("(() => { const e = window.obpterm.ledger.find(x => x.claude === 'ledger-1'); e.closed = true; })()");
+  assert.equal(await evaluate("window.obpterm.missingSessions().length"), 0, "a deliberate close is not missing");
+
+  // Moving a project takes its tabs with it.
+  const order = JSON.parse(await evaluate(`(() => {
+    const c = window.obpterm.config;
+    c.projects = [{ id: "pa", name: "A", color: "#f00", cwd: null, default_profile: null, layout: null, collapsed: false },
+                  { id: "pb", name: "B", color: "#0f0", cwd: null, default_profile: null, layout: null, collapsed: false }];
+    for (const [i, t] of window.obpterm.tabs.entries()) t.projectId = i === 0 ? "pa" : "pb";
+    window.obpterm.moveProject(c.projects[0], 1);
+    return JSON.stringify({
+      projects: c.projects.map((p) => p.id),
+      tabs: window.obpterm.tabs.map((t) => t.projectId),
+    });
+  })()`));
+  assert.deepEqual(order.projects, ["pb", "pa"], "the project moved down");
+  assert.ok(order.tabs.indexOf("pb") <= order.tabs.indexOf("pa") || !order.tabs.includes("pa"), "and its tabs went with it");
+
+  await evaluate(`(() => {
+    window.obpterm.config.projects = [];
+    for (const t of window.obpterm.tabs) t.projectId = null;
+    while (window.obpterm.tabs.length > ${tabsBefore}) window.obpterm.closeTab(window.obpterm.tabs.at(-1));
+    window.obpterm.paint();
+  })()`);
 }
 
 

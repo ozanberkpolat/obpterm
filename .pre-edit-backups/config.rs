@@ -118,13 +118,30 @@ pub struct Config {
     pub capture_max_mb: u32,
     /// Ask GitHub for a newer release once, a few seconds after launch.
     pub update_check_on_launch: bool,
-    /// Minutes a tab can go unvisited before its terminal is torn down to save memory; the
-    /// shell keeps running in the host and the tab wakes on click. 0 = never.
-    pub sleep_after_minutes: u32,
+    /// Seconds a tab can sit off screen before its terminal is torn down to save memory; the
+    /// shell keeps running in the host and the tab wakes on click. 0 = never. Seconds, not
+    /// minutes, because a live terminal is not free: it holds a WebGL context, and Chromium
+    /// gives the whole webview about sixteen of those before it starts taking them away.
+    pub sleep_after_seconds: u32,
+    /// How many panes may hold a terminal at once. Waking one past the ceiling puts the
+    /// least-recently-visited awake pane to sleep first. 0 = no ceiling.
+    pub max_live_panes: u32,
     /// Minutes a finished, unfocused Claude session sits before /exit frees its ~335 MB.
     /// 15 by default: with every tab a Claude session, idle ones are the memory bill.
     /// The tab stays; clicking it runs `claude --resume`. 0 = never.
     pub eco_after_minutes: u32,
+    /// Percent of system RAM above which idle Claude sessions are `/exit`ed early, oldest
+    /// first, however recently they were used. 0 = never. This is the one that keeps the
+    /// machine responsive: ~400 MB per idle session, and a box at 98% RAM thrashes on swap.
+    pub eco_memory_pct: u32,
+    /// Percent of its context window a session may fill before the rail says so and, when the
+    /// window is unfocused, a notification does. 0 = never. Running out of context mid-task is
+    /// silent otherwise: the gauge is only read when someone looks at it.
+    pub context_warn_pct: u32,
+    /// Dollars per MILLION tokens per model, `[input, output, cache_read, cache_write]`, keyed by
+    /// a substring of the model id. Editable and never fetched: the cost readout is an estimate
+    /// from local transcripts, not anyone's billing. An unpriced model shows tokens only.
+    pub model_prices: std::collections::HashMap<String, [f64; 4]>,
     /// Desktop notification when an unfocused pane rings or asks for something.
     pub notify_bell: bool,
     /// Desktop notification when a busy pane goes quiet. A guess for shells that cannot report;
@@ -194,8 +211,12 @@ impl Default for Config {
             capture_keep_days: 30,
             capture_max_mb: 512,
             update_check_on_launch: true,
-            sleep_after_minutes: 10,
+            sleep_after_seconds: 60,
+            max_live_panes: 8,
             eco_after_minutes: 15,
+            eco_memory_pct: 85,
+            context_warn_pct: 80,
+            model_prices: default_prices(),
             notify_bell: true,
             notify_silence: false,
             silence_seconds: 20,
@@ -659,4 +680,17 @@ mod tests {
         let back: Config = serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
         assert_eq!(back, cfg);
     }
+}
+
+/// List prices at the time of writing, per million tokens. Wrong the day Anthropic changes them —
+/// which is why they live in the config file where they can be corrected.
+fn default_prices() -> std::collections::HashMap<String, [f64; 4]> {
+    [
+        ("opus", [15.0, 75.0, 1.50, 18.75]),
+        ("sonnet", [3.0, 15.0, 0.30, 3.75]),
+        ("haiku", [0.80, 4.0, 0.08, 1.0]),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v))
+    .collect()
 }

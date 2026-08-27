@@ -89,6 +89,9 @@ async function main() {
   else if (crashed) toast(`Reopened ${tabs} — OBPTerm did not shut down cleanly`);
   else if (app.reattached) toast(`Back${kept}`);
   if (!app.hostInstance) toast("No session host: shells will end when the window closes");
+  // The moment the count can be wrong: `tabs` is whatever the window last managed to write, and
+  // a crash writes less than was running. Quiet when nothing is missing.
+  window.setTimeout(() => app.offerRecovery(true), 2500);
   // Retention runs once, a moment after launch, so a folder that grew overnight is dealt with
   // before it matters. Silent unless it actually removed something.
   if (config.capture_keep_days || config.capture_max_mb) {
