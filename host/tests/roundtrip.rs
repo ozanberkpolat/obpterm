@@ -391,3 +391,26 @@ async fn a_permission_request_is_held_longer_while_nobody_is_looking() {
     let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
     let _ = std::fs::remove_dir_all(dir);
 }
+
+
+/// A request in flight when the host dies must FAIL, not hang. The pending map used to be left
+/// full when the reader task ended, so the caller's await never resolved — a frozen invoke with
+/// no error, which in this app means a stuck "Restarting…" nobody can explain.
+#[tokio::test]
+async fn a_request_in_flight_when_the_host_dies_fails_instead_of_hanging() {
+    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), "test"));
+    let advert = host.advert.clone();
+    let server = tokio::spawn(Arc::clone(&host).serve());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let c = Client::connect(&advert).await.unwrap();
+    // End the host mid-conversation, then ask it for something.
+    c.shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
+    let outcome = tokio::time::timeout(Duration::from_secs(5), c.list()).await;
+    match outcome {
+        Err(_) => panic!("the call HUNG — the pending map was not drained"),
+        Ok(Ok(_)) => { /* raced the shutdown and got an answer: also fine */ }
+        Ok(Err(e)) => assert!(e.contains("host went away"), "it fails with the honest error, got {e}"),
+    }
+}

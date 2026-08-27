@@ -78,8 +78,16 @@ pub fn hook() {
     // delivered, and Claude Code sat there for its whole timeout for nothing.
     let decides = decides(&body);
     let Ok(mut stream) = std::net::TcpStream::connect(("127.0.0.1", port.parse::<u16>().unwrap_or(0))) else { return };
-    let wait = if decides { 50 } else { 2 };
-    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(wait)));
+    // The wait has to outlast the LONGEST hold the listener can impose — the away hold that
+    // exists so a phone can answer. A bare 50 here meant this process gave up 130 seconds
+    // before the listener did: the tap arrived on a socket nobody was reading. One rule,
+    // taken from the one place it is defined, plus a margin.
+    let wait = if decides {
+        crate::hooks::ANSWER_WAIT_AWAY + std::time::Duration::from_secs(10)
+    } else {
+        std::time::Duration::from_secs(2)
+    };
+    let _ = stream.set_read_timeout(Some(wait));
     let head = format!(
         "POST /hook/{token}/{pane} HTTP/1.1\r\nhost: 127.0.0.1\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
         body.len()

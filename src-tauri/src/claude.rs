@@ -63,7 +63,7 @@ struct FileState {
 
 #[tauri::command]
 pub fn claude_account(dir: String) -> Account {
-    let root = PathBuf::from(&dir);
+    let root = PathBuf::from(expand(&dir));
     let mut account = Account { dir: dir.clone(), exists: root.exists(), ..Default::default() };
     if !account.exists {
         return account;
@@ -90,7 +90,7 @@ pub fn claude_account(dir: String) -> Account {
 /// Lists the logins Claude Code has stored under this config dir.
 #[tauri::command]
 pub fn claude_account_names(dir: String) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(PathBuf::from(dir).join("accounts"))
+    let mut names: Vec<String> = std::fs::read_dir(PathBuf::from(expand(&dir)).join("accounts"))
         .into_iter()
         .flatten()
         .flatten()
@@ -108,7 +108,7 @@ pub fn claude_account_names(dir: String) -> Vec<String> {
 #[tauri::command]
 pub async fn claude_usage(cache: State<'_, UsageCache>, dir: String) -> Result<Usage, String> {
     let now = now_ms();
-    let projects = PathBuf::from(&dir).join("projects");
+    let projects = PathBuf::from(expand(&dir)).join("projects");
     let mut usage = Usage { dir, ..Default::default() };
     let cutoff_7d = now - 7 * 24 * 3_600_000;
     let mut states = cache.0.lock().unwrap();
@@ -491,11 +491,13 @@ fn from_statusline_file(path: &str) -> Option<Limits> {
     })
 }
 
+/// One expander for the whole app — `pty::expand_vars` handles `~` and `%VAR%` both. Having a
+/// second, `~`-only copy here is how three commands ended up reading `%USERPROFILE%\.claude-2`
+/// as a literal path: the account chip showed logged-out and the meters read zero for exactly
+/// the accounts the app's own "Add account" flow creates, while the per-session gauges (which
+/// went through the real expander) worked fine.
 fn expand(path: &str) -> String {
-    match path.strip_prefix('~') {
-        Some(rest) => format!("{}{rest}", std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap_or_default()),
-        None => path.to_string(),
-    }
+    crate::pty::expand_vars(path)
 }
 
 /// Claude's own name for a session — the `/rename` name if one was given, else the title

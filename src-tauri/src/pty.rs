@@ -103,10 +103,20 @@ pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>, no_remote_control: 
     let exe = ensure_host_copy().unwrap_or_else(|_| host_copy_path()).display().to_string();
     for dir in dirs {
         let path = PathBuf::from(expand_vars(&dir)).join("settings.json");
-        let mut settings: serde_json::Value = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or(serde_json::json!({}));
+        // A missing file is a fresh account; a file that EXISTS but does not parse is someone's
+        // real settings half-written or hand-edited, and overwriting it with a near-empty
+        // object would take their permissions and statusLine with it. config.rs's own rule:
+        // a corrupt file is an error, not a silent reset.
+        let mut settings: serde_json::Value = match std::fs::read_to_string(&path) {
+            Err(_) => serde_json::json!({}),
+            Ok(text) => match serde_json::from_str(&text) {
+                Ok(v) => v,
+                Err(e) => {
+                    changed.push(format!("SKIPPED {} — does not parse ({e}); fix or delete it", path.display()));
+                    continue;
+                }
+            },
+        };
         let hooks_done =
             obpterm_host::install::installed(&settings) && obpterm_host::install::current(&settings, &exe);
         let mut wrote = false;
@@ -226,12 +236,7 @@ fn host_binary() -> Option<PathBuf> {
     let dir = exe.parent()?;
     let name = if cfg!(windows) { "obpterm-host.exe" } else { "obpterm-host" };
     let candidate = dir.join(name);
-    if candidate.exists() {
-        return Some(candidate);
-    }
-    // The dev tree: the workspace's target dir.
-    let dev = dir.join(name);
-    dev.exists().then_some(dev)
+    candidate.exists().then_some(candidate)
 }
 
 /// The versioned copy the host runs from — and the binary the hooks and the statusLine call,

@@ -366,9 +366,16 @@ export class App implements PaneHost {
   async answerAgent(pane: Pane, allow: boolean) {
     const pending = pane.agent.pendingId;
     if (!pending) return;
-    pane.agent.pendingId = null;
-    pane.agent.state = allow ? "working" : "waiting";
-    await this.tp.agentAnswer(pending, allow).catch(() => {});
+    // The verdict must reach the host before the prompt disappears from the UI: clearing state
+    // first meant a failed send made the question vanish while Claude never heard the answer —
+    // a session stuck waiting on a prompt the window no longer shows.
+    try {
+      await this.tp.agentAnswer(pending, allow);
+      pane.agent.pendingId = null;
+      pane.agent.state = allow ? "working" : "waiting";
+    } catch (e) {
+      toast(`The answer did not reach the session: ${e}`);
+    }
     this.paint();
   }
 
@@ -472,8 +479,14 @@ export class App implements PaneHost {
 
   /** `/exit` a session and mark the tab: clicking it runs `claude --resume` on the same id. */
   eco(pane: Pane) {
+    // Marked handled only once the /exit is known to have reached the shell. Flipping the flag
+    // first meant a failed write left the ~400 MB process running while `eligible()` skipped it
+    // forever — the exact leak this feature exists to stop, made silent and permanent.
     pane.eco = true;
-    void this.tp.write(pane.id, "/exit\r").catch(() => {});
+    void this.tp.write(pane.id, "/exit\r").catch(() => {
+      pane.eco = false;
+      toast(`Could not sleep ${pane.title || pane.profile.name} — the shell did not take /exit`);
+    });
   }
 
   /**
@@ -1064,13 +1077,17 @@ export class App implements PaneHost {
    *  Allow/Deny: the held POST completes and the session moves on. */
   answerFromPhone(pending: string, allow: boolean) {
     const pane = this.tabs.flatMap((t) => L.panes(t.root)).find((p) => p.agent.pendingId === pending);
-    void this.tp.agentAnswer(pending, allow).catch(() => {});
-    if (pane) {
-      pane.agent.pendingId = null;
-      pane.agent.state = "working";
-    }
-    toast(`${allow ? "Allowed" : "Denied"} from your phone`);
-    this.paintSoon();
+    void this.tp
+      .agentAnswer(pending, allow)
+      .then(() => {
+        if (pane) {
+          pane.agent.pendingId = null;
+          pane.agent.state = "working";
+        }
+        toast(`${allow ? "Allowed" : "Denied"} from your phone`);
+        this.paintSoon();
+      })
+      .catch((e) => toast(`The phone's answer did not reach the session: ${e}`));
   }
 
   /** One place for "tell the user something happened while they were elsewhere". */
@@ -1185,7 +1202,11 @@ export class App implements PaneHost {
     let exited = 0;
     for (const pane of L.panes(tab.root)) {
       if (pane.exited || pane.id <= 0) continue;
-      if (pane.claudeSessionId && !pane.eco && pane.agent.state !== "blocked" && pane.agent.state !== "waiting") {
+      // A pane holding a question keeps its shell AND its terminal — the same invariant every
+      // automatic sweep honours. This is the manual path, one right-click from the Allow/Deny
+      // buttons for that very pane, and it used to fall through to sleep() anyway.
+      if (pane.agent.state === "blocked" || pane.agent.state === "waiting") continue;
+      if (pane.claudeSessionId && !pane.eco) {
         this.eco(pane);
         exited++;
       } else if (!pane.asleep) {

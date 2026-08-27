@@ -61,8 +61,15 @@ OBPTERM_HOOK_TOKEN={}
         let registry = Arc::clone(&self.registry);
         let mut events = self.hooks.subscribe();
         tokio::spawn(async move {
-            while let Ok(e) = events.recv().await {
-                registry.lock().unwrap().note_agent(e.pane, &e.state, e.detail.as_deref(), e.session_id.as_deref());
+            loop {
+                match events.recv().await {
+                    Ok(e) => registry.lock().unwrap().note_agent(e.pane, &e.state, e.detail.as_deref(), e.session_id.as_deref()),
+                    // Falling behind the 256-slot buffer is a burst, not the end: treating it as
+                    // one silently froze every session's agent state for the life of the host,
+                    // and the next window to reconnect adopted the stale record as truth.
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
             }
         });
         Ok(())
@@ -243,7 +250,11 @@ OBPTERM_HOOK_TOKEN={}
             }
         }
 
-        // The window went away: its sessions keep running, just unwatched.
+        // The window went away: its sessions keep running, just unwatched. And nobody is
+        // looking any more — a crash while focused used to leave `focused: true` behind, so a
+        // permission prompt fell open after the SHORT hold at exactly the moment there was no
+        // window to answer it and the long hold was the whole point.
+        self.hooks.set_focused(false);
         self.registry.lock().unwrap().detach_all_for(&tx);
         drop(out_tx);
         let _ = writer_task.await;

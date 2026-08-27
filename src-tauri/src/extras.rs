@@ -37,10 +37,12 @@ pub fn allow_rule(cwd: String, rule: String) -> Result<(), String> {
     let dir = PathBuf::from(&cwd).join(".claude");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join("settings.local.json");
-    let mut settings: serde_json::Value = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
+    // Missing = fresh; unparseable = someone's real file, refused rather than overwritten.
+    let mut settings: serde_json::Value = match std::fs::read_to_string(&path) {
+        Err(_) => serde_json::json!({}),
+        Ok(text) => serde_json::from_str(&text)
+            .map_err(|e| format!("{} does not parse ({e}) — fix or delete it first", path.display()))?,
+    };
     if !settings.is_object() {
         settings = serde_json::json!({});
     }

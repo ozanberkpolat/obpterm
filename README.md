@@ -338,7 +338,7 @@ What that means day to day:
   View → Quit and end every shell, or the same in `Ctrl+K`, or the status-bar chip.
 - **A reboot still ends them** — the host is a process, not a service. For Claude sessions the
   way back is `claude --resume`; see the next release.
-- The host exits on its own thirty seconds after its last shell ends with no window attached,
+- The host exits on its own five minutes after its last shell ends with no window attached,
   so it is never a leftover. The status bar says when it is holding shells the window is not
   showing, and it never holds anything invisibly.
 

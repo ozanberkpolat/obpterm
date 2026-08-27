@@ -50,10 +50,17 @@ pub type Shared = Arc<Mutex<Registry>>;
 fn kill_tree(pid: u32) {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let _ = std::process::Command::new("taskkill")
+    match std::process::Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .creation_flags(CREATE_NO_WINDOW)
-        .status();
+        .status()
+    {
+        Ok(s) if s.success() => {}
+        // Exit code 128 is "no such process" — already gone is a success here. Anything else is
+        // the anti-orphan cleanup not cleaning, and that must at least leave a trace.
+        Ok(s) if s.code() == Some(128) => {}
+        other => eprintln!("obpterm-host: taskkill /PID {pid} did not take: {other:?}"),
+    }
 }
 
 impl Registry {
@@ -253,6 +260,10 @@ impl Registry {
     pub fn kill(&mut self, id: u32) -> Result<(), String> {
         let mut s = self.sessions.remove(&id).ok_or_else(|| format!("no session {id}"))?;
         if s.info.exited.is_none() {
+            #[cfg(windows)]
+            if s.info.pid.is_none() {
+                eprintln!("obpterm-host: session {id} has no pid — its tree cannot be killed, only the shell");
+            }
             // The shell is not the only process in the pane. `claude` runs as its child, and
             // terminating the shell leaves it running with nothing attached to it — which is how
             // a laptop ends up with 35 Claude Code processes behind 17 open sessions. Take the

@@ -154,6 +154,12 @@ impl Client {
                     _ => {}
                 }
             }
+            // The connection is over: unblock everyone still waiting on it. Leaving the
+            // pending map full meant a request in flight when the host died sat on an await
+            // that never resolved — a frozen invoke with no error, in an app whose whole job
+            // is saying what happened.
+            me.pending.lock().unwrap().clear();
+            me.list_waiters.lock().unwrap().clear();
             let _ = gone_tx.send(true);
         });
 

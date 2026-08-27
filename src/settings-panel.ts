@@ -6,6 +6,7 @@ import { withDefaults, type Config, type Transport } from "./transport";
 import { ACTIONS, bindKeys, chordFor, chordOf, FIXED, pretty } from "./keymap";
 import { renderList, renderLogins } from "./settings-lists";
 import { toast } from "./ui";
+import { COLORS as MENU_COLORS } from "./menu";
 
 export interface Ctx {
   tp: Transport;
@@ -281,7 +282,7 @@ export function select(options: { value: string; label: string }[], value: strin
   return el;
 }
 
-export const COLORS = ["#ff8a1e", "#4c8dff", "#2fd6a3", "#b48cff", "#22d3ee", "#ffb454", "#ff6b73", "#8b97a8"];
+export const COLORS = MENU_COLORS.map((c) => c.value);
 
 export function swatches(value: string | null, onChange: (v: string | null) => void, withDefault = true): HTMLElement {
   const el = document.createElement("div");

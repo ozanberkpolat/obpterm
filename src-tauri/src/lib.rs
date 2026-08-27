@@ -22,7 +22,6 @@ pub fn run() {
             pty::host_info,
             pty::host_shutdown,
             pty::host_restart,
-            pty::host_restart,
             pty::pty_list,
             pty::pty_spawn,
             pty::pty_attach,
