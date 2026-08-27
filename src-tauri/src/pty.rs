@@ -98,7 +98,9 @@ pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>, no_remote_control: 
     });
 
     let mut changed = Vec::new();
-    let exe = host_copy_path().display().to_string();
+    // The commands about to be written name this file. Make sure it is there, whether or not
+    // this launch was the one that spawned the host.
+    let exe = ensure_host_copy().unwrap_or_else(|_| host_copy_path()).display().to_string();
     for dir in dirs {
         let path = PathBuf::from(expand_vars(&dir)).join("settings.json");
         let mut settings: serde_json::Value = std::fs::read_to_string(&path)
@@ -175,17 +177,27 @@ pub fn agent_answer(link: State<HostLink>, pending: String, allow: Option<bool>)
 /// The host runs from a copy outside the install folder, under its own name. Two reasons:
 /// Windows cannot replace a running executable, so an installer must never meet it; and the
 /// installer kills `OBPTerm.exe` by name, which a differently named copy escapes.
-fn launch_host(config_dir: &PathBuf) -> Result<(), String> {
+/// Puts this version's host binary in place and returns where it is.
+///
+/// Called from BOTH paths that need it, and that is the point: the hooks and the statusLine are
+/// commands naming this exact file, and until now it was only ever copied on the way to
+/// SPAWNING a host. Since v0.21.18 the host survives an app update — so the new window attaches
+/// to the old host, never spawns, never copies, and then writes a statusLine pointing at a file
+/// that does not exist. The status row inside Claude vanishes and `limits.json` stops being
+/// written, which is the quota meter going stale.
+pub fn ensure_host_copy() -> Result<PathBuf, String> {
     let source = host_binary().ok_or("obpterm-host is not next to the app")?;
-    let version = env!("CARGO_PKG_VERSION");
-    let ext = if cfg!(windows) { ".exe" } else { "" };
     let copies = host_copy_dir();
     std::fs::create_dir_all(&copies).map_err(|e| format!("create {}: {e}", copies.display()))?;
-    let copy = copies.join(format!("obpterm-host-{version}{ext}"));
-    debug_assert_eq!(copy, host_copy_path());
+    let copy = host_copy_path();
     if !copy.exists() {
         std::fs::copy(&source, &copy).map_err(|e| format!("copy host: {e}"))?;
     }
+    Ok(copy)
+}
+
+fn launch_host(config_dir: &PathBuf) -> Result<(), String> {
+    let copy = ensure_host_copy()?;
     let mut cmd = std::process::Command::new(&copy);
     cmd.arg(config_dir);
     #[cfg(windows)]
