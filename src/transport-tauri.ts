@@ -91,6 +91,7 @@ export function tauriTransport(): Transport {
     windowFocus: (focused) => invoke("window_focus", { focused }),
     keepAwake: (on) => invoke("keep_awake", { on }),
     rssFor: (pids) => invoke<number[]>("rss_for", { pids }),
+    reapLeaks: (roots) => invoke<{ pid: number; name: string; bytes: number }[]>("reap_leaks", { roots }),
     gitShortstat: (cwd) => invoke<string | null>("git_shortstat", { cwd }),
     worktreeStatus: (cwd) => invoke<import("./transport").WorktreeStatus | null>("worktree_status", { cwd }),
     worktreeAdd: (cwd, name) => invoke<string>("worktree_add", { cwd, name }),

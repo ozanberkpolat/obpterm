@@ -175,6 +175,9 @@ export interface Config {
    *  by claude and every agent it spawns). Ordering, not a cap: on a saturated machine the
    *  terminal wins ties; on an idle one nothing changes. */
   shells_below_normal: boolean;
+  /** End Claude's leaked sub-agent Node processes: orphaned, once inside one of our shells'
+   *  trees, and running Claude's own CLI — all three, or it is left alone. */
+  reap_leaks: boolean;
   /** Write `remoteControlAtStartup: false` into every account's settings.json. */
   no_remote_control: boolean;
   /** Dollars per million tokens per model: [input, output, cache read, cache write]. */
@@ -326,6 +329,9 @@ export interface Transport {
   keepAwake(on: boolean): Promise<void>;
   /** RSS in bytes of each pid's process tree, for the Deck's memory readout. */
   rssFor(pids: number[]): Promise<number[]>;
+  /** Ends Claude CLI processes that were seen inside one of our shells' process trees, are now
+   *  orphaned, and are still alive — Claude Code's own sub-agent leak. Returns what it ended. */
+  reapLeaks(roots: number[]): Promise<{ pid: number; name: string; bytes: number }[]>;
   /** `git diff --shortstat HEAD` for a directory; null when it is not a repo. */
   gitShortstat(cwd: string): Promise<string | null>;
   /** Appends a rule to the project's .claude/settings.local.json permissions.allow. */
@@ -368,7 +374,7 @@ export function withDefaults(config: Partial<Config>): Config {
     profiles: config.profiles?.length ? config.profiles : [],
     font_family: config.font_family ?? "JetBrains Mono, Cascadia Mono, Consolas, monospace",
     font_size: config.font_size ?? 14,
-    scrollback: config.scrollback ?? 10_000,
+    scrollback: config.scrollback ?? 5_000,
     rail_collapsed: config.rail_collapsed ?? false,
     rail_width: config.rail_width ?? 232,
     cursor_style: config.cursor_style ?? "bar",
@@ -382,10 +388,11 @@ export function withDefaults(config: Partial<Config>): Config {
     capture_max_mb: config.capture_max_mb ?? 512,
     update_check_on_launch: config.update_check_on_launch ?? true,
     sleep_after_seconds: config.sleep_after_seconds ?? 60,
-    max_live_panes: config.max_live_panes ?? 8,
+    max_live_panes: config.max_live_panes ?? 5,
     eco_after_minutes: config.eco_after_minutes ?? 15,
     eco_memory_pct: config.eco_memory_pct ?? 85,
     shells_below_normal: config.shells_below_normal ?? true,
+    reap_leaks: config.reap_leaks ?? true,
     no_remote_control: config.no_remote_control ?? true,
     model_prices: config.model_prices ?? {},
     context_warn_pct: config.context_warn_pct ?? 80,

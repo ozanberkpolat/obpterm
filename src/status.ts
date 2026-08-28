@@ -121,6 +121,9 @@ export class Status {
     this.metrics = await this.app.tp.hostMetrics(this.app.tab?.active.cwd ?? null).catch(() => null);
     this.metricsAt = Date.now();
     this.paintMetrics();
+    // The sample is what the pressure sweep decides on; running it here, on every sample, is
+    // what lets it act within seconds of a fan-out instead of at the next minute mark.
+    this.app.pressureSweep();
   }
 
   /** When the numbers on the bar were actually taken. */

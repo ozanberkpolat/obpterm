@@ -374,6 +374,22 @@ click — each tab stays and resumes on click. The status bar's memory gauge sho
 (RAM plus pagefile in use) where Windows reports it, because that is the number the machine
 actually runs out of.
 
+### Memory pressure
+
+Above the threshold in Settings → Terminal → Memory (85% of the fuller of RAM and commit
+charge, by default), the app acts on every five-second sample rather than once a minute: shells
+no tab is showing are ended first, then idle finished sessions biggest first, three at a time
+with a thirty-second pause between rounds, and never a session touched in the last ninety
+seconds. Each one is named in a toast, and each tab resumes its conversation on click. A
+fan-out can take a 16 GB machine from comfortable to swapping inside a minute; this is what
+keeps it on the right side of that.
+
+Claude Code has a known leak: a sub-agent's Node process can outlive its agent, and a session
+that `/exit`s leaves them behind. Every fifteen seconds the app ends a process only when all
+three hold — it was seen inside one of this app's own shells, its parent is gone, and it runs
+Claude's own CLI. Nothing else on the machine is ever touched, and each one ended is announced.
+Settings → Terminal → Memory turns it off.
+
 ## Claude Code logins
 
 Settings → Claude logins switches which login is live in `~/.claude`, the way the homelab's

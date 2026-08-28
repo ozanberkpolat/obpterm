@@ -133,11 +133,16 @@ function stripSessionArgs(args: string[]): string[] {
 }
 
 /** A session you visited, or that printed, inside this window is not idle — however full the
- *  machine is. The memory sweep is allowed to be decisive, not hasty. */
-const PRESSURE_GRACE_MS = 5 * 60_000;
-/** And after it acts, the memory takes a moment to come back. Acting again before it does just
- *  empties the window three sessions at a time. */
-const PRESSURE_COOLDOWN_MS = 3 * 60_000;
+ *  machine is. Ninety seconds: it was five minutes, tuned for a slow leak, and a fan-out takes
+ *  a machine from 70% to swap inside one of those. */
+const PRESSURE_GRACE_MS = 90_000;
+/** And after it acts, the memory takes a moment to come back — a `/exit`ed claude is gone in a
+ *  few seconds. Thirty seconds, then look again; three minutes was three more fan-out steps. */
+const PRESSURE_COOLDOWN_MS = 30_000;
+/** Scrollback a terminal keeps while its tab is off screen. It is awake — the sleep sweep has
+ *  not reached it yet — and still parsing every byte, but nobody can read the buffer, so it
+ *  need not hold ten thousand lines of it. The full setting comes back on focus. */
+const BACKGROUND_SCROLLBACK = 1000;
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const DEFAULT_ACCENT = "#ff8a1e";
@@ -457,38 +462,54 @@ export class App implements PaneHost {
 
   ecoSweep() {
     const minutes = this.config.eco_after_minutes;
-    const cutoff = Date.now() - (minutes || 0) * 60_000;
-    const eligible = () => this.idlePanes();
-
-    if (minutes) {
-      for (const pane of eligible()) {
-        if (pane.agent.state !== "done") continue; // the timed path stays as it was: finished only
-        if (pane.lastOutput > cutoff || pane.lastVisited > cutoff) continue;
-        this.eco(pane);
-      }
+    if (!minutes) return;
+    const cutoff = Date.now() - minutes * 60_000;
+    for (const pane of this.idlePanes()) {
+      if (pane.agent.state !== "done") continue; // the timed path stays as it was: finished only
+      if (pane.lastOutput > cutoff || pane.lastVisited > cutoff) continue;
+      this.eco(pane);
     }
+  }
 
-    // Memory pressure. The machine running out of RAM is what actually freezes this window —
-    // it thrashes on swap and everything stalls for minutes — and the sessions holding it are
-    // idle ones nobody is reading. Above the threshold, the oldest of them are exited early;
-    // the tab stays, and clicking it resumes the same conversation.
+  /**
+   * Memory pressure. The machine running out of RAM is what actually freezes this window — it
+   * thrashes on swap and everything stalls for minutes — and the sessions holding it are idle
+   * ones nobody is reading. Above the threshold, the biggest of them are exited early; the tab
+   * stays, and clicking it resumes the same conversation.
+   *
+   * Runs on every metrics sample (five seconds), not the minute sweep it used to share with
+   * eco: an agent fan-out can take the box from 70% to swap inside one minute, and by the time
+   * a minute timer looked, the freeze it exists to prevent had already happened.
+   */
+  pressureSweep() {
     const pct = this.config.eco_memory_pct;
     // The fuller of RAM and commit charge: the pagefile filling is the swap thrash arriving.
     const m = this.status?.pressurePct() ?? null;
     if (!pct || m === null || m < pct) return;
+    // Once it has acted, give the machine a moment to actually give the memory back before
+    // acting again — a stampede empties a window.
+    if (Date.now() - this.lastPressureEco < PRESSURE_COOLDOWN_MS) return;
+
+    // Shells no tab is showing go first: leftovers of closed windows and crashes, holding a
+    // `claude` each, and ending one loses nothing a tab could have resumed.
+    const orphans = this.orphanIds().slice(0, 3);
+    if (orphans.length) {
+      for (const id of orphans) void this.tp.kill(id).catch(() => {});
+      this.lastPressureEco = Date.now();
+      toast(`Memory at ${Math.round(m)}% — ended ${orphans.length} background shell${orphans.length > 1 ? "s" : ""} no tab was showing`);
+      void this.connectHost().then(() => this.paint());
+      return;
+    }
+
     // Which idle session to exit is a question about bytes, not about clocks: a 40 MB shell and
     // a 2 GB session that has been fanning out all afternoon are both "idle", and only one of
     // them gives the machine anything back. Biggest first, with age as the tie-break for the
     // ones we have no measurement for.
     // Nothing you have touched recently is "idle", whatever the meter says. Without this the
     // sweep took a session the user had left fifteen seconds earlier, because on a machine that
-    // sits at 96% it fires every minute and only ever asked which session was biggest.
+    // sits at 96% it fires constantly and only ever asked which session was biggest.
     const settled = Date.now() - PRESSURE_GRACE_MS;
-    // And once it has acted, give the machine time to actually give the memory back before
-    // acting again — three sessions a minute, every minute, empties a window.
-    if (Date.now() - this.lastPressureEco < PRESSURE_COOLDOWN_MS) return;
-
-    const queue = eligible()
+    const queue = this.idlePanes()
       .filter((p) => p.lastVisited < settled && p.lastOutput < settled)
       .sort((a, b) => b.rss - a.rss || a.lastVisited - b.lastVisited);
     let freed: Pane[] = [];
@@ -694,8 +715,12 @@ export class App implements PaneHost {
 
   activate(tab: Tab) {
     const accountChanged = this.tab?.accountId !== tab.accountId;
+    // The tab leaving the screen keeps its terminal until the sleep sweep reaches it, but not
+    // its scrollback: xterm trims the buffer in place, and nobody can read it while it is hidden.
+    if (this.tab && this.tab !== tab) for (const p of L.panes(this.tab.root)) this.trimScrollback(p, true);
     this.tab = tab;
     for (const p of L.panes(tab.root)) {
+      this.trimScrollback(p, false);
       p.lastVisited = Date.now();
       p.agent.unread = false;
       if (p.asleep) void this.wakePane(p);
@@ -708,6 +733,13 @@ export class App implements PaneHost {
     this.layout(tab);
     tab.active.focus();
     this.paint();
+  }
+
+  /** A hidden pane's buffer is memory for nobody; the full setting comes back on focus. */
+  private trimScrollback(pane: Pane, background: boolean) {
+    if (!pane.term) return;
+    const want = background ? Math.min(BACKGROUND_SCROLLBACK, this.config.scrollback) : this.config.scrollback;
+    if (pane.term.term.options.scrollback !== want) pane.term.term.options.scrollback = want;
   }
 
   /** Ctrl+Tab: back to the tab you were just in. Walking creation order is useless at twelve. */
@@ -1284,6 +1316,9 @@ export class App implements PaneHost {
     const all = this.tabs.flatMap((t) => L.panes(t.root));
     const sleeping = all.filter((p) => p.asleep);
     const sessions = await this.tp.listSessions().catch(() => []);
+    // Keep the record of what the host holds current: `orphanIds()` reads it, and the pressure
+    // sweep ends orphans first — it must not be working from what was true at connect.
+    this.held = new Map(sessions.map((s) => [s.id, s]));
     // A pane whose shell the host no longer holds shows replayed history and swallows every
     // keystroke. Mark it, so the pane can say so instead of looking alive.
     const live = new Set(sessions.filter((s) => s.exited === null).map((s) => s.id));
@@ -1326,6 +1361,18 @@ export class App implements PaneHost {
       for (const s of sessions) {
         const pane = byId.get(s.id);
         if (pane) pane.startedAt = s.started_at;
+      }
+      // Claude Code leaks: a sub-agent's Node process can outlive its agent, and a session that
+      // `/exit`s leaves them behind, reparented to nobody. Same process table, same tick — the
+      // Rust side remembers what it saw inside OUR trees and ends only what was ours, is now
+      // orphaned, and is Claude's own CLI. Say so: memory that came back on its own is a fact
+      // worth a line.
+      if (this.config.reap_leaks) {
+        const reaped = await this.tp.reapLeaks(pids).catch(() => []);
+        if (reaped.length) {
+          const bytes = reaped.reduce((n, r) => n + r.bytes, 0);
+          toast(`Ended ${reaped.length} leaked Claude process${reaped.length > 1 ? "es" : ""} (~${Math.round(bytes / 1e6)} MB) left behind by finished agents`);
+        }
       }
     }
 
@@ -1450,7 +1497,11 @@ export class App implements PaneHost {
     );
     document.body.classList.toggle("dim-inactive", this.config.dim_inactive_panes);
     for (const t of this.tabs) {
-      for (const p of L.panes(t.root)) if (p.term) applyTermConfig(p.term.term, this.config);
+      for (const p of L.panes(t.root)) {
+        if (!p.term) continue;
+        applyTermConfig(p.term.term, this.config);
+        if (t !== this.tab) this.trimScrollback(p, true);
+      }
       this.layout(t);
     }
   }

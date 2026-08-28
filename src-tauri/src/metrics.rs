@@ -2,8 +2,10 @@
 //! CPU samples to report a percentage, so the System is kept alive between calls.
 
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
-use sysinfo::{Disks, MemoryRefreshKind, Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
+use std::time::Instant;
+use sysinfo::{Disks, MemoryRefreshKind, Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System, UpdateKind};
 use tauri::State;
 
 pub struct Metrics(Mutex<Sampler>);
@@ -13,6 +15,12 @@ struct Sampler {
     disks: Disks,
     /// The last few CPU readings, so one bad delta cannot pin the bar at 100%.
     cpu: Vec<f32>,
+    /// Every process ever seen inside one of our shells' trees, pid → start time. The start
+    /// time is what makes a remembered pid still mean the same process: Windows recycles pids
+    /// aggressively, and a pid seen in a Claude tree an hour ago can be anything now.
+    seen: HashMap<u32, u64>,
+    /// When the process table was last refreshed, so two commands on one tick share a walk.
+    refreshed_at: Option<Instant>,
     #[cfg(windows)]
     utility: Option<pdh::Counter>,
 }
@@ -25,10 +33,52 @@ impl Default for Metrics {
             ),
             disks: Disks::new_with_refreshed_list(),
             cpu: Vec::new(),
+            seen: HashMap::new(),
+            refreshed_at: None,
             #[cfg(windows)]
             utility: pdh::Counter::processor_utility(),
         }))
     }
+}
+
+/// The one process-table walk both `rss_for` and `reap_leaks` read from. Memory, plus the
+/// executable and command line ONLY for processes not seen before (`OnlyIfNotSet`): those are
+/// the expensive fields, and they do not change for a process's lifetime.
+fn refresh_table(s: &mut Sampler) {
+    s.system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_memory().with_exe(UpdateKind::OnlyIfNotSet).with_cmd(UpdateKind::OnlyIfNotSet),
+    );
+    s.refreshed_at = Some(Instant::now());
+}
+
+/// parent → children, one pass over the table.
+fn children_of(system: &System) -> HashMap<Pid, Vec<Pid>> {
+    let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
+    for (pid, proc_) in system.processes() {
+        if let Some(parent) = proc_.parent() {
+            children.entry(parent).or_default().push(*pid);
+        }
+    }
+    children
+}
+
+/// `root` and everything under it. A cycle in parent links must not hang the loop.
+fn descendants(children: &HashMap<Pid, Vec<Pid>>, root: Pid) -> Vec<Pid> {
+    let mut out = Vec::new();
+    let mut stack = vec![root];
+    let mut seen = HashSet::new();
+    while let Some(pid) = stack.pop() {
+        if !seen.insert(pid) {
+            continue;
+        }
+        out.push(pid);
+        if let Some(kids) = children.get(&pid) {
+            stack.extend(kids.iter().copied());
+        }
+    }
+    out
 }
 
 #[derive(Serialize, Default)]
@@ -123,36 +173,104 @@ fn commit() -> (u64, u64) {
 /// that is gone. Feeds the Agent Deck's per-session memory readout.
 #[tauri::command]
 pub fn rss_for(metrics: State<Metrics>, pids: Vec<u32>) -> Vec<u64> {
-    let mut s = metrics.0.lock().unwrap();
-    // Memory + parent link only — CPU/disk/cmdline/environ cost nothing here and this sweep
-    // runs every few seconds while every process on the box is at its biggest, mid fan-out.
-    s.system.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing().with_memory());
-    // parent -> children, one pass
-    let mut children: std::collections::HashMap<Pid, Vec<Pid>> = std::collections::HashMap::new();
-    for (pid, proc_) in s.system.processes() {
-        if let Some(parent) = proc_.parent() {
-            children.entry(parent).or_default().push(*pid);
+    let mut guard = metrics.0.lock().unwrap();
+    let s = &mut *guard; // split borrows: read `system` while writing `seen`
+    refresh_table(s);
+    let children = children_of(&s.system);
+    let mut totals = Vec::with_capacity(pids.len());
+    for &root in &pids {
+        let mut total = 0u64;
+        for pid in descendants(&children, Pid::from_u32(root)) {
+            if let Some(p) = s.system.process(pid) {
+                total += p.memory();
+                // Remember it as ours, with the start time that pins the identity.
+                s.seen.insert(pid.as_u32(), p.start_time());
+            }
+        }
+        totals.push(total);
+    }
+    totals
+}
+
+#[derive(Serialize)]
+pub struct Reaped {
+    pub pid: u32,
+    pub name: String,
+    pub bytes: u64,
+}
+
+/// Claude Code leaks: a sub-agent's Node process can outlive its agent, and a session that
+/// `/exit`s leaves them behind, reparented to nobody (anthropics/claude-code #11502). Ends a
+/// process only when ALL of these hold, and leaves it alone if any cannot be checked:
+///
+/// 1. it was seen, by `rss_for`, inside one of OUR shells' trees, and its start time still
+///    matches — so a recycled pid is not mistaken for the process that once had it;
+/// 2. it is not inside any of those trees now, and its parent is gone (absent, or a process
+///    started after it — that is a recycled pid too);
+/// 3. its image is Node or Claude AND its command line or path says "claude" — the CLI itself,
+///    not a dev server you started in a shell that has since been slept.
+///
+/// A Node process from VS Code, another terminal, or your own tooling never qualifies: it was
+/// never inside one of our trees.
+#[tauri::command]
+pub fn reap_leaks(metrics: State<Metrics>, roots: Vec<u32>) -> Vec<Reaped> {
+    let mut guard = metrics.0.lock().unwrap();
+    let s = &mut *guard;
+    // Same tick as `rss_for`: reuse its walk unless it is stale.
+    if !s.refreshed_at.is_some_and(|t| t.elapsed().as_secs() < 5) {
+        refresh_table(s);
+    }
+    let children = children_of(&s.system);
+    let mut inside: HashSet<Pid> = HashSet::new();
+    for &root in &roots {
+        inside.extend(descendants(&children, Pid::from_u32(root)));
+    }
+
+    let mut reaped = Vec::new();
+    let mut forget = Vec::new();
+    for (&pid, &start) in &s.seen {
+        let Some(p) = s.system.process(Pid::from_u32(pid)) else {
+            forget.push(pid); // gone on its own
+            continue;
+        };
+        if p.start_time() != start {
+            forget.push(pid); // the pid now belongs to something else
+            continue;
+        }
+        if inside.contains(&Pid::from_u32(pid)) {
+            continue; // still in a live tree of ours: not a leak
+        }
+        let parent_gone = match p.parent().and_then(|pp| s.system.process(pp)) {
+            None => true,
+            Some(pp) => pp.start_time() > p.start_time(),
+        };
+        if !parent_gone || !is_claude_cli(p) {
+            continue;
+        }
+        let bytes = p.memory();
+        let name = p.name().to_string_lossy().into_owned();
+        if p.kill() {
+            reaped.push(Reaped { pid, name, bytes });
+            forget.push(pid);
+        } else {
+            eprintln!("OBPTerm: could not end leaked process {pid} ({name})");
         }
     }
-    pids.iter()
-        .map(|&root| {
-            let mut total = 0u64;
-            let mut stack = vec![Pid::from_u32(root)];
-            let mut seen = std::collections::HashSet::new();
-            while let Some(pid) = stack.pop() {
-                if !seen.insert(pid) {
-                    continue; // a cycle in parent links must not hang the loop
-                }
-                if let Some(p) = s.system.process(pid) {
-                    total += p.memory();
-                }
-                if let Some(kids) = children.get(&pid) {
-                    stack.extend(kids.iter().copied());
-                }
-            }
-            total
-        })
-        .collect()
+    for pid in forget {
+        s.seen.remove(&pid);
+    }
+    reaped
+}
+
+/// Node or Claude by image, and "claude" somewhere in what it was started as.
+fn is_claude_cli(p: &sysinfo::Process) -> bool {
+    let name = p.name().to_string_lossy().to_ascii_lowercase();
+    if !matches!(name.as_str(), "node.exe" | "node" | "claude.exe" | "claude") {
+        return false;
+    }
+    let cmd = p.cmd().iter().map(|a| a.to_string_lossy().to_ascii_lowercase()).collect::<Vec<_>>().join(" ");
+    let exe = p.exe().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    cmd.contains("claude") || exe.contains("claude")
 }
 
 /// The one performance counter worth the FFI: `\Processor Information(_Total)\% Processor

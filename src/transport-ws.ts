@@ -118,6 +118,7 @@ export function wsTransport(): Transport {
     windowFocus: async () => {},
     keepAwake: async () => {},
     rssFor: async (pids) => pids.map(() => 0),
+    reapLeaks: async () => [],
     gitShortstat: async () => null,
     allowRule: async () => {},
     sessionContext: async () => null,

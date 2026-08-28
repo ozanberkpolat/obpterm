@@ -140,6 +140,10 @@ pub struct Config {
     /// first, so the window keeps answering clicks while twenty Node processes have the CPU.
     /// The cost is that under saturation Claude is slower by exactly what the UI used.
     pub shells_below_normal: bool,
+    /// End the Node processes Claude Code leaks (a sub-agent's process outliving its agent —
+    /// anthropics/claude-code #11502). Only a process that was seen inside one of OUR shells'
+    /// trees, is now orphaned, and runs Claude's own CLI; all three, or it is left alone.
+    pub reap_leaks: bool,
     /// Write `remoteControlAtStartup: false` into every Claude settings.json this app manages,
     /// and keep writing it: Claude Code's Remote Control activates itself for every new session,
     /// and turning it off with `/remote-control` only lasts as long as that session — so an app
@@ -209,7 +213,9 @@ impl Default for Config {
             profiles: default_profiles(),
             font_family: "JetBrains Mono, Cascadia Mono, Consolas, monospace".into(),
             font_size: 14,
-            scrollback: 10_000,
+            // Five thousand: a live terminal's buffer is the window's own memory, and the host's
+            // ring plus capture logs hold the history that matters. Existing configs keep theirs.
+            scrollback: 5_000,
             rail_collapsed: false,
             rail_width: 232,
             cursor_style: "bar".into(),
@@ -223,10 +229,13 @@ impl Default for Config {
             capture_max_mb: 512,
             update_check_on_launch: true,
             sleep_after_seconds: 60,
-            max_live_panes: 8,
+            // Five: a hidden-but-awake pane still parses every byte for nobody, and during an
+            // agent fan-out those parsers compete with the one you are looking at.
+            max_live_panes: 5,
             eco_after_minutes: 15,
             eco_memory_pct: 85,
             shells_below_normal: true,
+            reap_leaks: true,
             no_remote_control: true,
             context_warn_pct: 80,
             model_prices: default_prices(),
