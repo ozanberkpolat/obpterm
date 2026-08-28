@@ -139,6 +139,9 @@ const PRESSURE_GRACE_MS = 90_000;
 /** And after it acts, the memory takes a moment to come back — a `/exit`ed claude is gone in a
  *  few seconds. Thirty seconds, then look again; three minutes was three more fan-out steps. */
 const PRESSURE_COOLDOWN_MS = 30_000;
+/** How long a pane waits after its hooks reported a change before its transcript is read: a
+ *  Stop and the Notification that follows it arrive together, and one read covers both. */
+const STATS_DEBOUNCE_MS = 2000;
 /** Scrollback a terminal keeps while its tab is off screen. It is awake — the sleep sweep has
  *  not reached it yet — and still parsing every byte, but nobody can read the buffer, so it
  *  need not hold ten thousand lines of it. The full setting comes back on focus. */
@@ -282,74 +285,74 @@ export class App implements PaneHost {
   }
 
   /**
-   * Claude names every session; `/rename` never reaches the terminal title. Poll the
-   * transcript's tail for the focused tab's Claude panes and let that name the tab, unless
-   * the user has named it themselves.
+   * Claude names every session; `/rename` never reaches the terminal title. The name, the
+   * context gauge and the spend all come from the session's transcript — and the transcript
+   * changes when the session's own hooks say the turn did. So they are read THEN: a pane is
+   * queued by a Stop, a question or an agent finishing (`agent.ts`) and by being brought on
+   * screen, and read a couple of seconds later in one batched call. `refreshAllStats` is the
+   * once-a-minute slow lane for whatever the hooks did not say. This replaced a five-second
+   * poll of every pane — forty to seventy transcript reads a tick at twenty-five tabs.
    */
-  async refreshAgentTitles() {
-    const tab = this.tab;
-    if (!tab) return;
-    const account = this.account(tab.accountId);
-    const dir = account?.claude_dir ?? "~/.claude";
-    void this.refreshContext();
-    for (const pane of L.panes(tab.root)) {
-      if (!pane.claudeSessionId) continue;
-      // The name only when the user has not chosen one; the gauge only for the pane whose gauge
-      // is on screen — it is a 256 KB read and a JSON parse per pane, every five seconds.
-      const title = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
-      if (title) {
-        // Kept whether or not the user has named the tab: it is what the session is ABOUT, and
-        // it is what the tab falls back to when the shell blanks its own title on the way out.
-        pane.claudeTitle = title;
-        if (!tab.name && title !== pane.title) {
-          pane.title = title;
-          this.paint();
-        }
-      }
-      if (pane === tab.active) pane.ctxPct = await this.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
-    }
-    this.status?.paintCtx();
+  private statsQueue = new Set<Pane>();
+  private statsTimer = 0;
+
+  queueStats(pane: Pane) {
+    if (!pane.claudeSessionId || pane.exited) return;
+    this.statsQueue.add(pane);
+    if (this.statsTimer) return;
+    this.statsTimer = window.setTimeout(() => {
+      this.statsTimer = 0;
+      const panes = [...this.statsQueue];
+      this.statsQueue.clear();
+      void this.refreshStats(panes);
+    }, STATS_DEBOUNCE_MS);
   }
 
-  /**
-   * The context gauge for every live Claude session, not just the one on screen — a background
-   * session filling its window is exactly the one nobody is watching. Cheap by construction:
-   * `session_context` caches on the transcript's size and mtime, so a quiet session costs one
-   * `stat`. Panes past the warning line are said out loud once, the way a bell is.
-   */
-  private async refreshContext() {
+  /** Every Claude pane, in one pass. The slow lane, and the first read after a restore. */
+  refreshAllStats() {
+    return this.refreshStats(this.tabs.flatMap((t) => L.panes(t.root)));
+  }
+
+  private async refreshStats(panes: Pane[]) {
     const warn = this.config.context_warn_pct;
-    for (const tab of this.tabs) {
+    // One call per account: the transcripts live under the account's own config dir.
+    const byDir = new Map<string, { pane: Pane; tab: Tab }[]>();
+    for (const pane of panes) {
+      if (!pane.claudeSessionId || pane.exited) continue;
+      const tab = this.tabOf(pane);
+      if (!tab) continue;
       const dir = this.account(tab.accountId)?.claude_dir ?? "~/.claude";
-      for (const pane of L.panes(tab.root)) {
-        if (!pane.claudeSessionId || pane.exited) continue;
-        // The name of the conversation, for EVERY session — not just the one on screen. A tab
-        // that gets slept or eco'd in the background used to have no name of its own, so it fell
-        // back to the profile's ("Claude Code") and you had to open it to find out what it was.
-        // The Rust side caches on the transcript's stamp, so a quiet session costs a `stat`.
-        if (!pane.claudeTitle || Date.now() - (pane.titleAt ?? 0) > 60_000) {
-          const name = await this.tp.sessionTitle(dir, pane.claudeSessionId).catch(() => null);
-          pane.titleAt = Date.now();
-          if (name) {
-            pane.claudeTitle = name;
-            this.paintSoon();
-          }
+      let list = byDir.get(dir);
+      if (!list) byDir.set(dir, (list = []));
+      list.push({ pane, tab });
+    }
+    for (const [dir, list] of byDir) {
+      const ids = [...new Set(list.map(({ pane }) => pane.claudeSessionId!))];
+      const stats = await this.tp.sessionStats(dir, ids, this.config.model_prices).catch(() => []);
+      const byId = new Map(stats.map((s) => [s.session_id, s]));
+      for (const { pane, tab } of list) {
+        const s = byId.get(pane.claudeSessionId!);
+        if (!s) continue;
+        pane.titleAt = Date.now();
+        if (s.title) {
+          // Kept whether or not the user has named the tab: it is what the session is ABOUT,
+          // and what the tab falls back to when the shell blanks its own title on the way out.
+          pane.claudeTitle = s.title;
+          if (!tab.name && s.title !== pane.title) pane.title = s.title;
         }
         // A sleeping session keeps its name — the transcript is on disk either way — but its
         // gauges are about what it is doing, and it is not doing anything.
         if (pane.eco) continue;
         const before = pane.ctxPct;
-        pane.ctxPct = await this.tp.sessionContext(dir, pane.claudeSessionId).catch(() => null);
-        // Same pass, same file: what this conversation has spent. Both read the transcript and
-        // both cache on how far they got, so a quiet session costs a `stat` and nothing else.
-        pane.usage = await this.tp.sessionUsage(dir, pane.claudeSessionId, this.config.model_prices).catch(() => null);
-        if (!warn || pane.ctxPct === null) continue;
-        // Only on the crossing, and only once: a session sitting at 91% must not nag every poll.
-        if (pane.ctxPct >= warn && (before === null || before < warn)) {
+        pane.ctxPct = s.context_pct;
+        pane.usage = s.usage;
+        // Only on the crossing, and only once: a session sitting at 91% must not nag every read.
+        if (warn && pane.ctxPct !== null && pane.ctxPct >= warn && (before === null || before < warn)) {
           this.agentAlert(this.title(tab), `context ${pane.ctxPct}% full — /compact soon`);
         }
       }
     }
+    this.status?.paintCtx();
     this.paintSoon();
   }
 
@@ -721,6 +724,7 @@ export class App implements PaneHost {
     this.tab = tab;
     for (const p of L.panes(tab.root)) {
       this.trimScrollback(p, false);
+      this.queueStats(p); // the context chip is about to be looked at
       p.lastVisited = Date.now();
       p.agent.unread = false;
       if (p.asleep) void this.wakePane(p);

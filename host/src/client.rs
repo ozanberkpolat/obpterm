@@ -79,6 +79,7 @@ impl Client {
         let mut writer = BufWriter::new(tx_half);
 
         protocol::write_json(&mut writer, &Request::Hello { token: advert.token.clone() }).await?;
+        writer.flush().await?;
         let hello = match protocol::read_frame(&mut reader).await? {
             Some((KIND_JSON, body)) => serde_json::from_slice::<Reply>(&body).ok(),
             _ => None,
@@ -95,6 +96,17 @@ impl Client {
         tokio::spawn(async move {
             while let Some((kind, payload)) = out_rx.recv().await {
                 if protocol::write_frame(&mut writer, kind, &payload).await.is_err() {
+                    break;
+                }
+                // Drain what queued meanwhile, one flush for the lot (see `write_frame`).
+                let mut ok = true;
+                while let Ok((kind, payload)) = out_rx.try_recv() {
+                    if protocol::write_frame(&mut writer, kind, &payload).await.is_err() {
+                        ok = false;
+                        break;
+                    }
+                }
+                if !ok || writer.flush().await.is_err() {
                     break;
                 }
             }

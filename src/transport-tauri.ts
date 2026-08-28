@@ -27,7 +27,7 @@ export function tauriTransport(): Transport {
     agentAnswer: (pending, allow) => invoke("agent_answer", { pending, allow }),
     hooksEnsure: (dirs, noRemoteControl) => invoke<string[]>("hooks_ensure", { dirs, noRemoteControl }),
     hooksRemove: (dirs) => invoke<number>("hooks_remove", { dirs }),
-    sessionTitle: (dir, sessionId) => invoke<string | null>("session_title", { dir, sessionId }),
+    sessionStats: (dir, sessionIds, prices) => invoke("session_stats", { dir, sessionIds, prices }),
     hostShutdown: () => invoke("host_shutdown"),
     hostRestart: () => invoke<string>("host_restart"),
     async spawn(profile: Profile, cols, rows, onData, onExit, opts) {
@@ -97,8 +97,6 @@ export function tauriTransport(): Transport {
     worktreeAdd: (cwd, name) => invoke<string>("worktree_add", { cwd, name }),
     worktreeRemove: (mainRoot, path, branch) => invoke("worktree_remove", { mainRoot, path, branch }),
     allowRule: (cwd, rule) => invoke("allow_rule", { cwd, rule }),
-    sessionContext: (dir, sessionId) => invoke<number | null>("session_context", { dir, sessionId }),
-    sessionUsage: (dir, sessionId, prices) => invoke("session_usage", { dir, sessionId, prices }),
     async readClipboardImage() {
       // The plugin hands back raw RGBA; a canvas turns it into the PNG the temp file needs.
       try {

@@ -95,6 +95,13 @@ impl HookHub {
         // Read until the end of a small request; hooks send one POST and wait.
         let mut buf = Vec::with_capacity(4096);
         let mut tmp = [0u8; 4096];
+        // The head is searched for — and parsed — ONCE. An Agent call's PreToolUse carries the
+        // whole sub-agent prompt, so the body arrives over many reads; re-scanning the whole
+        // buffer each time made the search quadratic in the payload, and `scanned` keeps each
+        // scan to what that read added (less three bytes, so a `\r\n\r\n` straddling a read
+        // boundary is still found).
+        let mut scanned = 0usize;
+        let mut head: Option<(String, HashMap<String, String>, usize, usize)> = None;
         let (path, headers, body) = loop {
             let n = stream.read(&mut tmp).await?;
             if n == 0 {
@@ -104,17 +111,23 @@ impl HookHub {
             if buf.len() > 1024 * 1024 {
                 return respond(&mut stream, 413, "").await;
             }
-            if let Some(head_end) = find(&buf, b"\r\n\r\n") {
-                let head = String::from_utf8_lossy(&buf[..head_end]).into_owned();
-                let mut lines = head.lines();
-                let first = lines.next().unwrap_or_default().to_string();
-                let path = first.split_whitespace().nth(1).unwrap_or_default().to_string();
-                let headers: HashMap<String, String> =
-                    lines.filter_map(|l| l.split_once(':')).map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string())).collect();
-                let length = headers.get("content-length").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
-                let body_start = head_end + 4;
+            if head.is_none() {
+                let from = scanned.saturating_sub(3);
+                scanned = buf.len();
+                if let Some(head_end) = find(&buf[from..], b"\r\n\r\n").map(|i| i + from) {
+                    let text = String::from_utf8_lossy(&buf[..head_end]).into_owned();
+                    let mut lines = text.lines();
+                    let first = lines.next().unwrap_or_default().to_string();
+                    let path = first.split_whitespace().nth(1).unwrap_or_default().to_string();
+                    let headers: HashMap<String, String> =
+                        lines.filter_map(|l| l.split_once(':')).map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string())).collect();
+                    let length = headers.get("content-length").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
+                    head = Some((path, headers, head_end + 4, length));
+                }
+            }
+            if let Some((path, headers, body_start, length)) = &head {
                 if buf.len() >= body_start + length {
-                    break (path, headers, buf[body_start..body_start + length].to_vec());
+                    break (path.clone(), headers.clone(), buf[*body_start..body_start + length].to_vec());
                 }
             }
         };
@@ -255,6 +268,26 @@ mod tests {
 
         let (code, _) = post_with(port, "/hook", &[("X-OBPTerm-Token", "WRONG"), ("X-OBPTerm-Pane", "5")], r#"{"hook_event_name":"Stop"}"#).await;
         assert_eq!(code, 403);
+    }
+
+    #[tokio::test]
+    async fn a_payload_far_bigger_than_one_read_still_parses() {
+        // An Agent call's PreToolUse carries the whole sub-agent prompt — far more than the
+        // 4 KB read buffer, so the header scan runs across many reads. It used to rescan the
+        // entire accumulated buffer each time (quadratic in the payload); it now resumes from
+        // where it left off, with a three-byte overlap so a `\r\n\r\n` split across a read
+        // boundary is still found.
+        let hub = HookHub::new("tok".into());
+        let port = Arc::clone(&hub).listen(None).await.unwrap();
+        let mut events = hub.subscribe();
+
+        let prompt = "x".repeat(200_000);
+        let body = format!(r#"{{"hook_event_name":"Stop","session_id":"big","last_assistant_message":"{prompt}"}}"#);
+        let (code, _) = post_with(port, "/hook", &[("X-OBPTerm-Token", "tok"), ("X-OBPTerm-Pane", "9")], &body).await;
+        assert_eq!(code, 200);
+        let e = events.recv().await.unwrap();
+        assert_eq!((e.pane, e.state.as_str(), e.session_id.as_deref()), (9, "done", Some("big")));
+        assert!(e.detail.is_some_and(|d| d.len() < 400), "the message is still clipped, not forwarded whole");
     }
 
     #[tokio::test]

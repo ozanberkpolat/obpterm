@@ -122,12 +122,15 @@ pub enum Reply {
     },
 }
 
+/// Writes one frame and does NOT flush: the writer tasks on both sides drain everything that
+/// queued while a frame was being written and flush once for the lot. With eight panes
+/// streaming, a flush per 16 KB chunk was a pipe syscall per chunk, and the `BufWriter` the
+/// callers wrap the socket in was defeated on every frame.
 pub async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, kind: u8, payload: &[u8]) -> std::io::Result<()> {
     let len = (payload.len() + 1) as u32;
     w.write_all(&len.to_le_bytes()).await?;
     w.write_all(&[kind]).await?;
-    w.write_all(payload).await?;
-    w.flush().await
+    w.write_all(payload).await
 }
 
 pub async fn write_json<W: AsyncWrite + Unpin, T: Serialize>(w: &mut W, value: &T) -> std::io::Result<()> {
@@ -155,11 +158,14 @@ pub async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> std::io::Result<Opti
     if len == 0 || len > MAX_FRAME {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("bad frame length {len}")));
     }
-    let mut body = vec![0u8; len];
+    // The kind byte on its own, then the body sized without it: reading both into one buffer
+    // and `remove(0)`-ing the kind was a memmove of the whole frame — 64 KB per replay chunk,
+    // 16 KB per output chunk — on every frame, on both sides of the socket.
+    let mut kind = [0u8; 1];
+    r.read_exact(&mut kind).await?;
+    let mut body = vec![0u8; len - 1];
     r.read_exact(&mut body).await?;
-    let kind = body[0];
-    body.remove(0);
-    Ok(Some((kind, body)))
+    Ok(Some((kind[0], body)))
 }
 
 /// Splits a data payload back into (id, bytes).
@@ -180,6 +186,7 @@ mod tests {
         let (mut a, mut b) = tokio::io::duplex(1024);
         write_json(&mut a, &Request::Resize { id: 7, cols: 80, rows: 24 }).await.unwrap();
         write_data(&mut a, KIND_OUTPUT, 7, b"hello").await.unwrap();
+        a.flush().await.unwrap();
         let (kind, body) = read_frame(&mut b).await.unwrap().unwrap();
         assert_eq!(kind, KIND_JSON);
         assert_eq!(serde_json::from_slice::<Request>(&body).unwrap(), Request::Resize { id: 7, cols: 80, rows: 24 });

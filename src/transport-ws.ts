@@ -61,7 +61,7 @@ export function wsTransport(): Transport {
     agentAnswer: async (pending, allow) => void (await call("agent_answer", { pending, allow })),
     hooksEnsure: async () => [],
     hooksRemove: async () => 0,
-    sessionTitle: async () => null,
+    sessionStats: async () => [],
     detach: async (id) => {
       data.delete(id);
       exits.delete(id);
@@ -121,8 +121,6 @@ export function wsTransport(): Transport {
     reapLeaks: async () => [],
     gitShortstat: async () => null,
     allowRule: async () => {},
-    sessionContext: async () => null,
-    sessionUsage: async () => null,
     readClipboardImage: async () => null,
     worktreeStatus: async () => null,
     worktreeAdd: async () => { throw new Error("worktrees are a desktop feature"); },

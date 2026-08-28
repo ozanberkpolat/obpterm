@@ -6,7 +6,7 @@ use crate::ring::Ring;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{BufWriter, Read, Write};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
@@ -33,7 +33,11 @@ struct Session {
     modes: Modes,
     /// The connection currently looking at this session, if any.
     attached: Option<mpsc::UnboundedSender<Event>>,
-    log: Option<(String, Option<File>)>,
+    /// The capture file, behind its own lock so the reader thread writes to it AFTER letting go
+    /// of the registry: every pty reader, every request and every hook event contend for that
+    /// one mutex, and a disk write was being done while holding it. Opened lazily on the first
+    /// chunk; buffered, flushed when capture stops or the shell ends.
+    log: Option<(String, Arc<Mutex<Option<BufWriter<File>>>>)>,
 }
 
 #[derive(Default)]
@@ -196,34 +200,41 @@ impl Registry {
                 match reader.read(&mut buf) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
-                        let mut reg = shared.lock().unwrap();
-                        let Some(s) = reg.sessions.get_mut(&id) else { break };
-                        s.ring.push(&buf[..n]);
-                        s.modes.track(&buf[..n]);
-                        s.info.last_output = now_ms();
-                        // ConPTY stalls all output until its cursor-position query is answered.
-                        // An attached terminal answers it; a detached session has nobody to,
-                        // and would otherwise freeze until the next attach.
-                        if s.attached.is_none() && buf[..n].windows(4).any(|w| w == b"\x1b[6n") {
-                            let _ = s.writer.write_all(b"\x1b[1;1R");
-                            let _ = s.writer.flush();
-                        }
-                        // A window that is not looking still wants to know the shell asked for it.
-                        if s.attached.is_none() && buf[..n].contains(&0x07) {
-                            s.info.bell = true;
-                        }
-                        if let Some((path, file)) = s.log.as_mut() {
+                        // Everything under the registry lock is bookkeeping; the capture write
+                        // is taken out of it (the handle is cloned, the lock dropped, then the
+                        // disk is touched).
+                        let log = {
+                            let mut reg = shared.lock().unwrap();
+                            let Some(s) = reg.sessions.get_mut(&id) else { break };
+                            s.ring.push(&buf[..n]);
+                            s.modes.track(&buf[..n]);
+                            s.info.last_output = now_ms();
+                            // ConPTY stalls all output until its cursor-position query is answered.
+                            // An attached terminal answers it; a detached session has nobody to,
+                            // and would otherwise freeze until the next attach.
+                            if s.attached.is_none() && buf[..n].windows(4).any(|w| w == b"\x1b[6n") {
+                                let _ = s.writer.write_all(b"\x1b[1;1R");
+                                let _ = s.writer.flush();
+                            }
+                            // A window that is not looking still wants to know the shell asked for it.
+                            if s.attached.is_none() && buf[..n].contains(&0x07) {
+                                s.info.bell = true;
+                            }
+                            if let Some(tx) = &s.attached {
+                                if tx.send(Event::Output { id, bytes: buf[..n].to_vec() }).is_err() {
+                                    s.attached = None;
+                                    s.info.attached = false;
+                                }
+                            }
+                            s.log.as_ref().map(|(path, file)| (path.clone(), Arc::clone(file)))
+                        };
+                        if let Some((path, file)) = log {
+                            let mut file = file.lock().unwrap();
                             if file.is_none() {
-                                *file = File::create(path.as_str()).ok();
+                                *file = File::create(path.as_str()).ok().map(|f| BufWriter::with_capacity(16 * 1024, f));
                             }
                             if let Some(f) = file.as_mut() {
                                 let _ = f.write_all(&buf[..n]);
-                            }
-                        }
-                        if let Some(tx) = &s.attached {
-                            if tx.send(Event::Output { id, bytes: buf[..n].to_vec() }).is_err() {
-                                s.attached = None;
-                                s.info.attached = false;
                             }
                         }
                     }
@@ -231,7 +242,13 @@ impl Registry {
             }
             // The reader ends when the waiter drops the master (or the pty errors). The waiter
             // owns exit reporting; the session stays in the map, exited, so a window that
-            // reconnects can still see what it printed.
+            // reconnects can still see what it printed. What the capture buffered goes to disk.
+            let log = shared.lock().unwrap().sessions.get(&id).and_then(|s| s.log.as_ref().map(|(_, f)| Arc::clone(f)));
+            if let Some(file) = log {
+                if let Some(f) = file.lock().unwrap().as_mut() {
+                    let _ = f.flush();
+                }
+            }
         });
         Ok(id)
     }
@@ -335,13 +352,19 @@ impl Registry {
 
     pub fn log_start(&mut self, id: u32, path: String) -> Result<String, String> {
         let s = self.sessions.get_mut(&id).ok_or_else(|| format!("no session {id}"))?;
-        s.log = Some((path.clone(), None));
+        s.log = Some((path.clone(), Arc::new(Mutex::new(None))));
         Ok(path)
     }
 
     pub fn log_stop(&mut self, id: u32) {
         if let Some(s) = self.sessions.get_mut(&id) {
-            s.log = None;
+            // Dropping the last handle flushes too, but the reader thread may still hold one
+            // mid-write; flush here so the file is complete the moment capture says it stopped.
+            if let Some((_, file)) = s.log.take() {
+                if let Some(f) = file.lock().unwrap().as_mut() {
+                    let _ = f.flush();
+                }
+            }
         }
     }
 }

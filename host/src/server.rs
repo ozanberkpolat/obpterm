@@ -134,6 +134,7 @@ OBPTERM_HOOK_TOKEN={}
             _ => return Ok(()),
         }
         protocol::write_json(&mut writer, &Reply::Hello { instance: self.advert.instance.clone(), version: self.advert.version.clone() }).await?;
+        writer.flush().await?;
 
         // Output for attached sessions arrives on this channel from the reader threads.
         let (tx, mut events) = mpsc::unbounded_channel::<Event>();
@@ -143,6 +144,18 @@ OBPTERM_HOOK_TOKEN={}
         let writer_task = tokio::spawn(async move {
             while let Some((kind, payload)) = out_rx.recv().await {
                 if protocol::write_frame(&mut writer, kind, &payload).await.is_err() {
+                    break;
+                }
+                // Whatever queued while that went out goes in the same flush: under load, N
+                // chunks from N panes become one pipe write instead of N.
+                let mut ok = true;
+                while let Ok((kind, payload)) = out_rx.try_recv() {
+                    if protocol::write_frame(&mut writer, kind, &payload).await.is_err() {
+                        ok = false;
+                        break;
+                    }
+                }
+                if !ok || writer.flush().await.is_err() {
                     break;
                 }
             }

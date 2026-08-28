@@ -131,6 +131,14 @@ export interface SessionUsage {
   turns: number;
 }
 
+/** What the rail shows about one Claude session, from its transcript and the statusLine payload. */
+export interface SessionStats {
+  session_id: string;
+  title: string | null;
+  context_pct: number | null;
+  usage: SessionUsage | null;
+}
+
 export interface HostMetrics {
   cpu: number;
   mem_used: number;
@@ -273,8 +281,8 @@ export interface Transport {
   /** Install (or refresh) the Claude Code hook block in these config dirs' settings.json. */
   hooksEnsure(dirs: string[], noRemoteControl: boolean): Promise<string[]>;
   hooksRemove(dirs: string[]): Promise<number>;
-  /** Claude's own name for a session, read from its transcript. */
-  sessionTitle(dir: string, sessionId: string): Promise<string | null>;
+  /** Title, context fill and spend for a list of sessions, in one call. */
+  sessionStats(dir: string, sessionIds: string[], prices: Record<string, number[]>): Promise<SessionStats[]>;
   spawn(
     profile: Profile,
     cols: number,
@@ -336,10 +344,6 @@ export interface Transport {
   gitShortstat(cwd: string): Promise<string | null>;
   /** Appends a rule to the project's .claude/settings.local.json permissions.allow. */
   allowRule(cwd: string, rule: string): Promise<void>;
-  /** Rough context-window fill % for a session, from its transcript tail. */
-  sessionContext(dir: string, sessionId: string): Promise<number | null>;
-  /** Tokens and estimated cost for one conversation, accumulated from its transcript. */
-  sessionUsage(dir: string, sessionId: string, prices: Record<string, number[]>): Promise<SessionUsage | null>;
   /** A pasted bitmap, saved to a temp PNG; resolves the path to type, or null when the
    *  clipboard holds no image (or images are unsupported here). */
   readClipboardImage(): Promise<string | null>;

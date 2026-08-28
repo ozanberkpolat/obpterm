@@ -309,6 +309,9 @@ export function installAgentEvents(app: App) {
         })
         .catch(() => {});
     }
+    // The transcript changed when the turn did: a Stop, a question, an agent finishing. Read
+    // its name, context and spend then — not on a five-second clock for every pane.
+    if (u.state === "done" || u.state === "waiting" || u.state === "blocked" || u.agent_event === "finished") app.queueStats(pane);
     app.paintSoon();
   });
 

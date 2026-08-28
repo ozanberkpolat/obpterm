@@ -82,7 +82,12 @@ async function main() {
   window.setInterval(() => app.onPaneActivity(), 1000);
   window.setInterval(() => void app.sleepIdleTabs(), 15_000);
   window.setInterval(() => app.ecoSweep(), 60_000);
-  window.setInterval(() => void app.refreshAgentTitles(), 5_000);
+  // Session names, context fill and spend arrive when a session's own hooks say it changed
+  // (see `queueStats`); this is the slow lane for whatever the hooks did not say. It was a
+  // five-second poll of every pane — forty to seventy transcript reads a tick at twenty-five
+  // tabs, on a machine the agents had already saturated.
+  window.setInterval(() => void app.refreshAllStats(), 60_000);
+  void app.refreshAllStats();
   // Only while the window is in front. Nothing on this bar changes a decision you cannot see,
   // and polling the host behind another window is pure heat. Fifteen seconds: each tick walks
   // the whole process table, and on a saturated box that table is at its largest.

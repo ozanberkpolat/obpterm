@@ -741,7 +741,7 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   assert.equal(await evaluate("window.obpterm.tp.write === window.__realWrite"), true, "the real write is back");
 
   // Diffstat + context land on the card through the slow lane.
-  await evaluate("(() => { window.obpterm.tp.gitShortstat = async () => '2 files changed, 4 insertions(+), 1 deletion(-)'; window.obpterm.tp.sessionContext = async () => 85; })()");
+  await evaluate("(() => { window.obpterm.tp.gitShortstat = async () => '2 files changed, 4 insertions(+), 1 deletion(-)'; window.obpterm.tp.sessionStats = async (d, ids) => ids.map((session_id) => ({ session_id, title: null, context_pct: 85, usage: null })); })()");
   await evaluate(`(() => { const p = window.obpterm.tabs.flatMap(t => window.obpterm.panesOf(t)).find(p => p.id === ${wavePane}); p.claudeSessionId = 'sess-15'; })()`);
 
   // Review split: a second pane opens where you are and asks git for the diff.
@@ -795,7 +795,7 @@ const agentPaneId = await evaluate("window.obpterm.tab.active.id");
   assert.deepEqual(await evaluate("window.__rm[0]"), ["/tmp/repo", "/tmp/repo-feat-x", "feat-x"], "sweep removes the path and the branch");
 
   // Context visualizer: the node body and the status chip both read the percentage.
-  await evaluate("(() => { window.obpterm.tp.sessionContext = async () => 91; const p = window.obpterm.tab.active; p.ctxPct = 91; })()");
+  await evaluate("(() => { window.obpterm.tp.sessionStats = async (d, ids) => ids.map((session_id) => ({ session_id, title: null, context_pct: 91, usage: null })); const p = window.obpterm.tab.active; p.ctxPct = 91; })()");
   await evaluate("window.obpterm.status.paintCtx()");
   await until("!document.querySelector('#ctx-chip').hidden", "the status-bar context gauge");
   assert.equal(await evaluate("document.querySelector('#ctx-chip .v').textContent"), "ctx 91%");

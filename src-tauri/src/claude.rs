@@ -287,6 +287,10 @@ mod usage_tests {
         )
     }
 
+    fn turn_in(model: &str, input: u64) -> String {
+        turn(model, input, 0)
+    }
+
     /// The point of the accumulator: a transcript is read once, and what is appended later is
     /// read once more — not the whole megabyte, twenty times a minute, per session.
     #[tokio::test]
@@ -300,7 +304,10 @@ mod usage_tests {
 
         let prices: Prices = [("opus".to_string(), [15.0, 75.0, 1.5, 18.75])].into_iter().collect();
         let dir = root.display().to_string();
-        let first = session_usage(dir.clone(), session.clone(), prices.clone()).await.unwrap();
+        let usage = |dir: String, session: String, prices: Prices| async move {
+            session_stats(dir, vec![session], prices).await.into_iter().next().unwrap().usage.unwrap()
+        };
+        let first = usage(dir.clone(), session.clone(), prices.clone()).await;
         assert_eq!(first.input, 1_000_000);
         assert_eq!(first.turns, 1);
         assert!((first.cost_usd - 15.0).abs() < 1e-9, "a million input tokens of opus is $15, got {}", first.cost_usd);
@@ -309,17 +316,53 @@ mod usage_tests {
         let mut f = std::fs::OpenOptions::new().append(true).open(&file).unwrap();
         use std::io::Write as _;
         writeln!(f, "{}", turn("claude-opus-5", 0, 1_000_000)).unwrap();
-        let second = session_usage(dir.clone(), session.clone(), prices.clone()).await.unwrap();
+        let second = usage(dir.clone(), session.clone(), prices.clone()).await;
         assert_eq!(second.input, 1_000_000, "the first turn is not counted twice");
         assert_eq!(second.output, 1_000_000);
         assert_eq!(second.turns, 2);
         assert!((second.cost_usd - 90.0).abs() < 1e-9, "15 + 75, got {}", second.cost_usd);
 
         // Nothing appended: same answer, and the offset is already at the end of the file.
-        let third = session_usage(dir.clone(), session.clone(), prices).await.unwrap();
+        let third = usage(dir.clone(), session.clone(), prices).await;
         assert_eq!(third.turns, 2, "a quiet transcript adds nothing");
         let cached = USAGE_CACHE.lock().unwrap().get(&session).copied().unwrap();
         assert_eq!(cached.0, std::fs::metadata(&file).unwrap().len(), "it reads from the end next time");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// One call, one `limits.json` read, one answer per session — and a session the payload is
+    /// not about still gets its context from its own transcript. The old shape read that file
+    /// once PER PANE, before its own cache, while the statusLine rewrote it three times a second.
+    #[tokio::test]
+    async fn one_call_answers_for_every_session_it_was_given() {
+        let root = std::env::temp_dir().join(format!("obpterm-stats-{}", std::process::id()));
+        let projects = root.join("projects").join("-home-obp-proj");
+        std::fs::create_dir_all(&projects).unwrap();
+        let mine = format!("mine-{}", std::process::id());
+        let other = format!("other-{}", std::process::id());
+        for (s, tokens) in [(&mine, 400_000u64), (&other, 100_000)] {
+            let body = format!("{}\n{{\"customTitle\":\"named {s}\"}}\n", turn_in("claude-opus-5", tokens));
+            std::fs::write(projects.join(format!("{s}.jsonl")), body).unwrap();
+        }
+        // Claude's own number, for `mine` only.
+        std::fs::write(root.join("limits.json"), format!(r#"{{"session_id":"{mine}","context_window":{{"used_percentage":73.4}}}}"#)).unwrap();
+
+        let dir = root.display().to_string();
+        let stats = session_stats(dir, vec![mine.clone(), other.clone(), "no-such-session".into()], Prices::new()).await;
+        assert_eq!(stats.len(), 3, "one row per session asked for, present or not");
+
+        let m = stats.iter().find(|s| s.session_id == mine).unwrap();
+        assert_eq!(m.context_pct, Some(73), "the payload's exact number wins for the session it names");
+        assert_eq!(m.title.as_deref(), Some(format!("named {mine}").as_str()));
+
+        let o = stats.iter().find(|s| s.session_id == other).unwrap();
+        // 400k of a 1M window for the payload session; `other` falls back to its own transcript.
+        assert_eq!(o.context_pct, Some(10), "a session the payload is not about reads its own transcript");
+        assert!(o.usage.is_some_and(|u| u.input == 100_000));
+
+        let missing = stats.iter().find(|s| s.session_id == "no-such-session").unwrap();
+        assert!(missing.title.is_none() && missing.context_pct.is_none() && missing.usage.is_none());
 
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -500,28 +543,78 @@ fn expand(path: &str) -> String {
     crate::pty::expand_vars(path)
 }
 
-/// Claude's own name for a session — the `/rename` name if one was given, else the title
-/// Claude wrote for itself — from the tail of the session's transcript.
-#[tauri::command]
-pub async fn session_title(dir: String, session_id: String) -> Option<String> {
-    let projects = PathBuf::from(expand(&dir)).join("projects");
+/// Where a session's transcript lives, remembered. Locating it was a `read_dir(projects)` per
+/// call — three calls per pane per tick — and the answer never changes for a session's life.
+static PATH_CACHE: std::sync::LazyLock<Mutex<HashMap<String, PathBuf>>> = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn transcript_path(dir: &str, session_id: &str) -> Option<PathBuf> {
+    if let Some(p) = PATH_CACHE.lock().ok().and_then(|c| c.get(session_id).cloned()) {
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    let projects = PathBuf::from(expand(dir)).join("projects");
     let file = std::fs::read_dir(&projects)
         .ok()?
         .flatten()
         .map(|d| d.path().join(format!("{session_id}.jsonl")))
         .find(|p| p.exists())?;
-    // Same discipline as the context gauge: this is now asked for EVERY session, not just the
-    // one on screen, so a transcript that has not grown must cost a `stat` and nothing more.
-    let stamp = std::fs::metadata(&file)
+    if let Ok(mut c) = PATH_CACHE.lock() {
+        c.insert(session_id.to_string(), file.clone());
+    }
+    Some(file)
+}
+
+/// Everything the rail shows about one session, in one call for a list of them. This replaced
+/// three IPC round trips per pane every five seconds — at twenty-five tabs, forty to seventy
+/// transcript reads per tick, sequentially awaited — with one call the window makes when a
+/// session's own hooks say it changed, plus a slow lane. `limits.json` is read ONCE per call:
+/// the statusLine rewrites it up to three times a second, and reading it per pane before the
+/// cache was the bug that made "a quiet session costs a stat" untrue.
+#[derive(Serialize)]
+pub struct SessionStats {
+    pub session_id: String,
+    pub title: Option<String>,
+    pub context_pct: Option<u8>,
+    pub usage: Option<SessionUsage>,
+}
+
+#[tauri::command]
+pub async fn session_stats(dir: String, session_ids: Vec<String>, prices: Prices) -> Vec<SessionStats> {
+    let payload = payload_context(&dir);
+    session_ids
+        .into_iter()
+        .map(|session_id| {
+            let file = transcript_path(&dir, &session_id);
+            let Some(file) = file else {
+                return SessionStats { session_id, title: None, context_pct: None, usage: None };
+            };
+            let title = title_of(&session_id, &file);
+            let context_pct = match &payload {
+                Some((sid, pct)) if *sid == session_id => Some(*pct),
+                _ => context_of(&session_id, &file),
+            };
+            let usage = usage_of(&session_id, &file, &prices);
+            SessionStats { session_id, title, context_pct, usage }
+        })
+        .collect()
+}
+
+/// Claude's own name for a session — the `/rename` name if one was given, else the title
+/// Claude wrote for itself — from the tail of the session's transcript.
+fn title_of(session_id: &str, file: &Path) -> Option<String> {
+    // Same discipline as the context gauge: this is asked for EVERY session, not just the one
+    // on screen, so a transcript that has not grown must cost a `stat` and nothing more.
+    let stamp = std::fs::metadata(file)
         .ok()
         .map(|m| (m.len(), m.modified().ok()))
         .unwrap_or((0, None));
-    if let Some((seen, title)) = TITLE_CACHE.lock().ok().and_then(|c| c.get(&session_id).cloned()) {
+    if let Some((seen, title)) = TITLE_CACHE.lock().ok().and_then(|c| c.get(session_id).cloned()) {
         if seen == stamp {
             return title;
         }
     }
-    let text = tail(&file, 128 * 1024)?;
+    let text = tail(file, 128 * 1024)?;
     let mut ai = None;
     let mut custom = None;
     for line in text.lines() {
@@ -537,7 +630,7 @@ pub async fn session_title(dir: String, session_id: String) -> Option<String> {
     }
     let title = custom.or(ai);
     if let Ok(mut c) = TITLE_CACHE.lock() {
-        c.insert(session_id.clone(), (stamp, title.clone()));
+        c.insert(session_id.to_string(), (stamp, title.clone()));
     }
     title
 }
@@ -547,34 +640,23 @@ static TITLE_CACHE: std::sync::LazyLock<Mutex<HashMap<String, (FileStamp, Option
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// How full this session's context window is, as a rough percentage: the last usage block's
-/// input + cache tokens over a 200k window. Enough to warn before an auto-compact — not
-/// accounting. None when the transcript (or a usage entry) cannot be found.
-#[tauri::command]
-pub async fn session_context(dir: String, session_id: String) -> Option<u8> {
-    // Claude's own number first: the statusLine payload saved to <dir>/limits.json carries
-    // context_window.used_percentage and the session it belongs to — exact, no model table.
-    if let Some(pct) = payload_context(&dir, &session_id) {
-        return Some(pct);
-    }
-    let projects = PathBuf::from(expand(&dir)).join("projects");
-    let file = std::fs::read_dir(&projects)
-        .ok()?
-        .flatten()
-        .map(|d| d.path().join(format!("{session_id}.jsonl")))
-        .find(|p| p.exists())?;
-    // The transcript is re-read every few seconds for a gauge that only moves when the file
-    // grows. Remember the last answer against the file's size and mtime and skip the 256 KB
-    // read plus the JSON parse of every usage line when nothing has been appended.
-    let stamp = std::fs::metadata(&file)
+/// input + cache tokens over the model's window. Enough to warn before an auto-compact — not
+/// accounting. None when a usage entry cannot be found. (Claude's own exact number, from the
+/// statusLine payload, is preferred by `session_stats` when the payload is this session's.)
+fn context_of(session_id: &str, file: &Path) -> Option<u8> {
+    // The transcript is re-read for a gauge that only moves when the file grows. Remember the
+    // last answer against the file's size and mtime and skip the 256 KB read plus the JSON
+    // parse of every usage line when nothing has been appended.
+    let stamp = std::fs::metadata(file)
         .ok()
         .map(|m| (m.len(), m.modified().ok()))
         .unwrap_or((0, None));
-    if let Some((seen, pct)) = CONTEXT_CACHE.lock().ok().and_then(|c| c.get(&session_id).copied()) {
+    if let Some((seen, pct)) = CONTEXT_CACHE.lock().ok().and_then(|c| c.get(session_id).copied()) {
         if seen == stamp {
             return pct;
         }
     }
-    let text = tail(&file, 256 * 1024)?;
+    let text = tail(file, 256 * 1024)?;
     let mut last: Option<u64> = None;
     let mut model = String::new();
     for line in text.lines() {
@@ -598,7 +680,7 @@ pub async fn session_context(dir: String, session_id: String) -> Option<u8> {
     }
     let pct = last.map(|t| ((t as f64 / window_for(&model) as f64) * 100.0).round().clamp(0.0, 100.0) as u8);
     if let Ok(mut c) = CONTEXT_CACHE.lock() {
-        c.insert(session_id.clone(), (stamp, pct));
+        c.insert(session_id.to_string(), (stamp, pct));
     }
     pct
 }
@@ -626,20 +708,13 @@ pub type Prices = HashMap<String, [f64; 4]>;
 static USAGE_CACHE: std::sync::LazyLock<Mutex<HashMap<String, (u64, SessionUsage)>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
-#[tauri::command]
-pub async fn session_usage(dir: String, session_id: String, prices: Prices) -> Option<SessionUsage> {
-    let projects = PathBuf::from(expand(&dir)).join("projects");
-    let file = std::fs::read_dir(&projects)
-        .ok()?
-        .flatten()
-        .map(|d| d.path().join(format!("{session_id}.jsonl")))
-        .find(|p| p.exists())?;
-    let len = std::fs::metadata(&file).ok()?.len();
+fn usage_of(session_id: &str, file: &Path, prices: &Prices) -> Option<SessionUsage> {
+    let len = std::fs::metadata(file).ok()?.len();
 
     let (mut offset, mut total) = USAGE_CACHE
         .lock()
         .ok()
-        .and_then(|c| c.get(&session_id).copied())
+        .and_then(|c| c.get(session_id).copied())
         .unwrap_or((0, SessionUsage::default()));
     // A file that shrank was replaced (a `/clear`, a new session under the same id): start over.
     if len < offset {
@@ -647,7 +722,7 @@ pub async fn session_usage(dir: String, session_id: String, prices: Prices) -> O
         total = SessionUsage::default();
     }
     if len > offset {
-        if let Some(text) = read_from(&file, offset) {
+        if let Some(text) = read_from(file, offset) {
             for line in text.lines() {
                 if !line.contains("\"usage\"") {
                     continue;
@@ -666,14 +741,14 @@ pub async fn session_usage(dir: String, session_id: String, prices: Prices) -> O
                 total.cache_read += cr;
                 total.cache_write += cw;
                 total.turns += 1;
-                let rate = price_for(&prices, model);
+                let rate = price_for(prices, model);
                 total.cost_usd += (i as f64 * rate[0] + o as f64 * rate[1] + cr as f64 * rate[2] + cw as f64 * rate[3]) / 1e6;
             }
         }
         offset = len;
     }
     if let Ok(mut c) = USAGE_CACHE.lock() {
-        c.insert(session_id.clone(), (offset, total));
+        c.insert(session_id.to_string(), (offset, total));
     }
     Some(total)
 }
@@ -705,16 +780,14 @@ type FileStamp = (u64, Option<std::time::SystemTime>);
 static CONTEXT_CACHE: std::sync::LazyLock<Mutex<HashMap<String, (FileStamp, Option<u8>)>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// The saved statusLine payload, when it is this very session's: Claude's own percentage.
-fn payload_context(dir: &str, session_id: &str) -> Option<u8> {
+/// The saved statusLine payload: which session it is about, and Claude's own percentage for
+/// it. Read once per `session_stats` call, never per session.
+fn payload_context(dir: &str) -> Option<(String, u8)> {
     let text = std::fs::read_to_string(PathBuf::from(expand(dir)).join("limits.json")).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-    if v.get("session_id").and_then(|s| s.as_str()) != Some(session_id) {
-        return None;
-    }
-    v.pointer("/context_window/used_percentage")
-        .and_then(|p| p.as_f64())
-        .map(|p| p.round().clamp(0.0, 100.0) as u8)
+    let sid = v.get("session_id").and_then(|s| s.as_str())?.to_string();
+    let pct = v.pointer("/context_window/used_percentage").and_then(|p| p.as_f64()).map(|p| p.round().clamp(0.0, 100.0) as u8)?;
+    Some((sid, pct))
 }
 
 /// The context window the transcript-math fallback measures against. The Claude 5 family
