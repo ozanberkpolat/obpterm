@@ -16,9 +16,9 @@ pub const EVENTS: [&str; 9] = [
     "SessionEnd",
 ];
 
-/// The sentinel that marks our entries. Bump the suffix when the command changes shape, and
-/// old entries are replaced instead of duplicated.
-pub const MARK: &str = "# obpterm-hooks v2";
+/// The sentinel that marks our entries. Bump the suffix when the hook's shape changes, and old
+/// entries are replaced instead of duplicated.
+pub const MARK: &str = "# obpterm-hooks v3";
 
 /// What makes a block OURS, whatever version wrote it. `MARK` carries a version so a stale
 /// block can be recognised as stale — but recognition has to ignore that version, or the day
@@ -26,57 +26,102 @@ pub const MARK: &str = "# obpterm-hooks v2";
 /// and add a second one beside it, and every hook event would fire twice, through both.
 pub const MARK_BASE: &str = "# obpterm-hooks";
 
-/// How the shell should spell the host's path. The commands run through a POSIX shell on
-/// Windows (Git Bash), where a backslash is an escape — so forward slashes, always.
+/// How the shell should spell the host's path. Only the statusLine still runs through a shell
+/// (there is no http statusLine) — on Windows (Git Bash) a backslash is an escape, so forward
+/// slashes, always.
 fn shell_path(exe: &str) -> String {
     exe.replace('\\', "/")
 }
 
-/// The command itself: one process, which checks for `OBPTERM_PANE_ID` and fails open on its
-/// own (see `cli::hook`). It replaces `sh` + `curl` per event — two process creations for every
-/// PreToolUse and PostToolUse of every agent, which is what made a fan-out cost so much on
-/// Windows. The `[ -n ... ]` guard stays so a plain terminal does not even spawn us.
-pub fn hook_command(exe: &str) -> String {
-    format!(r#"[ -n "$OBPTERM_PANE_ID" ] && "{}" hook; : {MARK}"#, shell_path(exe))
+/// Where the hooks POST: one fixed path, since the pane travels as a header (see `hook_object`).
+pub fn hook_url(port: u16) -> String {
+    format!("http://127.0.0.1:{port}/hook")
 }
 
-/// True when the settings already carry the current block on every event.
+/// The hook itself: an `http` hook, not a `command` one. v2 and earlier ran `sh` + our own
+/// binary per event — two process creations for every PreToolUse and PostToolUse of every
+/// agent, which is what made a fan-out cost so much on Windows (see `host/src/cli.rs`, kept for
+/// the sessions still running an old snapshot). An http hook is Claude Code's own process
+/// POSTing on loopback: zero spawns, at any fan-out size.
+///
+/// The pane id can't live in the URL — the URL is one static string in `settings.json` and
+/// cannot vary per pane — so it travels as a header instead, interpolated from the invoking
+/// shell's own `$OBPTERM_PANE_ID` (the same variable the old command hook read from its
+/// environment). A plain terminal outside any OBPTerm pane has no such variable: the header
+/// resolves empty, and the listener drops the request unanswered rather than treating it as a
+/// malformed one (see `hooks::parse_pane`) — replacing the `[ -n ... ]` shell guard that used to
+/// stop those sessions from even spawning us.
+fn hook_object(port: u16, token: &str, timeout: u64) -> Value {
+    json!({
+        "type": "http",
+        "url": hook_url(port),
+        "timeout": timeout,
+        "headers": {
+            "X-OBPTerm-Token": token,
+            "X-OBPTerm-Pane": "$OBPTERM_PANE_ID",
+            "X-OBPTerm-Mark": MARK,
+        },
+        "allowedEnvVars": ["OBPTERM_PANE_ID"],
+    })
+}
+
+/// PermissionRequest's POST is held while the rail decides; give it room. A permission request
+/// may be held for `ANSWER_WAIT_AWAY` (3 min) while nobody is looking at the window; the hook's
+/// own timeout has to outlast that or Claude Code kills the wait before the answer can arrive
+/// from the rail — or from a phone.
+fn timeout_for(event: &str) -> u64 {
+    if event == "PermissionRequest" { 200 } else { 10 }
+}
+
+/// The full `/hooks/<event>` array entry this event should carry.
+fn wanted_entry(event: &str, port: u16, token: &str) -> Value {
+    let mut entry = json!({ "hooks": [hook_object(port, token, timeout_for(event))] });
+    // PostToolUse only ever does one thing: link an Agent-tool call's id to the agent it
+    // spawned (`normalize`'s `is_task` branch). Every other tool's PostToolUse is a repeat of
+    // the PreToolUse event nobody read differently — and during a fan-out it is half of every
+    // hook event fired. Matches both spellings `is_task` accepts: Claude Code has used "Task"
+    // and now "Agent" for the same tool across versions.
+    if event == "PostToolUse" {
+        entry["matcher"] = json!("Task|Agent");
+    }
+    entry
+}
+
+/// Whether one hook object (of any shape, any version) is ours: a v1/v2 `command` carried the
+/// mark in a shell comment, a v3 `http` hook carries it in a header.
+fn carries_mark(hook: &Value) -> bool {
+    hook.get("command").and_then(|c| c.as_str()).is_some_and(|c| c.contains(MARK_BASE))
+        || hook.pointer("/headers/X-OBPTerm-Mark").and_then(|c| c.as_str()).is_some_and(|c| c.contains(MARK_BASE))
+}
+
+/// True when the settings already carry a block of ours on every event.
 pub fn installed(settings: &Value) -> bool {
     EVENTS.iter().all(|event| {
         settings
             .pointer(&format!("/hooks/{event}"))
             .and_then(|v| v.as_array())
             .is_some_and(|entries| {
-                entries.iter().any(|e| {
-                    e.get("hooks")
-                        .and_then(|h| h.as_array())
-                        .is_some_and(|hooks| hooks.iter().any(|h| h.get("command").and_then(|c| c.as_str()).is_some_and(|c| c.contains(MARK_BASE))))
-                })
+                entries.iter().any(|e| e.get("hooks").and_then(|h| h.as_array()).is_some_and(|hooks| hooks.iter().any(carries_mark)))
             })
     })
 }
 
-/// True when our installed block is the CURRENT command, not an older one. A settings file
-/// written by an earlier version carries the same mark but a stale command; without this the
-/// installer would skip it forever and the app would wait on events that never come.
-pub fn current(settings: &Value, exe: &str) -> bool {
-    let want = hook_command(exe);
+/// True when our installed block is the CURRENT shape and address, not a stale one. A settings
+/// file written by an earlier version — or by this host's own PREVIOUS run, before a port
+/// changed — carries the same mark but a different hook; without this the installer would skip
+/// it forever and the app would wait on events that never come.
+pub fn current(settings: &Value, port: u16, token: &str) -> bool {
     EVENTS.iter().all(|event| {
+        let want = hook_object(port, token, timeout_for(event));
         settings
             .pointer(&format!("/hooks/{event}"))
             .and_then(|v| v.as_array())
-            .is_some_and(|entries| {
-                entries.iter().any(|e| {
-                    e.get("hooks").and_then(|h| h.as_array()).is_some_and(|hooks| {
-                        hooks.iter().any(|h| h.get("command").and_then(|c| c.as_str()) == Some(want.as_str()))
-                    })
-                })
-            })
+            .is_some_and(|entries| entries.iter().any(|e| e.get("hooks").and_then(|h| h.as_array()).is_some_and(|hooks| hooks.contains(&want))))
     })
 }
 
 /// Adds (or refreshes) the block, leaving every other hook exactly as it was.
-pub fn install(settings: &mut Value, exe: &str) {
+pub fn install(settings: &mut Value, port: u16, token: &str) {
     remove(settings);
     if !settings.is_object() {
         *settings = json!({});
@@ -98,14 +143,7 @@ pub fn install(settings: &mut Value, exe: &str) {
         if !entries.is_array() {
             *entries = json!([]);
         }
-        // PermissionRequest's POST is held while the rail decides; give it room.
-        // A permission request may be held for `ANSWER_WAIT_AWAY` (3 min) while nobody is looking
-        // at the window; the hook's own timeout has to outlast that or Claude Code kills the
-        // wait before the answer can arrive from the rail — or from a phone.
-        let timeout = if event == "PermissionRequest" { 200 } else { 10 };
-        entries.as_array_mut().unwrap().push(json!({
-            "hooks": [{ "type": "command", "command": hook_command(exe), "timeout": timeout }]
-        }));
+        entries.as_array_mut().unwrap().push(wanted_entry(event, port, token));
     }
 }
 
@@ -116,7 +154,7 @@ pub fn remove(settings: &mut Value) {
         if let Some(list) = entries.as_array_mut() {
             for entry in list.iter_mut() {
                 if let Some(inner) = entry.get_mut("hooks").and_then(|h| h.as_array_mut()) {
-                    inner.retain(|h| !h.get("command").and_then(|c| c.as_str()).is_some_and(|c| c.contains(MARK_BASE)));
+                    inner.retain(|h| !carries_mark(h));
                 }
             }
             list.retain(|entry| {
@@ -214,13 +252,16 @@ pub fn statusline_remove(settings: &mut Value) -> bool {
 mod tests {
     use super::*;
 
-    /// Where the host would live on a real machine; the commands embed it.
+    /// Where the host would live on a real machine; the statusLine command embeds it.
     const EXE: &str = "C:/Users/obp/AppData/Local/OBPTerm/host/obpterm-host-9.9.9.exe";
+    const PORT: u16 = 54321;
+    const TOKEN: &str = "tok-abc123";
 
     #[test]
-    fn a_block_written_by_an_older_version_is_upgraded_not_doubled() {
-        // The v1 shape, mark and all, as 0.21.12 and earlier wrote it.
-        let old = format!(r#"[ -n "$OBPTERM_PANE_ID" ] && curl -s --data-binary @- http://x; : # obpterm-hooks v1"#);
+    fn a_v1_command_block_is_upgraded_to_the_http_shape_not_doubled() {
+        // The v1 shape, mark and all, as 0.21.12 and earlier wrote it — a `command` hook, not
+        // the `http` one this version ships.
+        let old = "[ -n \"$OBPTERM_PANE_ID\" ] && curl -s --data-binary @- http://x; : # obpterm-hooks v1".to_string();
         let mut hooks = serde_json::Map::new();
         for event in EVENTS {
             hooks.insert(event.to_string(), json!([{ "hooks": [{ "type": "command", "command": old }] }]));
@@ -230,17 +271,14 @@ mod tests {
             "statusLine": { "type": "command", "command": "p=$(cat); printf '%s' \"$p\"; : # obpterm-statusline v2" },
         });
         assert!(installed(&settings), "an older block is still recognisably ours");
-        assert!(!current(&settings, EXE), "but it is not the command we ship now");
+        assert!(!current(&settings, PORT, TOKEN), "but it is not the shape we ship now");
 
-        install(&mut settings, EXE);
+        install(&mut settings, PORT, TOKEN);
         let entries = settings.pointer("/hooks/PreToolUse").unwrap().as_array().unwrap();
-        let commands: Vec<&str> = entries
-            .iter()
-            .flat_map(|e| e.get("hooks").unwrap().as_array().unwrap())
-            .map(|h| h.get("command").unwrap().as_str().unwrap())
-            .collect();
-        assert_eq!(commands.len(), 1, "the old block is replaced, not joined: {commands:?}");
-        assert_eq!(commands[0], hook_command(EXE));
+        let hooks: Vec<&Value> = entries.iter().flat_map(|e| e.get("hooks").unwrap().as_array().unwrap()).collect();
+        assert_eq!(hooks.len(), 1, "the old block is replaced, not joined: {hooks:?}");
+        assert_eq!(hooks[0]["type"], "http");
+        assert_eq!(hooks[0]["url"], hook_url(PORT));
 
         // And the statusLine an older version wrote is ours to replace — not a stranger's.
         assert!(statusline_installed(&settings), "our own older statusLine is recognised");
@@ -265,15 +303,21 @@ mod tests {
     }
 
     #[test]
-    fn neither_command_spawns_a_shell_pipeline() {
-        // The whole point of v0.21.13: one process per event, not eight. If either of these
-        // grows a `curl`, a `sed` or a pipe again, an agent fan-out gets expensive on Windows.
-        for cmd in [hook_command(EXE), statusline_command(EXE)] {
-            for banned in ["curl", "sed", "printf", "|", "$("] {
-                assert!(!cmd.contains(banned), "{banned:?} is back in {cmd:?}");
-            }
-            assert!(cmd.contains(EXE), "the command calls the host binary: {cmd:?}");
+    fn the_hook_spawns_no_process_at_all() {
+        // The whole point of this version: zero process creations per event, not one, not
+        // eight. An http hook has no `command` field for a shell pipeline to hide in.
+        let hook = hook_object(PORT, TOKEN, 10);
+        assert_eq!(hook["type"], "http", "not a command hook: {hook:?}");
+        assert!(hook.get("command").is_none(), "no shell command to spawn: {hook:?}");
+        assert_eq!(hook["url"], format!("http://127.0.0.1:{PORT}/hook"));
+
+        // The statusLine has no http equivalent and stays a command — but still one process,
+        // no pipeline.
+        let cmd = statusline_command(EXE);
+        for banned in ["curl", "sed", "printf", "|", "$("] {
+            assert!(!cmd.contains(banned), "{banned:?} is back in {cmd:?}");
         }
+        assert!(cmd.contains(EXE), "the command calls the host binary: {cmd:?}");
     }
 
     #[test]
@@ -284,8 +328,8 @@ mod tests {
                 "Stop": [{ "hooks": [{ "type": "command", "command": "ntfy send done" }] }]
             }
         });
-        install(&mut settings, EXE);
-        install(&mut settings, EXE); // twice: must not duplicate
+        install(&mut settings, PORT, TOKEN);
+        install(&mut settings, PORT, TOKEN); // twice: must not duplicate
         assert!(installed(&settings));
         let stop = settings.pointer("/hooks/Stop").unwrap().as_array().unwrap();
         assert_eq!(stop.len(), 2, "the user's own Stop hook plus exactly one of ours");
@@ -319,24 +363,52 @@ mod tests {
     #[test]
     fn a_stale_block_is_recognised_and_refreshed() {
         let mut settings = json!({});
-        install(&mut settings, EXE);
-        assert!(installed(&settings) && current(&settings, EXE));
-        // Simulate a block written by an older version: our mark, a different command.
+        install(&mut settings, PORT, TOKEN);
+        assert!(installed(&settings) && current(&settings, PORT, TOKEN));
+        // Simulate a block written by an older version: our mark, a different token.
         for event in EVENTS {
             let entries = settings.pointer_mut(&format!("/hooks/{event}")).unwrap().as_array_mut().unwrap();
-            entries[0]["hooks"][0]["command"] = json!(format!("old-command ; : {MARK}"));
+            entries[0]["hooks"][0]["headers"]["X-OBPTerm-Token"] = json!("stale-token");
         }
         assert!(installed(&settings), "it still carries our mark");
-        assert!(!current(&settings, EXE), "but it is not the command we ship now");
-        install(&mut settings, EXE);
-        assert!(current(&settings, EXE), "installing again refreshes it");
+        assert!(!current(&settings, PORT, TOKEN), "but it is not the address we ship now");
+        install(&mut settings, PORT, TOKEN);
+        assert!(current(&settings, PORT, TOKEN), "installing again refreshes it");
+    }
+
+    #[test]
+    fn a_host_restart_on_a_new_port_is_recognised_as_stale_too() {
+        // The exact scenario `hooks::HookAddr` persistence exists to avoid: without it, EVERY
+        // host restart would land here, and a session that had already snapshotted the old URL
+        // would silently stop reaching us until it too was restarted.
+        let mut settings = json!({});
+        install(&mut settings, PORT, TOKEN);
+        assert!(current(&settings, PORT, TOKEN));
+        assert!(!current(&settings, PORT + 1, TOKEN), "a different port is a different address");
+        install(&mut settings, PORT + 1, TOKEN);
+        assert!(current(&settings, PORT + 1, TOKEN));
+    }
+
+    #[test]
+    fn post_tool_use_is_scoped_to_the_agent_tool_and_nothing_else_is() {
+        // The point of this entry: half the hook events in a fan-out, without losing the one
+        // thing PostToolUse is actually for (linking a Task/Agent call's id to its agent).
+        let mut settings = json!({});
+        install(&mut settings, PORT, TOKEN);
+        assert_eq!(settings.pointer("/hooks/PostToolUse/0/matcher").unwrap(), "Task|Agent");
+        for event in EVENTS {
+            if event == "PostToolUse" {
+                continue;
+            }
+            assert!(settings.pointer(&format!("/hooks/{event}/0/matcher")).is_none(), "{event} must fire on every tool");
+        }
     }
 
     #[test]
     fn install_copes_with_an_empty_or_missing_file() {
         let mut settings = json!({});
         assert!(!installed(&settings));
-        install(&mut settings, EXE);
+        install(&mut settings, PORT, TOKEN);
         assert!(installed(&settings));
         assert!(settings.pointer("/hooks/PermissionRequest/0/hooks/0/timeout").unwrap() == 200);
     }

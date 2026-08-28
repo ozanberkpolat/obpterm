@@ -67,7 +67,7 @@ async fn collect(
 
 #[tokio::test]
 async fn a_shell_outlives_the_connection_that_started_it() {
-    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "secret".into(), "test"));
+    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "secret".into(), obpterm_host::random_hex(12), "test"));
     let advert = host.advert.clone();
     let server = tokio::spawn(Arc::clone(&host).serve());
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -125,7 +125,7 @@ async fn a_shell_outlives_the_connection_that_started_it() {
 
 #[tokio::test]
 async fn a_finished_shell_is_reported_on_attach_not_lost() {
-    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), "test"));
+    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), obpterm_host::random_hex(12), "test"));
     let advert = host.advert.clone();
     let server = tokio::spawn(Arc::clone(&host).serve());
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -155,10 +155,10 @@ async fn a_hook_event_reaches_the_window_and_the_answer_reaches_the_hook() {
     use obpterm_host::client::AgentUpdate;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), "test"));
+    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), obpterm_host::random_hex(12), "test"));
     let dir = std::env::temp_dir().join(format!("obpterm-hooks-{}", obpterm_host::random_hex(4)));
     std::fs::create_dir_all(&dir).unwrap();
-    host.start_hooks(&dir).await.unwrap();
+    host.start_hooks(&dir, None).await.unwrap();
     let advert = host.advert.clone();
     let server = tokio::spawn(Arc::clone(&host).serve());
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -208,10 +208,10 @@ async fn a_real_fan_out_reaches_the_window_as_agent_events() {
     use obpterm_host::client::AgentUpdate;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), "test"));
+    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), obpterm_host::random_hex(12), "test"));
     let dir = std::env::temp_dir().join(format!("obpterm-fan-{}", obpterm_host::random_hex(4)));
     std::fs::create_dir_all(&dir).unwrap();
-    host.start_hooks(&dir).await.unwrap();
+    host.start_hooks(&dir, None).await.unwrap();
     let advert = host.advert.clone();
     let server = tokio::spawn(Arc::clone(&host).serve());
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -276,10 +276,10 @@ async fn a_nested_fan_out_keeps_the_agent_that_spawned_it() {
     const PARENT: &str = "a922a834869763a99";
     const CHILD: &str = "a79bb991a511167a2";
 
-    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), "test"));
+    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), obpterm_host::random_hex(12), "test"));
     let dir = std::env::temp_dir().join(format!("obpterm-nest-{}", obpterm_host::random_hex(4)));
     std::fs::create_dir_all(&dir).unwrap();
-    host.start_hooks(&dir).await.unwrap();
+    host.start_hooks(&dir, None).await.unwrap();
     let advert = host.advert.clone();
     let server = tokio::spawn(Arc::clone(&host).serve());
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -347,10 +347,10 @@ async fn a_permission_request_is_held_longer_while_nobody_is_looking() {
     use obpterm_host::client::AgentUpdate;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), "test"));
+    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), obpterm_host::random_hex(12), "test"));
     let dir = std::env::temp_dir().join(format!("obpterm-hold-{}", obpterm_host::random_hex(4)));
     std::fs::create_dir_all(&dir).unwrap();
-    host.start_hooks(&dir).await.unwrap();
+    host.start_hooks(&dir, None).await.unwrap();
     let advert = host.advert.clone();
     let server = tokio::spawn(Arc::clone(&host).serve());
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -398,7 +398,7 @@ async fn a_permission_request_is_held_longer_while_nobody_is_looking() {
 /// no error, which in this app means a stuck "Restarting…" nobody can explain.
 #[tokio::test]
 async fn a_request_in_flight_when_the_host_dies_fails_instead_of_hanging() {
-    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), "test"));
+    let host = Arc::new(Host::new(format!("obpterm-test-{}", obpterm_host::random_hex(6)), "t".into(), obpterm_host::random_hex(12), "test"));
     let advert = host.advert.clone();
     let server = tokio::spawn(Arc::clone(&host).serve());
     tokio::time::sleep(Duration::from_millis(100)).await;

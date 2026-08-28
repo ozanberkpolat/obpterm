@@ -27,7 +27,10 @@ pub struct Host {
 pub const IDLE_EXIT: Duration = Duration::from_secs(300);
 
 impl Host {
-    pub fn new(socket: String, token: String, version: &str) -> Self {
+    /// `hook_token` is the http hook's own secret — separate from `token`, the local socket's —
+    /// and is passed in rather than minted here so the caller can reuse whatever `hookaddr`
+    /// persisted from a previous run instead of rotating it on every restart.
+    pub fn new(socket: String, token: String, hook_token: String, version: &str) -> Self {
         let (shutdown, _) = tokio::sync::watch::channel(false);
         Self {
             advert: Advert {
@@ -38,17 +41,23 @@ impl Host {
                 version: version.to_string(),
             },
             registry: Arc::new(std::sync::Mutex::new(Registry::default())),
-            hooks: HookHub::new(crate::random_hex(12)),
+            hooks: HookHub::new(hook_token),
             hook_env: std::sync::Mutex::new(Vec::new()),
             shutdown,
         }
     }
 
-    /// Starts the hook listener and writes the bash-sourceable env file the installed hooks
-    /// read. Sessions carry the FILE's path in their environment, not the port: the port
-    /// changes when the host restarts, the file's location never does.
-    pub async fn start_hooks(&self, config_dir: &std::path::Path) -> std::io::Result<()> {
-        let port = Arc::clone(&self.hooks).listen().await?;
+    /// Starts the hook listener — on `preferred_port` when the caller has one (from `hookaddr`,
+    /// what a previous run persisted) — and writes two things sessions read to reach it:
+    /// `hookaddr.json`, which `hooks_ensure` reads to build the http hook's literal URL and
+    /// token, and the bash-sourceable env file a v2-or-earlier `command` hook still reads at
+    /// invocation time. Sessions carry the ENV FILE's path in their environment, not the port
+    /// it names: that indirection is what let a v2 hook survive a host restart with no
+    /// persistence at all — v3 needs `hookaddr.json` instead because an http hook's URL has no
+    /// such indirection (see `hookaddr`'s module doc).
+    pub async fn start_hooks(&self, config_dir: &std::path::Path, preferred_port: Option<u16>) -> std::io::Result<()> {
+        let port = Arc::clone(&self.hooks).listen(preferred_port).await?;
+        crate::hookaddr::save(config_dir, &crate::hookaddr::HookAddr { port, token: self.hooks.token.clone() });
         let env_file = config_dir.join("hook-endpoint.env");
         std::fs::write(
             &env_file,

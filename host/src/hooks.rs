@@ -3,8 +3,9 @@
 //! not from watching bytes.
 //!
 //! It lives in the host because hooks must survive window restarts. A tiny hand-rolled
-//! HTTP/1.1 loop on loopback: one POST shape, a token in the path, nothing else — a real HTTP
-//! dependency would be more code than this file.
+//! HTTP/1.1 loop on loopback: one POST, a token and pane id on headers (see `parse_pane` for the
+//! older path-based shape still accepted), nothing else — a real HTTP dependency would be more
+//! code than this file.
 //!
 //! Approvals ride the response: a PermissionRequest hook's POST is HELD OPEN until the window
 //! answers or the timeout passes. An "allow"/"deny" completes it with the decision JSON that
@@ -66,9 +67,17 @@ impl HookHub {
         }
     }
 
-    /// Binds on an ephemeral loopback port; returns it.
-    pub async fn listen(self: Arc<Self>) -> std::io::Result<u16> {
-        let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
+    /// Binds on `preferred_port` when one is given and still free — the port an http hook's
+    /// URL was last built with, so a routine restart does not orphan every already-open pane
+    /// (see `hookaddr`) — falling back to a fresh ephemeral port otherwise.
+    pub async fn listen(self: Arc<Self>, preferred_port: Option<u16>) -> std::io::Result<u16> {
+        let listener = match preferred_port {
+            Some(p) => match TcpListener::bind(("127.0.0.1", p)).await {
+                Ok(l) => l,
+                Err(_) => TcpListener::bind(("127.0.0.1", 0)).await?,
+            },
+            None => TcpListener::bind(("127.0.0.1", 0)).await?,
+        };
         let port = listener.local_addr()?.port();
         tokio::spawn(async move {
             loop {
@@ -86,7 +95,7 @@ impl HookHub {
         // Read until the end of a small request; hooks send one POST and wait.
         let mut buf = Vec::with_capacity(4096);
         let mut tmp = [0u8; 4096];
-        let (path, body) = loop {
+        let (path, headers, body) = loop {
             let n = stream.read(&mut tmp).await?;
             if n == 0 {
                 return Ok(());
@@ -97,28 +106,32 @@ impl HookHub {
             }
             if let Some(head_end) = find(&buf, b"\r\n\r\n") {
                 let head = String::from_utf8_lossy(&buf[..head_end]).into_owned();
-                let length = head
-                    .lines()
-                    .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().ok()))
-                    .flatten()
-                    .unwrap_or(0);
+                let mut lines = head.lines();
+                let first = lines.next().unwrap_or_default().to_string();
+                let path = first.split_whitespace().nth(1).unwrap_or_default().to_string();
+                let headers: HashMap<String, String> =
+                    lines.filter_map(|l| l.split_once(':')).map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string())).collect();
+                let length = headers.get("content-length").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
                 let body_start = head_end + 4;
                 if buf.len() >= body_start + length {
-                    let first = head.lines().next().unwrap_or_default().to_string();
-                    let path = first.split_whitespace().nth(1).unwrap_or_default().to_string();
-                    break (path, buf[body_start..body_start + length].to_vec());
+                    break (path, headers, buf[body_start..body_start + length].to_vec());
                 }
             }
         };
 
-        // /hook/<token>/<pane>
-        let mut parts = path.trim_start_matches('/').split('/');
-        if parts.next() != Some("hook") || parts.next() != Some(self.token.as_str()) {
+        // v3 shape: token + pane on headers (`X-OBPTerm-Token`/`X-OBPTerm-Pane`), path is bare
+        // `/hook` — an http hook has no per-pane URL to put them in (see install.rs). v2 and
+        // earlier shape kept so a settings.json a not-yet-restarted host wrote still reaches us:
+        // `/hook/<token>/<pane>`, no headers, from a `command` hook's own spawned process.
+        // Anything that fits neither — a plain terminal's Claude Code, with no OBPTERM_PANE_ID
+        // to interpolate — is not ours; 200 and nothing, the same silence the old shell guard
+        // gave it.
+        let Some((token, pane)) = parse_pane(&path, &headers) else {
+            return respond(&mut stream, 200, "").await;
+        };
+        if token != self.token {
             return respond(&mut stream, 403, "").await;
         }
-        let Some(pane) = parts.next().and_then(|p| p.parse::<u32>().ok()) else {
-            return respond(&mut stream, 400, "").await;
-        };
         let Ok(payload) = serde_json::from_slice::<serde_json::Value>(&body) else {
             return respond(&mut stream, 400, "").await;
         };
@@ -153,6 +166,22 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
 }
 
+/// The token and pane a request carried, whichever shape it used — `None` when it is neither
+/// (an unresolved `$OBPTERM_PANE_ID` interpolates to an empty header, exactly like a plain
+/// terminal's Claude Code that never had the variable at all).
+fn parse_pane(path: &str, headers: &HashMap<String, String>) -> Option<(String, u32)> {
+    if let (Some(token), Some(pane)) = (headers.get("x-obpterm-token"), headers.get("x-obpterm-pane")) {
+        return Some((token.clone(), pane.parse().ok()?));
+    }
+    let mut parts = path.trim_start_matches('/').split('/');
+    if parts.next() != Some("hook") {
+        return None;
+    }
+    let token = parts.next()?.to_string();
+    let pane = parts.next()?.parse().ok()?;
+    Some((token, pane))
+}
+
 async fn respond(stream: &mut tokio::net::TcpStream, code: u16, body: &str) -> std::io::Result<()> {
     let reason = match code {
         200 => "OK",
@@ -174,8 +203,16 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     async fn post(port: u16, path: &str, body: &str) -> (u16, String) {
+        post_with(port, path, &[], body).await
+    }
+
+    /// The v3 shape: token and pane on headers instead of the path — what an `http` hook
+    /// actually sends (Claude Code builds the request itself; nothing here constructs it by
+    /// hand outside these tests).
+    async fn post_with(port: u16, path: &str, extra_headers: &[(&str, &str)], body: &str) -> (u16, String) {
         let mut s = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-        let req = format!("POST {path} HTTP/1.1\r\nhost: x\r\ncontent-length: {}\r\n\r\n{body}", body.len());
+        let extra: String = extra_headers.iter().map(|(k, v)| format!("{k}: {v}\r\n")).collect();
+        let req = format!("POST {path} HTTP/1.1\r\nhost: x\r\n{extra}content-length: {}\r\n\r\n{body}", body.len());
         s.write_all(req.as_bytes()).await.unwrap();
         let mut out = String::new();
         s.read_to_string(&mut out).await.unwrap();
@@ -187,7 +224,7 @@ mod tests {
     #[tokio::test]
     async fn events_flow_and_a_bad_token_is_refused() {
         let hub = HookHub::new("tok".into());
-        let port = Arc::clone(&hub).listen().await.unwrap();
+        let port = Arc::clone(&hub).listen(None).await.unwrap();
         let mut events = hub.subscribe();
 
         let (code, _) = post(port, "/hook/tok/5", r#"{"hook_event_name":"Stop","session_id":"s9","last_assistant_message":"done"}"#).await;
@@ -200,9 +237,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_header_shape_works_the_same_as_the_legacy_path_one() {
+        let hub = HookHub::new("tok".into());
+        let port = Arc::clone(&hub).listen(None).await.unwrap();
+        let mut events = hub.subscribe();
+
+        let (code, _) = post_with(
+            port,
+            "/hook",
+            &[("X-OBPTerm-Token", "tok"), ("X-OBPTerm-Pane", "5")],
+            r#"{"hook_event_name":"Stop","session_id":"s9","last_assistant_message":"done"}"#,
+        )
+        .await;
+        assert_eq!(code, 200);
+        let e = events.recv().await.unwrap();
+        assert_eq!((e.pane, e.state.as_str()), (5, "done"));
+
+        let (code, _) = post_with(port, "/hook", &[("X-OBPTerm-Token", "WRONG"), ("X-OBPTerm-Pane", "5")], r#"{"hook_event_name":"Stop"}"#).await;
+        assert_eq!(code, 403);
+    }
+
+    #[tokio::test]
+    async fn a_session_outside_any_pane_is_dropped_silently_not_refused() {
+        // An unresolved `$OBPTERM_PANE_ID` interpolates to an empty header — a plain terminal's
+        // Claude Code, not one of ours. The old shell hook never even spawned for this case;
+        // the http hook always gets a response, but it must be a quiet 200, not an error.
+        let hub = HookHub::new("tok".into());
+        let port = Arc::clone(&hub).listen(None).await.unwrap();
+        let (code, _) = post_with(port, "/hook", &[("X-OBPTerm-Token", "tok"), ("X-OBPTerm-Pane", "")], r#"{"hook_event_name":"Stop"}"#).await;
+        assert_eq!(code, 200);
+    }
+
+    #[tokio::test]
     async fn a_permission_request_waits_for_the_rail_and_carries_the_verdict() {
         let hub = HookHub::new("t".into());
-        let port = Arc::clone(&hub).listen().await.unwrap();
+        let port = Arc::clone(&hub).listen(None).await.unwrap();
         let mut events = hub.subscribe();
 
         let answerer = {

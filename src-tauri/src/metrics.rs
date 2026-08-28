@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 use std::sync::Mutex;
-use sysinfo::{Disks, MemoryRefreshKind, Pid, ProcessesToUpdate, RefreshKind, System};
+use sysinfo::{Disks, MemoryRefreshKind, Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
 use tauri::State;
 
 pub struct Metrics(Mutex<Sampler>);
@@ -98,7 +98,9 @@ pub fn host_metrics(metrics: State<Metrics>, cwd: Option<String>) -> HostMetrics
 #[tauri::command]
 pub fn rss_for(metrics: State<Metrics>, pids: Vec<u32>) -> Vec<u64> {
     let mut s = metrics.0.lock().unwrap();
-    s.system.refresh_processes(ProcessesToUpdate::All, true);
+    // Memory + parent link only — CPU/disk/cmdline/environ cost nothing here and this sweep
+    // runs every few seconds while every process on the box is at its biggest, mid fan-out.
+    s.system.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing().with_memory());
     // parent -> children, one pass
     let mut children: std::collections::HashMap<Pid, Vec<Pid>> = std::collections::HashMap::new();
     for (pid, proc_) in s.system.processes() {

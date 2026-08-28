@@ -11,6 +11,7 @@ pub mod server;
 pub mod client;
 pub mod logins;
 pub mod agent;
+pub mod hookaddr;
 pub mod hooks;
 pub mod install;
 pub mod cli;

@@ -117,6 +117,8 @@ const PRESSURE_COOLDOWN_MS = 3 * 60_000;
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const DEFAULT_ACCENT = "#ff8a1e";
+/** Floor between repaints once a burst is under way — see `paintSoon`. */
+const PAINT_MIN_GAP_MS = 100;
 
 export class App implements PaneHost {
   tabs: Tab[] = [];
@@ -1613,12 +1615,21 @@ export class App implements PaneHost {
   paintSoon() {
     if (this.paintQueued) return;
     this.paintQueued = true;
-    requestAnimationFrame(() => {
+    // A ten-agent fan-out fires this at well over 60 Hz (a PreToolUse+PostToolUse per tool call
+    // per agent) — rAF alone still repaints every frame. Once a paint has happened recently,
+    // push the next one out to a ~100ms floor instead: nothing on the rail needs to be truthful
+    // more often than that, and it turns a burst into ~10 repaints/s instead of ~60.
+    const gap = Date.now() - this.lastPaintAt;
+    const run = () => {
       this.paintQueued = false;
+      this.lastPaintAt = Date.now();
       this.paint();
-    });
+    };
+    if (gap < PAINT_MIN_GAP_MS) window.setTimeout(run, PAINT_MIN_GAP_MS - gap);
+    else requestAnimationFrame(run);
   }
   private paintQueued = false;
+  private lastPaintAt = 0;
 
   paint() {
     renderRail(this);

@@ -98,9 +98,14 @@ pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>, no_remote_control: 
     });
 
     let mut changed = Vec::new();
-    // The commands about to be written name this file. Make sure it is there, whether or not
-    // this launch was the one that spawned the host.
+    // The statusLine still runs through the host binary; the hooks no longer do (see
+    // install.rs). Make sure the binary is there either way, whether or not this launch was the
+    // one that spawned the host.
     let exe = ensure_host_copy().unwrap_or_else(|_| host_copy_path()).display().to_string();
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    // What the running host actually bound — written by `start_hooks` before its socket ever
+    // accepts a client, so this is never a race against `ensure()` above.
+    let hookaddr = obpterm_host::hookaddr::load(&config_dir).ok_or("the session host has no hook address yet")?;
     for dir in dirs {
         let path = PathBuf::from(expand_vars(&dir)).join("settings.json");
         // A missing file is a fresh account; a file that EXISTS but does not parse is someone's
@@ -117,11 +122,11 @@ pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>, no_remote_control: 
                 }
             },
         };
-        let hooks_done =
-            obpterm_host::install::installed(&settings) && obpterm_host::install::current(&settings, &exe);
+        let hooks_done = obpterm_host::install::installed(&settings)
+            && obpterm_host::install::current(&settings, hookaddr.port, &hookaddr.token);
         let mut wrote = false;
         if !hooks_done {
-            obpterm_host::install::install(&mut settings, &exe);
+            obpterm_host::install::install(&mut settings, hookaddr.port, &hookaddr.token);
             wrote = true;
         }
         // Same pass, same file: the token meters' statusLine (never over a user's own).
