@@ -517,6 +517,7 @@ function tailOf(pane: Pane, rows: number): string {
   if (pane.eco) return "sleeping to save memory — click to resume";
   if (pane.asleep) return "asleep — click to wake";
   if (pane.exited) return `exited${pane.exitCode ? ` with code ${pane.exitCode}` : ""}`;
+  if (!pane.term) return "";
   const buf = pane.term.term.buffer.active;
   const lines: string[] = [];
   for (let i = buf.length - 1; i >= 0 && lines.length < rows; i--) {

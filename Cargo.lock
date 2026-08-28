@@ -2658,7 +2658,7 @@ dependencies = [
 
 [[package]]
 name = "obpterm"
-version = "0.21.32"
+version = "0.21.33"
 dependencies = [
  "obpterm-host",
  "portable-pty",
@@ -2678,7 +2678,7 @@ dependencies = [
 
 [[package]]
 name = "obpterm-host"
-version = "0.21.32"
+version = "0.21.33"
 dependencies = [
  "interprocess",
  "portable-pty",
@@ -2686,6 +2686,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "windows 0.61.3",
 ]
 
 [[package]]

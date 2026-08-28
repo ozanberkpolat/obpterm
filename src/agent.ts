@@ -221,20 +221,31 @@ function applyFan(a: AgentState, u: AgentUpdate) {
  *  the moment they are launched, so dropping it would strand three running children and
  *  re-parent them onto the session — the fan-out would look flat when it is two deep. */
 export function pruneFan(a: AgentState): boolean {
+  if (!a.fanned.length) return false;
   const cutoff = Date.now() - 6000;
   const before = a.fanned.length;
+  // Who still has something running underneath: one walk up from every live agent, instead of
+  // a recursive filter per agent per check. This runs for every pane every second, and at a
+  // ten-agent fan-out the old 2 × O(F²) was hundreds of array scans a second per pane.
+  const byId = new Map(a.fanned.map((f) => [f.id, f]));
+  const trunks = new Set<string>();
+  for (const f of a.fanned) {
+    if (f.endedAt !== null) continue;
+    for (let p = f.parent; p && !trunks.has(p); p = byId.get(p)?.parent ?? null) trunks.add(p);
+  }
+  const keep = (f: FannedAgent) => f.endedAt === null || f.endedAt > cutoff || trunks.has(f.id);
   // An agent's own duration is computed, shown for six seconds and then deleted with it. Fold
   // it into the session's running total on the way out, so "that fan-out took 2m40s across four
   // agents" survives the agent that earned it.
   for (const f of a.fanned) {
-    if (f.endedAt === null || f.endedAt > cutoff || hasLiveDescendant(a, f.id)) continue;
-    const ms = f.endedAt - f.startedAt;
+    if (keep(f)) continue;
+    const ms = f.endedAt! - f.startedAt;
     a.fanStats = a.fanStats ?? { count: 0, totalMs: 0, longestMs: 0 };
     a.fanStats.count += 1;
     a.fanStats.totalMs += ms;
     a.fanStats.longestMs = Math.max(a.fanStats.longestMs, ms);
   }
-  a.fanned = a.fanned.filter((f) => f.endedAt === null || f.endedAt > cutoff || hasLiveDescendant(a, f.id));
+  a.fanned = a.fanned.filter(keep);
   return a.fanned.length !== before;
 }
 
@@ -358,6 +369,17 @@ export function modeLabel(a: AgentState): string {
 
 /** True when this pane runs Claude Code — the exe or an arg says so. */
 export function isClaudePane(pane: Pane): boolean {
-  const hay = `${pane.profile.exe} ${pane.profile.args.join(" ")}`.toLowerCase();
-  return hay.includes("claude") || pane.claudeSessionId !== null;
+  return pane.claudeSessionId !== null || runsClaude(pane.profile);
+}
+
+/** Remembered per profile object: this is asked for every pane on every repaint, and a
+ *  profile is replaced, never mutated, so the answer cannot go stale. */
+const RUNS_CLAUDE = new WeakMap<object, boolean>();
+function runsClaude(profile: Pane["profile"]): boolean {
+  let hit = RUNS_CLAUDE.get(profile);
+  if (hit === undefined) {
+    hit = `${profile.exe} ${profile.args.join(" ")}`.toLowerCase().includes("claude");
+    RUNS_CLAUDE.set(profile, hit);
+  }
+  return hit;
 }

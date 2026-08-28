@@ -24,6 +24,11 @@ pub struct Spawn {
     pub env: std::collections::BTreeMap<String, String>,
     pub cols: u16,
     pub rows: u16,
+    /// Start the shell at BELOW_NORMAL priority (Windows), which its children inherit — so the
+    /// terminal wins the scheduler over the agents when the machine is saturated. Defaulted so
+    /// a window and a host from either side of this change still understand each other.
+    #[serde(default)]
+    pub below_normal: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

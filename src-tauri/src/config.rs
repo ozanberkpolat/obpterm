@@ -134,6 +134,12 @@ pub struct Config {
     /// first, however recently they were used. 0 = never. This is the one that keeps the
     /// machine responsive: ~400 MB per idle session, and a box at 98% RAM thrashes on swap.
     pub eco_memory_pct: u32,
+    /// Start every shell one scheduling notch below the window — Windows BELOW_NORMAL, which
+    /// `claude` and every agent it spawns inherit. Ordering, not a cap: an idle machine gives
+    /// Claude every cycle; a saturated one serves the terminal's few milliseconds per frame
+    /// first, so the window keeps answering clicks while twenty Node processes have the CPU.
+    /// The cost is that under saturation Claude is slower by exactly what the UI used.
+    pub shells_below_normal: bool,
     /// Write `remoteControlAtStartup: false` into every Claude settings.json this app manages,
     /// and keep writing it: Claude Code's Remote Control activates itself for every new session,
     /// and turning it off with `/remote-control` only lasts as long as that session — so an app
@@ -220,6 +226,7 @@ impl Default for Config {
             max_live_panes: 8,
             eco_after_minutes: 15,
             eco_memory_pct: 85,
+            shells_below_normal: true,
             no_remote_control: true,
             context_warn_pct: 80,
             model_prices: default_prices(),

@@ -37,9 +37,22 @@ function isMouseReport(data: string): boolean {
   return data.length >= 4 && data.charCodeAt(0) === 27 && MOUSE_REPORT.test(data);
 }
 
+/** Whether `ESC [ ?` occurs anywhere in the chunk — the only prefix a DEC private mode has. */
+function hasDecPrivate(bytes: Uint8Array): boolean {
+  let at = bytes.indexOf(0x1b);
+  while (at >= 0 && at + 2 < bytes.length) {
+    if (bytes[at + 1] === 0x5b && bytes[at + 2] === 0x3f) return true;
+    at = bytes.indexOf(0x1b, at + 1);
+  }
+  return false;
+}
+
 export class Pane {
   readonly el = document.createElement("div");
-  term: Term;
+  /** The xterm, or null while asleep. Null is the whole point: a 25-tab restore used to build
+   *  25 terminals and 25 WebGL contexts and throw 24 of them away a moment later, straight
+   *  through Chromium's ~16-context ceiling. A pane that comes back asleep never builds one. */
+  term: Term | null;
   /** Asleep: the terminal is gone and the host is holding the shell unwatched. */
   asleep = false;
   /** What the host last said about this shell while it was asleep. */
@@ -118,12 +131,22 @@ export class Pane {
     public host: PaneHost,
     public profile: Profile,
     cwd: string | null = null,
+    /** Restore hint: this pane is for a tab that is not on screen and has a shell to attach
+     *  to later. It gets the placeholder, not a terminal — `start()` only records the id. */
+    startAsleep = false,
   ) {
     this.cwd = cwd ?? profile.cwd ?? null;
     this.title = profile.name;
     this.el.className = "pane";
-    this.term = this.buildTerm();
-    new ResizeObserver(() => !this.asleep && this.term.fit()).observe(this.el);
+    this.startAsleep = startAsleep;
+    this.asleep = startAsleep;
+    if (startAsleep) {
+      this.term = null;
+      this.placeholder();
+    } else {
+      this.term = this.buildTerm();
+    }
+    new ResizeObserver(() => this.term?.fit()).observe(this.el);
   }
 
   /** The xterm and everything wired to it. Done once at construction, and again on wake. */
@@ -224,8 +247,10 @@ export class Pane {
   /** Reads the program's own `CSI ? … h/l` out of its output and arms the mouse accordingly.
    *  Only what arrives on the live stream counts — a replayed record does not. */
   private trackMouseMode(bytes: Uint8Array) {
-    // Cheap gate: almost no chunk contains this, and the terminal parses the rest anyway.
-    if (bytes.length < 6 || bytes.indexOf(0x1b) < 0) return;
+    // Cheap gate. It used to be "any ESC at all" — which is every chunk of TUI output, so
+    // nearly every chunk paid a latin1 decode and a global regex on top of xterm's own parse.
+    // A DEC private mode starts `ESC [ ?`; nothing else here does.
+    if (bytes.length < 6 || !hasDecPrivate(bytes)) return;
     const text = MOUSE_DECODER.decode(bytes, { stream: false });
     for (const m of text.matchAll(/\x1b\[\?([\d;]+)([hl])/g)) {
       const on = m[2] === "h";
@@ -237,7 +262,13 @@ export class Pane {
 
   /** Drops the terminal and puts the placeholder in its place. The shell is not touched. */
   private teardown() {
-    this.term.dispose();
+    this.term?.dispose();
+    this.term = null;
+    this.placeholder();
+  }
+
+  /** What a sleeping pane shows instead of a terminal. */
+  private placeholder() {
     this.el.replaceChildren();
     const note = document.createElement("div");
     note.className = "asleep";
@@ -271,8 +302,23 @@ export class Pane {
   lastVisited = Date.now();
 
   async start() {
-    const t = this.term.term;
     this.lastOutput = Date.now();
+    if (this.attachTo !== null && this.startAsleep) {
+      // Twenty tabs coming back used to mean twenty attaches and twenty scrollback replays
+      // into twenty terminals, in one go, before the window would answer anything — and,
+      // until the terminal became lazy, twenty terminals built only to be torn down here. A
+      // tab you are not looking at needs none of that: the shell is already running and its
+      // id is all a click needs to attach it. The placeholder went in at construction.
+      this.id = this.attachTo;
+      this.attachTo = null;
+      this.startAsleep = false;
+      this.host.onPaneReattached(this);
+      return;
+    }
+    // A pane constructed asleep whose shell turned out to be gone spawns like any other.
+    this.startAsleep = false;
+    this.asleep = false;
+    const t = (this.term ??= this.buildTerm()).term;
     if (this.deadReason) {
       // Never substitute a different shell for a missing one: a tab that was the VPS must not
       // come back as a local PowerShell that still calls itself the VPS.
@@ -300,21 +346,12 @@ export class Pane {
       const id = this.attachTo;
       this.attachTo = null;
       this.id = id;
-      if (this.startAsleep) {
-        // Twenty tabs coming back used to mean twenty attaches and twenty scrollback replays
-        // into twenty terminals, in one go, before the window would answer anything. A tab you
-        // are not looking at does not need any of that: the shell is already running and its id
-        // is all a click needs to attach it.
-        this.startAsleep = false;
-        this.host.onPaneReattached(this);
-        this.asleep = true;
-        this.teardown();
-        return;
-      }
       await this.host.tp.attach(id, t.cols, t.rows, onData, onExit);
       this.host.onPaneReattached(this);
     } else {
-      this.id = await this.host.tp.spawn({ ...this.profile, cwd: this.cwd }, t.cols, t.rows, onData, onExit);
+      this.id = await this.host.tp.spawn({ ...this.profile, cwd: this.cwd }, t.cols, t.rows, onData, onExit, {
+        belowNormal: this.host.config.shells_below_normal,
+      });
     }
     if (this.profile.capture && !this.logPath) {
       await this.toggleLog().catch((e) => console.warn("auto-capture failed", e));
@@ -338,11 +375,14 @@ export class Pane {
   }
 
   dispose() {
-    this.term.dispose();
+    this.term?.dispose();
+    this.term = null;
     this.el.remove();
   }
 
   focus() {
+    // Asleep: `wake()` is on its way and focuses the new terminal itself.
+    if (!this.term) return;
     // A pane that lost its GPU context while it was in the background gets one back here: it is
     // about to be the terminal you are looking at, and the ceiling has freed the contexts.
     if (this.term.degraded()) this.term.regain();

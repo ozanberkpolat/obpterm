@@ -41,12 +41,6 @@ async function main() {
   (window as unknown as { __resumePlan: typeof resumePlan }).__resumePlan = resumePlan;
   installCrashGuard(app);
   await app.connectHost();
-  // Running decays to idle on its own, so the rail re-derives once a second. The rail patches
-  // rows in place, so this is a handful of attribute writes, not a rebuild.
-  window.setInterval(() => app.onPaneActivity(), 1000);
-  window.setInterval(() => void app.sleepIdleTabs(), 15_000);
-  window.setInterval(() => app.ecoSweep(), 60_000);
-  window.setInterval(() => void app.refreshAgentTitles(), 5_000);
   installAgentEvents(app);
   // The window says whether anyone is looking: the host holds a permission request for seconds
   // when someone is and for minutes when nobody is, which is what makes answering from a phone
@@ -76,14 +70,24 @@ async function main() {
       }
     })
     .catch(() => {});
-  // Only while the window is in front. Nothing on this bar changes a decision you cannot see,
-  // and polling the host every three seconds behind another window is pure heat.
-  window.setInterval(() => document.hasFocus() && void app.refreshHeld(), 5_000);
   window.addEventListener("focus", () => void app.refreshHeld());
   window.addEventListener("focus", () => app.clearAttention());
   const { restored, crashed, updatedTo } = await app.restoreSession();
   const tabs = `${restored} tab${restored > 1 ? "s" : ""}`;
   if (!restored) await app.newTab();
+  // The fleet timers start only now, AFTER the restore: they used to be installed first and
+  // ran their sweeps — transcript reads, the process-table walk, the sleep pass — through the
+  // one moment the window is busiest. Running decays to idle on its own, so the rail re-derives
+  // once a second; it patches rows in place, so that is attribute writes, not a rebuild.
+  window.setInterval(() => app.onPaneActivity(), 1000);
+  window.setInterval(() => void app.sleepIdleTabs(), 15_000);
+  window.setInterval(() => app.ecoSweep(), 60_000);
+  window.setInterval(() => void app.refreshAgentTitles(), 5_000);
+  // Only while the window is in front. Nothing on this bar changes a decision you cannot see,
+  // and polling the host behind another window is pure heat. Fifteen seconds: each tick walks
+  // the whole process table, and on a saturated box that table is at its largest.
+  window.setInterval(() => document.hasFocus() && void app.refreshHeld(), 15_000);
+  void app.refreshHeld();
   const kept = app.reattached ? ` — ${app.reattached} shell${app.reattached > 1 ? "s" : ""} never stopped` : "";
   if (updatedTo) toast(`Updated to ${updatedTo}${kept || ` — reopened ${tabs}`}`);
   else if (crashed) toast(`Reopened ${tabs} — OBPTerm did not shut down cleanly`);

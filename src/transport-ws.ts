@@ -69,7 +69,7 @@ export function wsTransport(): Transport {
     },
     hostShutdown: async () => void (await call("shutdown")),
     hostRestart: async () => "dev",
-    async spawn(profile: Profile, cols, rows, onData, onExit) {
+    async spawn(profile: Profile, cols, rows, onData, onExit, _opts) {
       const m = await call("spawn", { profile, cols, rows });
       const id = m.id as number;
       data.set(id, onData);

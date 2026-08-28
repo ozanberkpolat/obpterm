@@ -38,6 +38,11 @@ pub struct HostMetrics {
     pub mem_total: u64,
     pub swap_used: u64,
     pub swap_total: u64,
+    /// Windows commit charge — RAM plus pagefile in use — and the limit. This is the number
+    /// the OS actually runs out of: physical RAM can read 80% while the pagefile fills, and
+    /// the machine is a minute from swap thrash. Both 0 where the OS does not report it.
+    pub commit_used: u64,
+    pub commit_total: u64,
     pub disk_used: u64,
     pub disk_total: u64,
     /// Which disk the figures are for — the one holding `cwd`, else the largest.
@@ -81,16 +86,37 @@ pub fn host_metrics(metrics: State<Metrics>, cwd: Option<String>) -> HostMetrics
         .max_by_key(|d| d.mount_point().as_os_str().len())
         .or_else(|| s.disks.list().iter().max_by_key(|d| d.total_space()));
 
+    let (commit_used, commit_total) = commit();
     HostMetrics {
         cpu,
         mem_used: s.system.used_memory(),
         mem_total: s.system.total_memory(),
         swap_used: s.system.used_swap(),
         swap_total: s.system.total_swap(),
+        commit_used,
+        commit_total,
         disk_used: disk.map(|d| d.total_space().saturating_sub(d.available_space())).unwrap_or(0),
         disk_total: disk.map(|d| d.total_space()).unwrap_or(0),
         disk_name: disk.map(|d| d.mount_point().display().to_string()).unwrap_or_default(),
     }
+}
+
+/// (used, limit) of the system commit charge, from the one call that reports it. `sysinfo` has
+/// no notion of it — it reports physical memory and swap separately, and neither says how close
+/// the OS is to refusing allocations.
+#[cfg(windows)]
+fn commit() -> (u64, u64) {
+    use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    let mut status = MEMORYSTATUSEX { dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32, ..Default::default() };
+    if unsafe { GlobalMemoryStatusEx(&mut status) }.is_err() {
+        return (0, 0);
+    }
+    (status.ullTotalPageFile.saturating_sub(status.ullAvailPageFile), status.ullTotalPageFile)
+}
+
+#[cfg(not(windows))]
+fn commit() -> (u64, u64) {
+    (0, 0)
 }
 
 /// RSS of each given process tree (root pid + all descendants), in bytes. Zero for a pid

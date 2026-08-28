@@ -14,7 +14,7 @@ fn shell(script_win: &str, script_unix: &str) -> Spawn {
     #[cfg(not(windows))]
     let (exe, args) = ("/bin/sh".to_string(), vec!["-c".to_string(), script_unix.to_string()]);
     let _ = (script_win, script_unix);
-    Spawn { exe, args, cwd: None, env: Default::default(), cols: 80, rows: 24 }
+    Spawn { exe, args, cwd: None, env: Default::default(), cols: 80, rows: 24, below_normal: false }
 }
 
 /// Everything a channel delivered, verbatim, so a CI-only failure says what actually arrived.

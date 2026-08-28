@@ -22,9 +22,9 @@ export function installFind(app: App) {
 
   // The addon announces result index/count when decorations are on; one subscription per addon.
   const counted = new WeakSet<object>();
-  const subscribe = (pane: { term: { search: import("@xterm/addon-search").SearchAddon } }) => {
-    const addon = pane.term.search;
-    if (counted.has(addon)) return;
+  const subscribe = (pane: { term: { search: import("@xterm/addon-search").SearchAddon } | null }) => {
+    const addon = pane.term?.search;
+    if (!addon || counted.has(addon)) return;
     counted.add(addon);
     addon.onDidChangeResults(({ resultIndex, resultCount }) => {
       if (bar.hidden) return;
@@ -35,7 +35,7 @@ export function installFind(app: App) {
 
   const search = (dir: 1 | -1, fromCursor = false) => {
     const pane = app.tab?.active;
-    if (!pane) return;
+    if (!pane?.term) return; // asleep: nothing to search until it wakes
     subscribe(pane);
     const term = input.value;
     if (!term) {
@@ -68,14 +68,14 @@ export function installFind(app: App) {
 
   function close() {
     bar.hidden = true;
-    app.tab?.active.term.search.clearDecorations();
+    app.tab?.active.term?.search.clearDecorations();
     app.tab?.active.focus();
   }
 
   return {
     open() {
       bar.hidden = false;
-      const sel = app.tab?.active.term.term.getSelection();
+      const sel = app.tab?.active.term?.term.getSelection();
       if (sel && !sel.includes("\n")) input.value = sel;
       input.focus();
       input.select();

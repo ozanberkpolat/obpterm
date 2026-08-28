@@ -296,8 +296,10 @@ pub async fn pty_list(app: AppHandle) -> Result<Vec<SessionInfo>, String> {
     ensure(&app).await?.list().await
 }
 
+/// `below_normal` is the config's `shells_below_normal`, passed per spawn because the window
+/// owns the config and the host owns the process (see `registry::lower_priority`).
 #[tauri::command]
-pub async fn pty_spawn(app: AppHandle, profile: Profile, cols: u16, rows: u16, on_data: Channel<Response>) -> Result<u32, String> {
+pub async fn pty_spawn(app: AppHandle, profile: Profile, cols: u16, rows: u16, below_normal: bool, on_data: Channel<Response>) -> Result<u32, String> {
     let client = ensure(&app).await?;
     let mut env = std::collections::BTreeMap::new();
     env.insert("OBPTERM".to_string(), env!("CARGO_PKG_VERSION").to_string());
@@ -312,6 +314,7 @@ pub async fn pty_spawn(app: AppHandle, profile: Profile, cols: u16, rows: u16, o
             env,
             cols,
             rows,
+            below_normal,
         })
         .await?;
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();

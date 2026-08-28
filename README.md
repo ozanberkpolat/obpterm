@@ -355,6 +355,25 @@ doing from the host's own record (output, bell, exit). Clicking the tab brings t
 back with the shell's recent output. Settings → Terminal → Memory sets the delay, or zero to
 keep every terminal alive. A tab being captured to a log is never put to sleep.
 
+A tab that comes back after a restart or an update and is not the one in front is built
+asleep — no terminal, no WebGL context — and only gets one when you click it. Twenty-five tabs
+reopening used to mean twenty-five terminals built and twenty-four torn down a moment later.
+
+### The terminal wins the CPU
+
+By default every shell starts one scheduling notch below the window (Windows BELOW_NORMAL), and
+`claude` and every agent it spawns inherit that. It is ordering, not a limit: on an idle machine
+Claude gets every cycle; when twenty Node processes have it saturated, the window's few
+milliseconds per frame are served first, so it keeps answering clicks. Under saturation Claude
+is slower by exactly what the window used. Settings → Terminal → Responsiveness turns it off;
+it applies to shells started after the change.
+
+The rail's header shows what idle sessions off screen are holding once it passes a gigabyte
+("1.9G idle"), and the session-host chip on the status bar can sleep every one of them in one
+click — each tab stays and resumes on click. The status bar's memory gauge shows commit charge
+(RAM plus pagefile in use) where Windows reports it, because that is the number the machine
+actually runs out of.
+
 ## Claude Code logins
 
 Settings → Claude logins switches which login is live in `~/.claude`, the way the homelab's

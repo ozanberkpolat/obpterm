@@ -369,8 +369,13 @@ const SECTION_BODY: Record<string, (ctx: Ctx) => HTMLElement> = {
           slider(c.context_warn_pct, 0, 100, 5, "%", (v) => { c.context_warn_pct = v; ctx.save(); })),
       ),
       card(
-        row("Exit idle sessions when memory passes", "The machine running out of RAM is what actually freezes this window — it thrashes on swap and everything stalls for minutes. Above this, idle sessions are /exited oldest first, sleeping ones included, until it comes down. Each tab stays and resumes on click. Zero never does.",
+        row("Exit idle sessions when memory passes", "The machine running out of RAM is what actually freezes this window — it thrashes on swap and everything stalls for minutes. Above this (the fuller of RAM and commit charge), idle sessions are /exited biggest first, sleeping ones included, until it comes down. Each tab stays and resumes on click. Zero never does.",
           slider(c.eco_memory_pct, 0, 100, 5, "%", (v) => { c.eco_memory_pct = v; ctx.save(); })),
+      ),
+      cap("Responsiveness"),
+      card(
+        row("Let the terminal win the CPU over the agents", "New shells start one scheduling notch below the window (Windows BELOW_NORMAL), and claude and every agent it spawns inherit that. It is ordering, not a limit: when the machine has idle CPU, Claude gets all of it; when twenty Node processes have it saturated, the window's few milliseconds per frame are served first, so it keeps answering clicks. The cost is that under saturation Claude is slower by exactly what the window used. Applies to shells started after the change.",
+          toggle(c.shells_below_normal, (v) => { c.shells_below_normal = v; ctx.save(); })),
       ),
       cap("Claude Code"),
       card(

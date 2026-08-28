@@ -17,6 +17,30 @@ import type { Preset } from "./toolbar";
 export type Activity = "bell" | "exited" | "unread" | "running" | "idle";
 const LOUDNESS: Activity[] = ["bell", "exited", "unread", "running", "idle"];
 
+/** One pass over every pane: everything the rail, badge, map header and status bar count. */
+export interface Fleet {
+  /** Claude panes in total, and how they split. */
+  total: number;
+  needsYou: number;
+  working: number;
+  done: number;
+  doneUnread: number;
+  sleeping: number;
+  /** The first session waiting on you, named. */
+  loudest: string | null;
+  /** Agents running right now, across every session. */
+  liveAgents: number;
+  /** Sessions that stopped reporting mid-task. */
+  stalled: number;
+  /** Tabs ringing a bell, and tabs whose shell ended badly. */
+  waiting: number;
+  exited: number;
+  /** Bytes held by idle Claude sessions off screen — what "sleep every idle session" gives back. */
+  idleRss: number;
+  /** Each tab's loudest pane state, so no rail patch re-derives it. */
+  activity: Map<Tab, Activity>;
+}
+
 export interface Tab {
   /** Stable across repaints, so the rail can patch a row instead of rebuilding it. */
   readonly id: number;
@@ -434,24 +458,7 @@ export class App implements PaneHost {
   ecoSweep() {
     const minutes = this.config.eco_after_minutes;
     const cutoff = Date.now() - (minutes || 0) * 60_000;
-    // Eligible: a Claude session with a conversation to come back to, not on screen, not mid-
-    // turn and not holding a question. A SLEEPING pane counts — that was the hole. Sleep frees
-    // a terminal (a few MB); the ~400 MB is the `claude` process, and skipping asleep panes
-    // meant eighteen of them held about seven gigabytes that nothing was ever going to reclaim.
-    // Writing to a detached pane is fine: the host owns the pty either way.
-    const eligible = () =>
-      this.tabs
-        .filter((t) => t !== this.tab)
-        .flatMap((t) => L.panes(t.root))
-        .filter(
-          (p) =>
-            !p.eco &&
-            !p.exited &&
-            p.id > 0 &&
-            p.claudeSessionId &&
-            (p.agent.state === "done" || p.agent.state === null) &&
-            !p.agent.fanned.some((f) => f.endedAt === null),
-        );
+    const eligible = () => this.idlePanes();
 
     if (minutes) {
       for (const pane of eligible()) {
@@ -466,7 +473,8 @@ export class App implements PaneHost {
     // idle ones nobody is reading. Above the threshold, the oldest of them are exited early;
     // the tab stays, and clicking it resumes the same conversation.
     const pct = this.config.eco_memory_pct;
-    const m = this.status?.memoryPct() ?? null;
+    // The fuller of RAM and commit charge: the pagefile filling is the swap thrash arriving.
+    const m = this.status?.pressurePct() ?? null;
     if (!pct || m === null || m < pct) return;
     // Which idle session to exit is a question about bytes, not about clocks: a 40 MB shell and
     // a 2 GB session that has been fanning out all afternoon are both "idle", and only one of
@@ -646,13 +654,15 @@ export class App implements PaneHost {
       pane.exited = true;
       pane.exitAcknowledged = true;
       pane.exitCode = -1;
-      pane.term.term.write(
+      pane.term?.term.write(
         `\r\n\x1b[38;2;255;107;115m[${pane.profile.exe} could not start]\x1b[0m ${e}\r\n\r\n` +
           `  Fix the profile in Settings, then press \x1b[38;2;255;138;30mr\x1b[0m to try again.\r\n`,
       );
       toast(`Could not start ${pane.profile.name}: ${e}`);
     }
-    this.paint();
+    // Coalesced: a restore starts twenty-five of these back to back, and each used to be a full
+    // synchronous repaint of the rail, the map, the status bar and the toolbar.
+    this.paintSoon();
   }
 
   closeTab(tab: Tab) {
@@ -836,7 +846,7 @@ export class App implements PaneHost {
     const sessionId = pane.claudeSessionId;
     pane.kill();
     // A fresh terminal, so nothing of the wedged screen survives.
-    pane.term.term.reset();
+    pane.term?.term.reset();
     // `--resume` belongs in a CLAUDE profile's arguments; a shell you typed `claude` into
     // must be resumed by typing it again, or the shell is handed a flag it cannot parse and
     // dies on the spot.
@@ -857,7 +867,7 @@ export class App implements PaneHost {
       pane.exited = false;
       pane.exitAcknowledged = false;
       pane.exitCode = null;
-      pane.term.term.reset();
+      pane.term?.term.reset();
       await this.respawnPane(pane);
     }
     if (typeResume && !pane.exited && pane.id > 0) {
@@ -901,7 +911,7 @@ export class App implements PaneHost {
     pane.exitAcknowledged = false;
     pane.exitCode = null;
     pane.id = -1;
-    pane.term.term.write("\r\n\x1b[38;2;140;160;190m[reconnecting…]\x1b[0m\r\n");
+    pane.term?.term.write("\r\n\x1b[38;2;140;160;190m[reconnecting…]\x1b[0m\r\n");
     await this.startPane(tab, pane);
     pane.focus();
     this.paint();
@@ -918,7 +928,7 @@ export class App implements PaneHost {
   clearPane() {
     const pane = this.tab?.active;
     if (!pane) return;
-    pane.term.term.clear();
+    pane.term?.term.clear();
     pane.focus();
   }
 
@@ -1001,7 +1011,7 @@ export class App implements PaneHost {
   private layout(tab: Tab) {
     L.render(tab.root, tab.el, () => this.persistSession());
     this.paintFocus(tab);
-    for (const p of L.panes(tab.root)) p.term.fit();
+    for (const p of L.panes(tab.root)) p.term?.fit();
   }
 
   /** The pane the sheen last acknowledged, so it plays once per focus change. */
@@ -1044,7 +1054,10 @@ export class App implements PaneHost {
   // ---- PaneHost -------------------------------------------------------------------------
 
   onPaneTitle() {
-    this.paint();
+    // Coalesced. This fires per OSC title and per cwd report — Claude Code renames its window
+    // constantly while it works — and it was the one full synchronous repaint that output could
+    // trigger at will. The persist is already debounced.
+    this.paintSoon();
     this.persistSession();
   }
 
@@ -1055,7 +1068,7 @@ export class App implements PaneHost {
       // The /exit we sent on purpose: hold the pane, say so, wake resumes.
       pane.exited = true;
       pane.exitAcknowledged = true;
-      pane.term.term.write("\r\n\x1b[38;2;118;135;156m[agent sleeping to save memory — click or press any key to resume]\x1b[0m\r\n");
+      pane.term?.term.write("\r\n\x1b[38;2;118;135;156m[agent sleeping to save memory — click or press any key to resume]\x1b[0m\r\n");
       this.paint();
       void this.flushSession();
       return;
@@ -1064,7 +1077,7 @@ export class App implements PaneHost {
     // Non-zero: leave the output on screen, close on the next keypress.
     pane.exitAcknowledged = true;
     pane.exitCode = code;
-    pane.term.term.write(
+    pane.term?.term.write(
       `\r\n\x1b[38;2;255;107;115m[${pane.profile.exe} exited with code ${code}]\x1b[0m  ` +
         `press \x1b[38;2;255;138;30mr\x1b[0m to run it again, any other key to close\r\n`,
     );
@@ -1168,7 +1181,7 @@ export class App implements PaneHost {
         }
       }
     }
-    renderRail(this);
+    renderRail(this, this.fleet());
     // The orbit rim must follow the agent state without a full repaint.
     const tab = this.tab;
     if (tab) {
@@ -1309,8 +1322,9 @@ export class App implements PaneHost {
         }
       }
       // The host has known how old every shell is since it started it; nothing ever read it.
+      const byId = new Map(all.map((p) => [p.id, p]));
       for (const s of sessions) {
-        const pane = all.find((p) => p.id === s.id);
+        const pane = byId.get(s.id);
         if (pane) pane.startedAt = s.started_at;
       }
     }
@@ -1436,7 +1450,7 @@ export class App implements PaneHost {
     );
     document.body.classList.toggle("dim-inactive", this.config.dim_inactive_panes);
     for (const t of this.tabs) {
-      for (const p of L.panes(t.root)) applyTermConfig(p.term.term, this.config);
+      for (const p of L.panes(t.root)) if (p.term) applyTermConfig(p.term.term, this.config);
       this.layout(t);
     }
   }
@@ -1461,7 +1475,7 @@ export class App implements PaneHost {
 
   applyRailWidth() {
     document.documentElement.style.setProperty("--rail-w", `${this.config.rail_width}px`);
-    for (const t of this.tabs) for (const p of L.panes(t.root)) p.term.fit();
+    for (const t of this.tabs) for (const p of L.panes(t.root)) p.term?.fit();
   }
 
   toggleProject(project: Project) {
@@ -1472,23 +1486,96 @@ export class App implements PaneHost {
 
 
   /** What the Agents entry, the Deck header and the taskbar badge all count. */
-  agentCounts() {
-    let needsYou = 0, working = 0, done = 0, doneUnread = 0, sleeping = 0, total = 0;
-    let loudest: string | null = null;
+  agentCounts(): Fleet {
+    return this.fleet();
+  }
+
+  /**
+   * Everything the rail, the badge, the map header and the status bar count, from ONE pass
+   * over every pane. It used to be six: `waiting()`, `liveAgentCount()`, `exitedTabs()`,
+   * `stalledCount()`, `agentCounts()` and `activity(tab)` per row — each its own walk with its
+   * own throwaway arrays, once a second and again on every hook event, and at twenty-five tabs
+   * with agents fanning out that was most of what the UI thread did while the machine was
+   * already saturated by the agents themselves.
+   */
+  fleet(): Fleet {
+    const f: Fleet = {
+      total: 0, needsYou: 0, working: 0, done: 0, doneUnread: 0, sleeping: 0, loudest: null,
+      liveAgents: 0, stalled: 0, waiting: 0, exited: 0, idleRss: 0, activity: new Map(),
+    };
     for (const tab of this.tabs) {
-      for (const p of this.panesOf(tab)) {
+      let loud = LOUDNESS.length - 1; // index into LOUDNESS: lower is louder
+      for (const p of L.panes(tab.root)) {
+        const i = LOUDNESS.indexOf(this.paneActivity(p));
+        if (i < loud) loud = i;
+        if (p.agent.stalledSince && !p.eco && !p.exited) f.stalled++;
+        let fanning = false;
+        for (const g of p.agent.fanned) {
+          if (g.endedAt === null) {
+            f.liveAgents++;
+            fanning = true;
+          }
+        }
         if (!isClaudePane(p)) continue;
-        total++;
-        if (p.eco || p.asleep) { sleeping++; continue; }
+        f.total++;
+        if (p.eco || p.asleep) {
+          f.sleeping++;
+          if (p.asleep && !p.eco && tab !== this.tab && !fanning) f.idleRss += p.rss;
+          continue;
+        }
         const s = p.agent.state;
         if (s === "blocked" || s === "waiting") {
-          needsYou++;
-          loudest ??= `${this.title(tab)} · ${p.agent.detail ?? "needs you"}`;
-        } else if (s === "working") working++;
-        else if (s === "done") { done++; if (p.agent.unread) doneUnread++; }
+          f.needsYou++;
+          f.loudest ??= `${this.title(tab)} · ${p.agent.detail ?? "needs you"}`;
+        } else if (s === "working") f.working++;
+        else if (s === "done") {
+          f.done++;
+          if (p.agent.unread) f.doneUnread++;
+        }
+        // What a sleep-all would give back: finished or idle, off screen, holding a process.
+        if (tab !== this.tab && !p.exited && (s === "done" || s === null) && !fanning) f.idleRss += p.rss;
       }
+      const activity = LOUDNESS[loud]!;
+      f.activity.set(tab, activity);
+      if (activity === "bell") f.waiting++;
+      if (activity === "exited") f.exited++;
     }
-    return { total, needsYou, working, done, doneUnread, sleeping, loudest };
+    return f;
+  }
+
+  /** The panes `ecoSweep` and "sleep every idle session" may /exit: a Claude session with a
+   *  conversation to come back to, off screen, not mid-turn and not holding a question. A
+   *  SLEEPING pane counts — sleep frees a terminal (a few MB); the ~400 MB is the `claude`
+   *  process, and skipping asleep panes once meant eighteen of them held about seven
+   *  gigabytes that nothing was ever going to reclaim. Writing to a detached pane is fine: the
+   *  host owns the pty either way. */
+  private idlePanes(): Pane[] {
+    return this.tabs
+      .filter((t) => t !== this.tab)
+      .flatMap((t) => L.panes(t.root))
+      .filter(
+        (p) =>
+          !p.eco &&
+          !p.exited &&
+          p.id > 0 &&
+          p.claudeSessionId &&
+          (p.agent.state === "done" || p.agent.state === null) &&
+          !p.agent.fanned.some((f) => f.endedAt === null),
+      );
+  }
+
+  /** Every idle Claude session off screen, /exited at once — the one click behind the rail's
+   *  "N GB idle". Each tab stays and resumes on click, like any eco sleep. */
+  sleepIdle() {
+    const panes = this.idlePanes();
+    if (!panes.length) return void toast("No idle sessions to sleep");
+    let bytes = 0;
+    for (const p of panes) {
+      bytes += p.rss;
+      this.eco(p);
+    }
+    toast(`Exited ${panes.length} idle session${panes.length > 1 ? "s" : ""}${bytes ? ` (~${(bytes / 1e9).toFixed(1)} GB)` : ""} — click a tab to resume`);
+    this.paint();
   }
 
   /** The taskbar overlay mirrors the rail badge; only redrawn when the number changes. */
@@ -1632,12 +1719,12 @@ export class App implements PaneHost {
   private lastPaintAt = 0;
 
   paint() {
-    renderRail(this);
+    const fleet = this.fleet();
+    renderRail(this, fleet);
     this.nodes?.paint();
     for (const tab of this.tabs) for (const p of L.panes(tab.root)) this.paintLinkLost(p);
-    const counts = this.agentCounts();
-    this.syncBadge(counts.needsYou);
-    this.syncAwake(counts.working > 0);
+    this.syncBadge(fleet.needsYou);
+    this.syncAwake(fleet.working > 0);
     this.status?.paint();
     this.toolbar?.paint();
     // Scoped to the workbench: the settings sheet is app chrome and keeps the configured
@@ -1986,7 +2073,7 @@ export class App implements PaneHost {
    * Settings, or a session.json newer than config.json — and quietly falling back to the first
    * profile would put a local shell behind a tab that still calls itself the VPS.
    */
-  private restorePane(node: L.SavedNode, saved: SavedTab): Pane {
+  private restorePane(node: L.SavedNode, saved: SavedTab, asleep: boolean): Pane {
     const wanted = node.profile ?? "";
     const hostId = wanted.startsWith("host:") ? wanted.slice(5) : null;
     const host = hostId ? this.host(hostId) : null;
@@ -2021,15 +2108,19 @@ export class App implements PaneHost {
           typeResume = node.claude;
         }
       }
-      const pane = new Pane(this, effective, node.cwd ?? null);
+      const attach = !!held && held.exited === null;
+      // Decided BEFORE the pane exists, because the decision is whether to build its terminal
+      // at all. A capture profile has to attach: its log is written from the stream it would
+      // not receive asleep.
+      const pane = new Pane(this, effective, node.cwd ?? null, asleep && attach && !effective.capture);
       pane.typeResume = typeResume;
       pane.claudeSessionId = node.claude ?? null;
       // Carry the ledger identity across the restart, or every relaunch would mint a new one
       // and the old entry would look like a session that disappeared.
       if (node.ledger) pane.ledgerKey = node.ledger;
-      if (held && held.exited === null) {
-        pane.attachTo = held.id;
-        pane.claudeSessionId = held.claude_session_id ?? pane.claudeSessionId;
+      if (attach) {
+        pane.attachTo = held!.id;
+        pane.claudeSessionId = held!.claude_session_id ?? pane.claudeSessionId;
       }
       return pane;
     }
@@ -2044,7 +2135,7 @@ export class App implements PaneHost {
   private async restoreTab(saved: SavedTab, asleep = false): Promise<boolean> {
     const build = (n: L.SavedNode): L.Node | null => {
       if (n.kind === "leaf") {
-        return L.leaf(this.restorePane(n, saved));
+        return L.leaf(this.restorePane(n, saved, asleep));
       }
       const a = n.a && build(n.a);
       const b = n.b && build(n.b);
@@ -2072,8 +2163,6 @@ export class App implements PaneHost {
     this.tabs.push(tab);
     this.layout(tab);
     // ConPTY spawns are independent: 24 panes should not be 24 round trips in series.
-    // A capture profile has to attach: its log is written from the stream it would not receive.
-    for (const p of list) if (asleep && p.attachTo !== null && !p.profile.capture) p.startAsleep = true;
     await Promise.all(list.map((p) => this.startPane(tab, p)));
     for (const p of list) {
       if (!p.typeResume || p.exited || p.id < 0) continue;
@@ -2088,7 +2177,7 @@ export class App implements PaneHost {
   // ---- clipboard --------------------------------------------------------------------------
 
   async copy(): Promise<boolean> {
-    const t = this.tab?.active.term.term;
+    const t = this.tab?.active.term?.term;
     if (!t?.hasSelection()) return false;
     await this.tp.writeClipboard(t.getSelection());
     t.clearSelection();
@@ -2097,7 +2186,7 @@ export class App implements PaneHost {
 
   async paste() {
     const pane = this.tab?.active;
-    const t = pane?.term.term;
+    const t = pane?.term?.term;
     if (!pane || !t) return;
     const text = await this.tp.readClipboard().catch(() => "");
     if (text) return t.paste(text);

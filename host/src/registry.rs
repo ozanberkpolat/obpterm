@@ -63,6 +63,33 @@ fn kill_tree(pid: u32) {
     }
 }
 
+/// One scheduling notch below the window, and — because Windows hands BELOW_NORMAL down to
+/// every child a process starts — below `claude` and every agent it fans out. Ordering, not a
+/// cap: an idle machine still gives Claude every cycle; a saturated one serves the terminal's
+/// few milliseconds per frame first, which is what keeps the window answering clicks while
+/// twenty Node processes have the CPU. Set on the shell's own pid the moment it exists, before
+/// it has started anything. (Raising the window instead does not work: ABOVE_NORMAL is not
+/// inherited, and WebView2 offers no way to lift its renderer.)
+#[cfg(windows)]
+fn lower_priority(pid: u32) {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, SetPriorityClass, BELOW_NORMAL_PRIORITY_CLASS, PROCESS_SET_INFORMATION};
+    unsafe {
+        match OpenProcess(PROCESS_SET_INFORMATION, false, pid) {
+            Ok(handle) => {
+                if let Err(e) = SetPriorityClass(handle, BELOW_NORMAL_PRIORITY_CLASS) {
+                    eprintln!("obpterm-host: SetPriorityClass({pid}) failed: {e}");
+                }
+                let _ = CloseHandle(handle);
+            }
+            Err(e) => eprintln!("obpterm-host: OpenProcess({pid}) for priority failed: {e}"),
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn lower_priority(_pid: u32) {}
+
 impl Registry {
     pub fn list(&self) -> Vec<SessionInfo> {
         let mut out: Vec<SessionInfo> = self.sessions.values().map(|s| s.info.clone()).collect();
@@ -106,6 +133,11 @@ impl Registry {
         }
         let mut child = pair.slave.spawn_command(cmd).map_err(|e| format!("spawn {}: {e}", spawn.exe))?;
         let pid = child.process_id();
+        if spawn.below_normal {
+            if let Some(pid) = pid {
+                lower_priority(pid);
+            }
+        }
         let killer = child.clone_killer();
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().map_err(|e| format!("reader: {e}"))?;

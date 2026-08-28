@@ -2,7 +2,7 @@
 // what its shell is doing. Rows are cached per tab and patched in place — a rebuild on every
 // title and cwd report would throw away an open rename and churn thirty rows a second.
 import { isDangerous, modeLabel } from "./agent";
-import type { Activity, App, Tab } from "./app";
+import type { Activity, App, Fleet, Tab } from "./app";
 import { COLORS, openMenu } from "./menu";
 import { editInline } from "./ui";
 import * as L from "./layout";
@@ -42,7 +42,9 @@ function fmtTokens(n: number): string {
 /** What the last render laid out, so structure work only happens when the structure changed. */
 let lastShape = "";
 
-export function renderRail(app: App) {
+/** `fleet` is the one pass over every pane this repaint reads from — computed by the caller,
+ *  because `paint()` reads it too and it must not be walked twice per frame. */
+export function renderRail(app: App, fleet: Fleet = app.fleet()) {
   const body = document.querySelector<HTMLElement>("#rail-body")!;
   const loose = app.tabs.filter((t) => !app.project(t.projectId));
   const groups: [Project | null, Tab[]][] = [];
@@ -60,18 +62,17 @@ export function renderRail(app: App) {
   }
 
   for (const [project, tabs] of groups) {
-    for (const tab of tabs) patchRow(app, tab);
-    if (project) patchGroup(app, project, tabs);
+    for (const tab of tabs) patchRow(app, tab, fleet);
+    if (project) patchGroup(app, project, tabs, fleet);
   }
-  patchHeader(app);
-  patchAgents(app);
+  patchHeader(app, fleet);
+  patchAgents(app, fleet);
 }
 
 /** The rail's own tabs: Sessions and Agents. The badge rides the Agents tab, and the line
  *  under them names whatever is waiting on you. */
-function patchAgents(app: App) {
+function patchAgents(app: App, c: Fleet) {
   const bar = document.querySelector<HTMLElement>("#rail-views")!;
-  const c = app.agentCounts();
   const view = app.config.agents_view;
   for (const b of bar.querySelectorAll<HTMLElement>(".rv")) {
     b.classList.toggle("on", b.dataset.view === view);
@@ -94,18 +95,23 @@ function patchAgents(app: App) {
   line.classList.toggle("hot", c.needsYou > 0);
 }
 
-function patchHeader(app: App) {
+function patchHeader(app: App, f: Fleet) {
   const el = document.querySelector<HTMLElement>("#rail-waiting")!;
-  const n = app.waiting();
-  const agents = app.liveAgentCount();
-  const dead = app.exitedTabs().length;
-  // Three facts, in the order they demand action. Each one is a button: the count that tells
-  // you something is wrong and cannot be clicked is a count you have to act on by hand.
-  const stalled = app.stalledCount();
-  const parts = [n ? `${n} waiting` : "", stalled ? `${stalled} stalled` : "", agents ? `${agents} agents` : "", dead ? `${dead} exited` : ""].filter(Boolean);
-  el.textContent = parts.join(" · ");
+  // Facts in the order they demand action. Each one is a button: the count that tells you
+  // something is wrong and cannot be clicked is a count you have to act on by hand. The last
+  // one is memory: what the idle sessions off screen are holding, once it is worth a click —
+  // the number you want to see BEFORE the machine goes to swap, not after.
+  const idle = f.idleRss >= 1e9 ? `${(f.idleRss / 1e9).toFixed(1)}G idle` : "";
+  const parts = [
+    f.waiting ? `${f.waiting} waiting` : "",
+    f.stalled ? `${f.stalled} stalled` : "",
+    f.liveAgents ? `${f.liveAgents} agents` : "",
+    f.exited ? `${f.exited} exited` : "",
+    idle,
+  ].filter(Boolean);
+  set(el, parts.join(" · "));
   el.hidden = parts.length === 0;
-  el.title = "Click: jump to the next session that needs you. Right-click: close every exited tab.";
+  el.title = `Click: jump to the next session that needs you. Right-click: close every exited tab.${idle ? "\nThe session-host chip on the status bar can sleep every idle session at once." : ""}`;
   if (!el.dataset.wired) {
     el.dataset.wired = "1";
     el.style.cursor = "pointer";
@@ -150,11 +156,11 @@ function group(app: App, project: Project | null, tabs: Tab[]): HTMLElement {
 }
 
 /** A folded project must still be able to say that something inside it is waiting. */
-function patchGroup(app: App, project: Project, tabs: Tab[]) {
+function patchGroup(app: App, project: Project, tabs: Tab[], f: Fleet) {
   const head = document.querySelector<HTMLElement>(`.group[data-project="${project.id}"] .group-head`);
   if (!head) return;
-  head.querySelector(".gcount")!.textContent = tabs.length ? String(tabs.length) : "";
-  const states = [...new Set(tabs.map((t) => app.activity(t)))].filter((s) => s !== "idle");
+  set(head.querySelector<HTMLElement>(".gcount")!, tabs.length ? String(tabs.length) : "");
+  const states = [...new Set(tabs.map((t) => f.activity.get(t) ?? app.activity(t)))].filter((s) => s !== "idle");
   const holder = head.querySelector<HTMLElement>(".gstates")!;
   const wanted = states.join(",");
   if (holder.dataset.states === wanted) return;
@@ -250,14 +256,14 @@ function patchAgentPills(tab: Tab, row: Row) {
   }
 }
 
-function patchRow(app: App, tab: Tab) {
+function patchRow(app: App, tab: Tab, f: Fleet) {
   const row = rowFor(app, tab);
   // Never patch a row the user is typing a name into.
   if (row.li.contains(document.activeElement) && document.activeElement?.classList.contains("inline-edit")) return;
 
   const panes = L.panes(tab.root);
   const title = app.title(tab);
-  const state = app.activity(tab);
+  const state = f.activity.get(tab) ?? app.activity(tab);
   const exited = panes.find((p) => p.exitCode && !p.eco);
   const agentPane = panes.find((p) => p.agent.state);
   const agentDetail = agentPane?.agent.detail ?? null;

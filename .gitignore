@@ -9,3 +9,4 @@ signing.conf.json
 dev-session.json
 src-tauri/binaries/
 target/
+.pre-edit-backups/

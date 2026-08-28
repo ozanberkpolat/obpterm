@@ -7,7 +7,10 @@ import type { Account, ClaudeAccount, ClaudeLimits, ClaudeUsage, HostMetrics, Re
 import { toast } from "./ui";
 
 const REFRESH_MS = 60_000;
-const METRICS_MS = 3_000;
+/** Five seconds: the sample is a CPU counter plus memory, cheap, but it is a timer on the UI
+ *  thread of a window whose whole problem is a saturated machine. Three was more than the eye
+ *  reads off a bar. */
+const METRICS_MS = 5_000;
 
 export class Status {
   private who = document.querySelector<HTMLElement>("#account-chip .who")!;
@@ -70,6 +73,17 @@ export class Status {
     return (m.mem_used / m.mem_total) * 100;
   }
 
+  /** The fuller of RAM and commit charge, 0-100. Commit is what the OS actually runs out of:
+   *  physical RAM at 80% with the pagefile filling is a machine a minute from swap thrash, and
+   *  the RAM gauge alone said "fine". Null before the first sample. */
+  pressurePct(): number | null {
+    const m = this.metrics;
+    if (!m) return null;
+    const ram = m.mem_total ? (m.mem_used / m.mem_total) * 100 : 0;
+    const commit = m.commit_total ? (m.commit_used / m.commit_total) * 100 : 0;
+    return Math.max(ram, commit);
+  }
+
   /** The account new shells inherit: the focused tab's, else the configured default. */
   current(): Account | null {
     const id = this.app.tab?.accountId ?? this.app.config.default_account;
@@ -112,16 +126,26 @@ export class Status {
   /** When the numbers on the bar were actually taken. */
   private metricsAt = 0;
 
+  /** The four gauge elements, built once and patched: rebuilding them from innerHTML on every
+   *  sample was a DOM churn twenty times a minute for numbers that mostly had not changed. */
+  private gaugeEls = new Map<string, { el: HTMLElement; bar: HTMLElement; v: HTMLElement }>();
+
   private paintMetrics() {
     const m = this.metrics;
     if (!m) {
       this.metricsEl.replaceChildren();
+      this.gaugeEls.clear();
       return;
     }
+    // Commit charge takes the swap slot when the OS reports it: RAM plus pagefile in use is the
+    // number that predicts a swap thrash, and it is what the eco sweep watches too.
+    const commit = m.commit_total > 0;
     const gauges: [string, number, string][] = [
       ["cpu", m.cpu / 100, `${Math.round(m.cpu)}%`],
       ["ram", share(m.mem_used, m.mem_total), `${gb(m.mem_used)}/${gb(m.mem_total)}`],
-      ["swap", share(m.swap_used, m.swap_total), m.swap_total ? `${gb(m.swap_used)}/${gb(m.swap_total)}` : "none"],
+      commit
+        ? ["commit", share(m.commit_used, m.commit_total), `${gb(m.commit_used)}/${gb(m.commit_total)} — RAM + pagefile in use`]
+        : ["swap", share(m.swap_used, m.swap_total), m.swap_total ? `${gb(m.swap_used)}/${gb(m.swap_total)}` : "none"],
       ["disk", share(m.disk_used, m.disk_total), `${gb(m.disk_used)}/${gb(m.disk_total)}`],
     ];
     // A window starved of memory stops running its timers, so the last sample it managed to
@@ -132,19 +156,32 @@ export class Status {
     const stale = age > 10_000;
     this.metricsEl.classList.toggle("stale", stale);
     this.metricsEl.title = stale ? `Last read ${Math.round(age / 1000)}s ago — the window was busy` : "";
-    this.metricsEl.replaceChildren(
-      ...gauges.map(([label, fraction, text]) => {
-        const el = document.createElement("span");
-        el.className = "gauge" + (fraction >= 0.9 ? " full" : fraction >= 0.75 ? " high" : "");
-        el.dataset.metric = label;
-        el.title = `${label.toUpperCase()} ${text}${label === "disk" && m.disk_name ? ` on ${m.disk_name}` : ""}`;
-        el.innerHTML = `<span class="k">${label}</span><span class="bar"><i></i></span><span class="v"></span>`;
-        el.querySelector<HTMLElement>("i")!.style.width = `${Math.round(Math.min(1, fraction) * 100)}%`;
-        el.querySelector<HTMLElement>(".v")!.textContent =
-          label === "cpu" ? text : `${Math.round(Math.min(1, fraction) * 100)}%`;
-        return el;
-      }),
-    );
+    const wanted = gauges.map(([label]) => label).join(",");
+    if (this.metricsEl.dataset.gauges !== wanted) {
+      this.metricsEl.dataset.gauges = wanted;
+      this.gaugeEls.clear();
+      this.metricsEl.replaceChildren(
+        ...gauges.map(([label]) => {
+          const el = document.createElement("span");
+          el.className = "gauge";
+          el.dataset.metric = label;
+          el.innerHTML = `<span class="k">${label}</span><span class="bar"><i></i></span><span class="v"></span>`;
+          this.gaugeEls.set(label, { el, bar: el.querySelector<HTMLElement>("i")!, v: el.querySelector<HTMLElement>(".v")! });
+          return el;
+        }),
+      );
+    }
+    for (const [label, fraction, text] of gauges) {
+      const g = this.gaugeEls.get(label)!;
+      g.el.classList.toggle("full", fraction >= 0.9);
+      g.el.classList.toggle("high", fraction >= 0.75 && fraction < 0.9);
+      const title = `${label.toUpperCase()} ${text}${label === "disk" && m.disk_name ? ` on ${m.disk_name}` : ""}`;
+      if (g.el.title !== title) g.el.title = title;
+      const width = `${Math.round(Math.min(1, fraction) * 100)}%`;
+      if (g.bar.style.width !== width) g.bar.style.width = width;
+      const value = label === "cpu" ? text : width;
+      if (g.v.textContent !== value) g.v.textContent = value;
+    }
   }
 
   /**
@@ -360,8 +397,14 @@ export class Status {
 
   /** The session host's chip: what it holds, and the one way to end it all. */
   private hostMenu2(e: MouseEvent) {
+    const idle = this.app.fleet().idleRss;
     openMenu(e.clientX, e.clientY, [
       { label: "Wake every sleeping tab", onPick: () => void this.app.wakeAll() },
+      {
+        label: "Sleep every idle session",
+        hint: idle >= 1e8 ? `frees ~${(idle / 1e9).toFixed(1)} GB` : "each resumes on click",
+        onPick: () => this.app.sleepIdle(),
+      },
       // One row per background shell — everything about it is already in `held`, and a stray
       // debug shell should not force adopting or killing the two sessions you actually want
       // back. The bulk actions stay underneath for when all of them are the same decision.

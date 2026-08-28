@@ -30,11 +30,11 @@ export function tauriTransport(): Transport {
     sessionTitle: (dir, sessionId) => invoke<string | null>("session_title", { dir, sessionId }),
     hostShutdown: () => invoke("host_shutdown"),
     hostRestart: () => invoke<string>("host_restart"),
-    async spawn(profile: Profile, cols, rows, onData, onExit) {
+    async spawn(profile: Profile, cols, rows, onData, onExit, opts) {
       // Rust sends `Response::new(bytes)` → arrives as an ArrayBuffer, no JSON in between.
       const onDataCh = new Channel<ArrayBuffer>();
       onDataCh.onmessage = (buf) => onData(new Uint8Array(buf));
-      const id = await invoke<number>("pty_spawn", { profile, cols, rows, onData: onDataCh });
+      const id = await invoke<number>("pty_spawn", { profile, cols, rows, onData: onDataCh, belowNormal: opts?.belowNormal ?? false });
       exits.set(id, onExit);
       return id;
     },

@@ -137,6 +137,9 @@ export interface HostMetrics {
   mem_total: number;
   swap_used: number;
   swap_total: number;
+  /** Windows commit charge (RAM + pagefile in use) and its limit; both 0 where unknown. */
+  commit_used: number;
+  commit_total: number;
   disk_used: number;
   disk_total: number;
   disk_name: string;
@@ -168,6 +171,10 @@ export interface Config {
   eco_after_minutes: number;
   /** Percent of system RAM above which idle sessions are exited early. 0 = never. */
   eco_memory_pct: number;
+  /** Start every shell one scheduling notch below the window (Windows BELOW_NORMAL, inherited
+   *  by claude and every agent it spawns). Ordering, not a cap: on a saturated machine the
+   *  terminal wins ties; on an idle one nothing changes. */
+  shells_below_normal: boolean;
   /** Write `remoteControlAtStartup: false` into every account's settings.json. */
   no_remote_control: boolean;
   /** Dollars per million tokens per model: [input, output, cache read, cache write]. */
@@ -271,6 +278,8 @@ export interface Transport {
     rows: number,
     onData: (bytes: Uint8Array) => void,
     onExit: (code: number | null) => void,
+    /** `belowNormal`: start the shell a scheduling notch below the window (see Config). */
+    opts?: { belowNormal?: boolean },
   ): Promise<number>;
   write(id: number, data: string): Promise<void>;
   resize(id: number, cols: number, rows: number): Promise<void>;
@@ -376,6 +385,7 @@ export function withDefaults(config: Partial<Config>): Config {
     max_live_panes: config.max_live_panes ?? 8,
     eco_after_minutes: config.eco_after_minutes ?? 15,
     eco_memory_pct: config.eco_memory_pct ?? 85,
+    shells_below_normal: config.shells_below_normal ?? true,
     no_remote_control: config.no_remote_control ?? true,
     model_prices: config.model_prices ?? {},
     context_warn_pct: config.context_warn_pct ?? 80,
