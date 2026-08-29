@@ -441,13 +441,15 @@ mod tests {
 
     #[test]
     fn context_window_follows_the_model() {
-        assert_eq!(super::window_for("claude-fable-5"), 1_000_000);
-        assert_eq!(super::window_for("claude-mythos-5"), 1_000_000);
-        assert_eq!(super::window_for("claude-sonnet-4-5[1m]"), 1_000_000);
-        assert_eq!(super::window_for("claude-opus-5"), 1_000_000);
-        assert_eq!(super::window_for("claude-sonnet-5"), 1_000_000);
-        assert_eq!(super::window_for("claude-opus-4-1"), 200_000);
-        assert_eq!(super::window_for(""), 200_000);
+        assert_eq!(super::window_for("claude-fable-5"), Some(1_000_000));
+        assert_eq!(super::window_for("claude-mythos-5"), Some(1_000_000));
+        assert_eq!(super::window_for("claude-sonnet-4-5[1m]"), Some(1_000_000));
+        assert_eq!(super::window_for("claude-opus-5"), Some(1_000_000));
+        assert_eq!(super::window_for("claude-sonnet-5"), Some(1_000_000));
+        assert_eq!(super::window_for("claude-opus-4-1"), Some(200_000));
+        // No model, no measurement. This used to answer 200_000, which is how a 1M session
+        // whose model we failed to read reported a confident, wrong 100% full.
+        assert_eq!(super::window_for(""), None);
     }
 
     #[test]
