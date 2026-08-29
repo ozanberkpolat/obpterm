@@ -61,7 +61,11 @@ async function main() {
   void tp
     .hooksEnsure(hookDirs, config.no_remote_control)
     .then((changed) => {
-      if (changed.length) toast(`Claude Code hooks + status line installed (${changed.length} settings file${changed.length > 1 ? "s" : ""}) — agent states and token meters are live`);
+      // Anything that is not a path is this pass telling you why it could not do its job.
+      const problems = changed.filter((c) => !c.includes("settings.json") || c.startsWith("SKIPPED"));
+      for (const p of problems) toast(p);
+      const files = changed.length - problems.length;
+      if (files) toast(`Claude Code hooks + status line installed (${files} settings file${files > 1 ? "s" : ""}) — agent states and token meters are live`);
       // The statusLine now writes ~/.claude/limits.json; point the meters there unless the
       // user already chose a source.
       if (!config.limits_file && !config.limits_url) {
@@ -69,7 +73,9 @@ async function main() {
         app.persistConfig();
       }
     })
-    .catch(() => {});
+    // Never silent. This pass owns the hooks, the token meters AND the Remote Control switch;
+    // swallowing its failure is how all three came to be quietly off at once.
+    .catch((e) => toast(`Claude Code hooks and settings were not written: ${e}`));
   window.addEventListener("focus", () => void app.refreshHeld());
   window.addEventListener("focus", () => app.clearAttention());
   const { restored, crashed, updatedTo } = await app.restoreSession();

@@ -105,7 +105,16 @@ pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>, no_remote_control: 
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     // What the running host actually bound — written by `start_hooks` before its socket ever
     // accepts a client, so this is never a race against `ensure()` above.
-    let hookaddr = obpterm_host::hookaddr::load(&config_dir).ok_or("the session host has no hook address yet")?;
+    //
+    // A missing address disables the HOOKS. It must not disable the statusLine or the Remote
+    // Control assertion, which have nothing to do with a port: returning early here — which is
+    // what shipped in 0.21.32 — meant one unreadable file silently stopped all three, so
+    // `settings.json` kept a dead hook URL AND never got `remoteControlAtStartup`, with no
+    // error anywhere because the caller swallowed it.
+    let hookaddr = obpterm_host::hookaddr::load(&config_dir);
+    if hookaddr.is_none() {
+        changed.push("the session host has not reported a hook address — restart it (status bar ▸ host chip) or agent supervision stays off".into());
+    }
     for dir in dirs {
         let path = PathBuf::from(expand_vars(&dir)).join("settings.json");
         // A missing file is a fresh account; a file that EXISTS but does not parse is someone's
@@ -122,12 +131,14 @@ pub async fn hooks_ensure(app: AppHandle, dirs: Vec<String>, no_remote_control: 
                 }
             },
         };
-        let hooks_done = obpterm_host::install::installed(&settings)
-            && obpterm_host::install::current(&settings, hookaddr.port, &hookaddr.token);
         let mut wrote = false;
-        if !hooks_done {
-            obpterm_host::install::install(&mut settings, hookaddr.port, &hookaddr.token);
-            wrote = true;
+        if let Some(addr) = &hookaddr {
+            let hooks_done = obpterm_host::install::installed(&settings)
+                && obpterm_host::install::current(&settings, addr.port, &addr.token);
+            if !hooks_done {
+                obpterm_host::install::install(&mut settings, addr.port, &addr.token);
+                wrote = true;
+            }
         }
         // Same pass, same file: the token meters' statusLine (never over a user's own).
         wrote |= obpterm_host::install::statusline_install(&mut settings, &exe);
