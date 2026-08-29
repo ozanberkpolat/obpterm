@@ -140,15 +140,15 @@ export class Status {
       this.gaugeEls.clear();
       return;
     }
-    // Commit charge takes the swap slot when the OS reports it: RAM plus pagefile in use is the
-    // number that predicts a swap thrash, and it is what the eco sweep watches too.
-    const commit = m.commit_total > 0;
+    // The four gauges are cpu / ram / swap / disk and stay that way — `style.css` colours each
+    // fill by `data-metric`, so a renamed one silently loses its colour and reads as an empty
+    // bar. Commit charge is a better predictor of a freeze than swap is, and the eco sweep
+    // watches it (`pressurePct`), but it belongs in the tooltip, not in place of a gauge.
+    const commit = m.commit_total > 0 ? ` · commit ${gb(m.commit_used)}/${gb(m.commit_total)} (RAM + pagefile in use)` : "";
     const gauges: [string, number, string][] = [
       ["cpu", m.cpu / 100, `${Math.round(m.cpu)}%`],
-      ["ram", share(m.mem_used, m.mem_total), `${gb(m.mem_used)}/${gb(m.mem_total)}`],
-      commit
-        ? ["commit", share(m.commit_used, m.commit_total), `${gb(m.commit_used)}/${gb(m.commit_total)} — RAM + pagefile in use`]
-        : ["swap", share(m.swap_used, m.swap_total), m.swap_total ? `${gb(m.swap_used)}/${gb(m.swap_total)}` : "none"],
+      ["ram", share(m.mem_used, m.mem_total), `${gb(m.mem_used)}/${gb(m.mem_total)}${commit}`],
+      ["swap", share(m.swap_used, m.swap_total), m.swap_total ? `${gb(m.swap_used)}/${gb(m.swap_total)}` : "none"],
       ["disk", share(m.disk_used, m.disk_total), `${gb(m.disk_used)}/${gb(m.disk_total)}`],
     ];
     // A window starved of memory stops running its timers, so the last sample it managed to

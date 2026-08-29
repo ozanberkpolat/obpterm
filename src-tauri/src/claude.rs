@@ -367,6 +367,47 @@ mod usage_tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The bug this exists to stop, three times running: a 1M-window session measured against a
+    /// guessed 200k reads 250%, clamps to 100%, and the rail states with total confidence that a
+    /// half-full conversation is about to be compacted.
+    #[tokio::test]
+    async fn a_window_we_are_not_sure_of_says_nothing_rather_than_a_confident_100() {
+        let root = std::env::temp_dir().join(format!("obpterm-ctx-{}", std::process::id()));
+        let projects = root.join("projects").join("-p");
+        std::fs::create_dir_all(&projects).unwrap();
+        let session = format!("ctx-{}", std::process::id());
+        // 500k tokens on a model nothing in the table recognises.
+        std::fs::write(projects.join(format!("{session}.jsonl")), format!("{}\n", turn_in("claude-frobnicate-9", 500_000))).unwrap();
+        let dir = root.display().to_string();
+
+        let one = session_stats(dir.clone(), vec![session.clone()], Prices::new()).await;
+        assert_eq!(one[0].context_pct, None, "an unknown model measures against nothing, so it reports nothing");
+
+        // Now Claude Code's own statusLine reports that model's real window. Every session on
+        // that model can be measured from here on — including this one, which is 50%, not 100%.
+        std::fs::write(
+            root.join("limits.json"),
+            r#"{"session_id":"someone-else","model":{"id":"claude-frobnicate-9"},"context_window":{"used_percentage":3,"context_window_size":1000000}}"#,
+        )
+        .unwrap();
+        CONTEXT_CACHE.lock().unwrap().remove(&session);
+        let two = session_stats(dir, vec![session.clone()], Prices::new()).await;
+        assert_eq!(two[0].context_pct, Some(50), "learned from the payload, not guessed");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_window_table_prefers_what_claude_reported_over_its_own_guess() {
+        // A guess that happens to be right is still a guess; a reported size overrides it.
+        assert_eq!(window_for("claude-opus-5"), Some(1_000_000), "the substring list still covers what it covers");
+        assert_eq!(window_for("claude-haiku-4-5-20251001"), Some(200_000));
+        assert_eq!(window_for("claude-something-unreleased"), None, "unknown is None, never a default");
+        MODEL_WINDOWS.lock().unwrap().insert("claude-something-unreleased".into(), 400_000);
+        assert_eq!(window_for("claude-something-unreleased"), Some(400_000));
+        MODEL_WINDOWS.lock().unwrap().remove("claude-something-unreleased");
+    }
+
     #[test]
     fn an_unpriced_model_costs_nothing_rather_than_something_invented() {
         let prices: Prices = [("opus".to_string(), [15.0, 75.0, 1.5, 18.75])].into_iter().collect();
@@ -678,7 +719,13 @@ fn context_of(session_id: &str, file: &Path) -> Option<u8> {
             }
         }
     }
-    let pct = last.map(|t| ((t as f64 / window_for(&model) as f64) * 100.0).round().clamp(0.0, 100.0) as u8);
+    // A number over 100% does not mean a full window — it means the window we measured against
+    // is too small, i.e. we guessed the model wrong. Clamping produced a confident "ctx 100%"
+    // on a session that was actually half full. Say nothing instead.
+    let pct = last.zip(window_for(&model)).and_then(|(t, w)| {
+        let raw = (t as f64 / w as f64) * 100.0;
+        (raw <= 105.0).then_some(raw.round().clamp(0.0, 100.0) as u8)
+    });
     if let Ok(mut c) = CONTEXT_CACHE.lock() {
         c.insert(session_id.to_string(), (stamp, pct));
     }
@@ -782,26 +829,68 @@ static CONTEXT_CACHE: std::sync::LazyLock<Mutex<HashMap<String, (FileStamp, Opti
 
 /// The saved statusLine payload: which session it is about, and Claude's own percentage for
 /// it. Read once per `session_stats` call, never per session.
+///
+/// It also TEACHES us the model's context window on the way past. The payload carries
+/// `context_window_size` for the session it describes, so every session whose statusLine has
+/// rendered calibrates the transcript-math fallback for every other session on that model —
+/// which is the only way to stop guessing (see `window_for`).
 fn payload_context(dir: &str) -> Option<(String, u8)> {
     let text = std::fs::read_to_string(PathBuf::from(expand(dir)).join("limits.json")).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    learn_window(&v);
     let sid = v.get("session_id").and_then(|s| s.as_str())?.to_string();
     let pct = v.pointer("/context_window/used_percentage").and_then(|p| p.as_f64()).map(|p| p.round().clamp(0.0, 100.0) as u8)?;
     Some((sid, pct))
 }
 
-/// The context window the transcript-math fallback measures against. The Claude 5 family
-/// (opus-5, sonnet-5, fable, mythos) and the [1m] betas run 1M windows — the laptop's
-/// /context showed opus-5 at 223.6k/1m while the old 200k assumption pinned the meter at
-/// 100%. Only the sessions the statusLine has not reported on land here at all.
-fn window_for(model: &str) -> u64 {
+/// model id -> the window Claude Code itself reported for it.
+static MODEL_WINDOWS: std::sync::LazyLock<Mutex<HashMap<String, u64>>> = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn learn_window(payload: &serde_json::Value) {
+    let size = ["/context_window/context_window_size", "/context_window/total", "/context_window_size"]
+        .iter()
+        .find_map(|p| payload.pointer(p).and_then(|v| v.as_u64()))
+        .filter(|n| *n > 0);
+    let model = ["/model/id", "/model/display_name", "/model"]
+        .iter()
+        .find_map(|p| payload.pointer(p).and_then(|v| v.as_str()))
+        .map(|m| m.to_ascii_lowercase());
+    if let (Some(size), Some(model)) = (size, model) {
+        if let Ok(mut c) = MODEL_WINDOWS.lock() {
+            c.insert(model, size);
+        }
+    }
+}
+
+/// The context window the transcript-math fallback measures against, or None when we do not
+/// actually know it. Only sessions the statusLine has not reported on land here at all.
+///
+/// What Claude Code told us wins: `learn_window` records the real size per model from the
+/// statusLine payload. The substring list is the fallback's fallback, and it is a GUESS — it
+/// has been wrong twice, both times by assuming 200k for a 1M session, which pins the meter at
+/// a confident 100%. So when nothing matches, this returns None and the gauge says nothing
+/// rather than something false.
+fn window_for(model: &str) -> Option<u64> {
     let m = model.to_ascii_lowercase();
+    if let Ok(c) = MODEL_WINDOWS.lock() {
+        if let Some(n) = c.get(&m).copied() {
+            return Some(n);
+        }
+        // The payload spells a model differently from the transcript often enough to be worth
+        // one containment pass before giving up.
+        if let Some((_, n)) = c.iter().find(|(k, _)| m.contains(k.as_str()) || k.contains(&m)) {
+            return Some(*n);
+        }
+    }
     let million = ["fable", "mythos", "[1m]", "-1m", "opus-5", "sonnet-5"];
     if million.iter().any(|p| m.contains(p)) {
-        1_000_000
-    } else {
-        200_000
+        return Some(1_000_000);
     }
+    let known_200k = ["opus-4", "sonnet-4", "haiku-4", "haiku-3", "sonnet-3", "opus-3"];
+    if known_200k.iter().any(|p| m.contains(p)) {
+        return Some(200_000);
+    }
+    None
 }
 
 fn tail(path: &Path, max: u64) -> Option<String> {

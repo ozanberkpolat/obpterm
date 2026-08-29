@@ -538,6 +538,9 @@ export class App implements PaneHost {
     // first meant a failed write left the ~400 MB process running while `eligible()` skipped it
     // forever — the exact leak this feature exists to stop, made silent and permanent.
     pane.eco = true;
+    // Its gauges describe what it is doing, and it is about to stop doing anything. Leaving the
+    // last reading on a sleeping tab is how a stale percentage sits there looking current.
+    pane.ctxPct = null;
     void this.tp.write(pane.id, "/exit\r").catch(() => {
       pane.eco = false;
       toast(`Could not sleep ${pane.title || pane.profile.name} — the shell did not take /exit`);
