@@ -24,10 +24,9 @@ async fn main() {
     // quiet until its own session restarts too. See `hookaddr`.
     let hookaddr = obpterm_host::hookaddr::load(&config_dir);
     let hook_token = hookaddr.as_ref().map(|a| a.token.clone()).unwrap_or_else(|| obpterm_host::random_hex(12));
-    let preferred_port = hookaddr.map(|a| a.port);
     let host = Arc::new(Host::new(socket, obpterm_host::random_hex(16), hook_token, env!("CARGO_PKG_VERSION")));
 
-    if let Err(e) = host.start_hooks(&config_dir, preferred_port).await {
+    if let Err(e) = host.start_hooks(&config_dir, hookaddr).await {
         eprintln!("obpterm-host: hooks disabled: {e}");
     }
     let advert = obpterm_host::advert_path(&config_dir);

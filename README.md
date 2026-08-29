@@ -158,6 +158,15 @@ it. What that buys, per pane:
   `/exit`ed — each idle Claude process holds ~335 MB — and the tab stays, marked; clicking
   it resumes the same conversation.
 
+The hooks POST to a loopback port the session host owns. Claude Code reads `settings.json`
+once, when a session starts, and keeps that URL for the session's whole life — so the port has
+to stay put. The host persists it, waits a couple of seconds to reclaim it when it restarts
+(the old host is often still holding it for a moment), and keeps listening on the last few
+ports it used, so a session that started before a restart is never left posting into a closed
+socket. When that does happen, the symptom is `UserPromptSubmit hook error / connect
+ECONNREFUSED` printed into the prompt and no session states in the rail; reopening the window
+re-points `settings.json` at the live port.
+
 ## Being told
 
 A pane that asks for you while you are looking at something else raises a desktop notification

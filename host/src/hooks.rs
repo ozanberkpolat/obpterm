@@ -67,18 +67,35 @@ impl HookHub {
         }
     }
 
-    /// Binds on `preferred_port` when one is given and still free — the port an http hook's
-    /// URL was last built with, so a routine restart does not orphan every already-open pane
-    /// (see `hookaddr`) — falling back to a fresh ephemeral port otherwise.
-    pub async fn listen(self: Arc<Self>, preferred_port: Option<u16>) -> std::io::Result<u16> {
-        let listener = match preferred_port {
-            Some(p) => match TcpListener::bind(("127.0.0.1", p)).await {
-                Ok(l) => l,
-                Err(_) => TcpListener::bind(("127.0.0.1", 0)).await?,
-            },
+    /// Binds on `preferred` — the port an http hook's URL was last built with — and on `also`,
+    /// the ports earlier runs advertised. Returns the port new hooks should be pointed at.
+    ///
+    /// Both halves exist because a session snapshots its hook URL at startup and keeps it for
+    /// the rest of its life (Claude Code's documented behaviour). If the host comes back on a
+    /// different port, every session already running posts into a closed socket — supervision
+    /// silently dead, and a connection error printed into the user's prompt on every event.
+    /// So: try hard not to move (`bind_preferred`), and keep answering where we used to.
+    pub async fn listen(self: Arc<Self>, preferred: Option<u16>, also: &[u16]) -> std::io::Result<u16> {
+        let listener = match preferred {
+            Some(p) => bind_preferred(p).await?,
             None => TcpListener::bind(("127.0.0.1", 0)).await?,
         };
         let port = listener.local_addr()?.port();
+        Arc::clone(&self).accept_on(listener);
+        for &old in also {
+            if old == port {
+                continue;
+            }
+            match TcpListener::bind(("127.0.0.1", old)).await {
+                Ok(l) => Arc::clone(&self).accept_on(l),
+                // Someone else has it now. Nothing to do: those sessions were already lost.
+                Err(e) => eprintln!("obpterm-host: not re-binding old hook port {old}: {e}"),
+            }
+        }
+        Ok(port)
+    }
+
+    fn accept_on(self: Arc<Self>, listener: TcpListener) {
         tokio::spawn(async move {
             loop {
                 let Ok((stream, _)) = listener.accept().await else { break };
@@ -88,7 +105,6 @@ impl HookHub {
                 });
             }
         });
-        Ok(port)
     }
 
     async fn handle(&self, mut stream: tokio::net::TcpStream) -> std::io::Result<()> {
@@ -175,6 +191,30 @@ impl HookHub {
     }
 }
 
+/// How long to keep trying for the port we want before settling for another. "Restart host"
+/// kills the old host and starts the new one straight away, so the port it is meant to reclaim
+/// is routinely still held for a moment by a process on its way out. Giving up on the first
+/// refusal — which is what the first version of this did — moved the port for no reason and
+/// stranded every open session on the old one.
+const BIND_RETRY: Duration = Duration::from_secs(2);
+const BIND_RETRY_GAP: Duration = Duration::from_millis(100);
+
+async fn bind_preferred(port: u16) -> std::io::Result<TcpListener> {
+    let deadline = tokio::time::Instant::now() + BIND_RETRY;
+    loop {
+        match TcpListener::bind(("127.0.0.1", port)).await {
+            Ok(l) => return Ok(l),
+            Err(e) => {
+                if tokio::time::Instant::now() >= deadline {
+                    eprintln!("obpterm-host: hook port {port} stayed busy ({e}); taking a new one");
+                    return TcpListener::bind(("127.0.0.1", 0)).await;
+                }
+                tokio::time::sleep(BIND_RETRY_GAP).await;
+            }
+        }
+    }
+}
+
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
 }
@@ -237,7 +277,7 @@ mod tests {
     #[tokio::test]
     async fn events_flow_and_a_bad_token_is_refused() {
         let hub = HookHub::new("tok".into());
-        let port = Arc::clone(&hub).listen(None).await.unwrap();
+        let port = Arc::clone(&hub).listen(None, &[]).await.unwrap();
         let mut events = hub.subscribe();
 
         let (code, _) = post(port, "/hook/tok/5", r#"{"hook_event_name":"Stop","session_id":"s9","last_assistant_message":"done"}"#).await;
@@ -252,7 +292,7 @@ mod tests {
     #[tokio::test]
     async fn the_header_shape_works_the_same_as_the_legacy_path_one() {
         let hub = HookHub::new("tok".into());
-        let port = Arc::clone(&hub).listen(None).await.unwrap();
+        let port = Arc::clone(&hub).listen(None, &[]).await.unwrap();
         let mut events = hub.subscribe();
 
         let (code, _) = post_with(
@@ -278,7 +318,7 @@ mod tests {
         // where it left off, with a three-byte overlap so a `\r\n\r\n` split across a read
         // boundary is still found.
         let hub = HookHub::new("tok".into());
-        let port = Arc::clone(&hub).listen(None).await.unwrap();
+        let port = Arc::clone(&hub).listen(None, &[]).await.unwrap();
         let mut events = hub.subscribe();
 
         let prompt = "x".repeat(200_000);
@@ -296,7 +336,7 @@ mod tests {
         // Claude Code, not one of ours. The old shell hook never even spawned for this case;
         // the http hook always gets a response, but it must be a quiet 200, not an error.
         let hub = HookHub::new("tok".into());
-        let port = Arc::clone(&hub).listen(None).await.unwrap();
+        let port = Arc::clone(&hub).listen(None, &[]).await.unwrap();
         let (code, _) = post_with(port, "/hook", &[("X-OBPTerm-Token", "tok"), ("X-OBPTerm-Pane", "")], r#"{"hook_event_name":"Stop"}"#).await;
         assert_eq!(code, 200);
     }
@@ -304,7 +344,7 @@ mod tests {
     #[tokio::test]
     async fn a_permission_request_waits_for_the_rail_and_carries_the_verdict() {
         let hub = HookHub::new("t".into());
-        let port = Arc::clone(&hub).listen(None).await.unwrap();
+        let port = Arc::clone(&hub).listen(None, &[]).await.unwrap();
         let mut events = hub.subscribe();
 
         let answerer = {

@@ -55,9 +55,11 @@ impl Host {
     /// it names: that indirection is what let a v2 hook survive a host restart with no
     /// persistence at all — v3 needs `hookaddr.json` instead because an http hook's URL has no
     /// such indirection (see `hookaddr`'s module doc).
-    pub async fn start_hooks(&self, config_dir: &std::path::Path, preferred_port: Option<u16>) -> std::io::Result<()> {
-        let port = Arc::clone(&self.hooks).listen(preferred_port).await?;
-        crate::hookaddr::save(config_dir, &crate::hookaddr::HookAddr { port, token: self.hooks.token.clone() });
+    pub async fn start_hooks(&self, config_dir: &std::path::Path, saved: Option<crate::hookaddr::HookAddr>) -> std::io::Result<()> {
+        let also = saved.as_ref().map(|a| a.also_bind()).unwrap_or_default();
+        let port = Arc::clone(&self.hooks).listen(saved.as_ref().map(|a| a.port), &also).await?;
+        let previous = crate::hookaddr::HookAddr::roll(port, saved.as_ref());
+        crate::hookaddr::save(config_dir, &crate::hookaddr::HookAddr { port, token: self.hooks.token.clone(), previous });
         let env_file = config_dir.join("hook-endpoint.env");
         std::fs::write(
             &env_file,

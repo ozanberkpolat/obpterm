@@ -4,9 +4,13 @@
 use serde_json::{json, Value};
 
 /// Every event the supervision states are derived from.
-pub const EVENTS: [&str; 9] = [
+///
+/// `UserPromptSubmit` is deliberately NOT here. It fired the instant you pressed Enter — the one
+/// moment you are certainly looking at the pane — and all it bought was the "working" state a
+/// second before `PreToolUse` set it anyway. When the hook endpoint is unreachable, Claude Code
+/// prints the failure into the prompt, so the cheapest event to lose was also the loudest one.
+pub const EVENTS: [&str; 8] = [
     "SessionStart",
-    "UserPromptSubmit",
     "PreToolUse",
     "PostToolUse",
     "Stop",
@@ -18,7 +22,13 @@ pub const EVENTS: [&str; 9] = [
 
 /// The sentinel that marks our entries. Bump the suffix when the hook's shape changes, and old
 /// entries are replaced instead of duplicated.
-pub const MARK: &str = "# obpterm-hooks v3";
+///
+/// v4 dropped `UserPromptSubmit`. The bump is what makes that take effect: `installed()` and
+/// `current()` only ever look at the events in `EVENTS`, so a block written by v3 would still
+/// answer "yes, installed and current" while its `UserPromptSubmit` entry sat there firing
+/// forever. A changed mark makes `current()` false, and `install()` — which calls `remove()`
+/// across every event, not just ours — clears it out.
+pub const MARK: &str = "# obpterm-hooks v4";
 
 /// What makes a block OURS, whatever version wrote it. `MARK` carries a version so a stale
 /// block can be recognised as stale — but recognition has to ignore that version, or the day
@@ -387,6 +397,30 @@ mod tests {
         assert!(!current(&settings, PORT + 1, TOKEN), "a different port is a different address");
         install(&mut settings, PORT + 1, TOKEN);
         assert!(current(&settings, PORT + 1, TOKEN));
+    }
+
+    #[test]
+    fn an_event_we_stopped_using_is_cleared_out_of_a_block_we_wrote_before() {
+        // The v3 shape: ours, current-looking, and carrying a UserPromptSubmit entry. Without
+        // the mark bump this block reads as installed AND current, install() never runs, and
+        // that entry keeps firing (and keeps printing errors) for the life of the machine.
+        let mut settings = json!({});
+        install(&mut settings, PORT, TOKEN);
+        let ours = settings.pointer("/hooks/Stop/0").unwrap().clone();
+        settings["hooks"]["UserPromptSubmit"] = json!([ours]);
+        for event in EVENTS {
+            let e = settings.pointer_mut(&format!("/hooks/{event}/0/hooks/0/headers/X-OBPTerm-Mark")).unwrap();
+            *e = json!("# obpterm-hooks v3");
+        }
+        settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["headers"]["X-OBPTerm-Mark"] = json!("# obpterm-hooks v3");
+
+        assert!(installed(&settings), "a v3 block is still recognisably ours");
+        assert!(!current(&settings, PORT, TOKEN), "but not the shape we ship now");
+        install(&mut settings, PORT, TOKEN);
+
+        let left = settings.pointer("/hooks/UserPromptSubmit").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+        assert_eq!(left, 0, "the entry for an event we no longer use is gone: {settings:?}");
+        assert!(current(&settings, PORT, TOKEN));
     }
 
     #[test]
